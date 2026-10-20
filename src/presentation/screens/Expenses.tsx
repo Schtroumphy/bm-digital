@@ -229,7 +229,9 @@ function EntryTab({ month }: { month: MonthKey }) {
 
 function BalancesTab({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
-  const accs = accounts(data);
+  // accounts() also lists lines deleted or replaced in other months: only the month's own lines are shown.
+  const monthKeys = new Set(monthLines(data, month).map(l => l.key));
+  const accs = accounts(data).filter(a => monthKeys.has(a.key));
   const locked = isMonthLocked(data, month);
   let nOk = 0;
   const groups = (
