@@ -320,7 +320,8 @@ describe('mois verrouillé', () => {
     expect(setTransferTarget(d, M, 'v', { kind: 'bank', id: 'swile' })).toBe(false);
     expect(d.transfers[0].to).toBeUndefined();
     expect(d.months[M].lines[0].accountId).toBeUndefined();
-    expect(d.transactions[0].accountId).toBeUndefined();
+    // addTransaction wrote the resolved account (main): the refused change left it there.
+    expect(d.transactions[0].accountId).toBe(MAIN_ACCOUNT_ID);
     expect(d.transfers[0].fromAccountId).toBe(MAIN_ACCOUNT_ID);
     d.closes[2027].closed = false;
     expect(setLineAccount(d, M, 'sal', 'swile')).toBe(true);

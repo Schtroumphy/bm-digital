@@ -3,16 +3,26 @@ export type MonthKey = string;
 
 export type BlockKey = 'rev' | 'cre' | 'fix' | 'var' | 'epa' | 'inv';
 
+/** How a box (variable line or envelope) is paid: with the bank card of an account, or in cash. Absent = `virtuel`. */
+export type PayMode = 'virtuel' | 'especes';
+
+/** What decides the account of an expense made on a box. Lines and envelopes both fit this shape. */
+export interface PaymentSetting {
+  /** Account assigned to the box for `virtuel` payments; absent = the main account. */
+  accountId?: string;
+  payMode?: PayMode;
+}
+
 /** A budget line as it exists in one month. `key` is stable across months. */
-export interface Line {
+export interface Line extends PaymentSetting {
   key: string;
   block: BlockKey;
   section: string;
   name: string;
   budget: number;
   actual: number | null;
-  /** Bank account the line goes through; absent = the main account. */
-  accountId?: string;
+  // `accountId` (from PaymentSetting): bank account the line goes through; absent = the main account.
+  // For a `var` line it is the account assigned to the box, and `payMode` its mode (spec 0006).
 }
 
 export type TemplateLine = Omit<Line, 'actual'>;
@@ -30,9 +40,11 @@ export interface MonthData {
   alloc: Record<string, number>;
   /** Transfer id → done. */
   transfersDone: Record<string, boolean>;
+  /** The month was closed by the user (« Clôturer le mois »): read-only. Absent = open. */
+  closed?: boolean;
 }
 
-export interface Envelope {
+export interface Envelope extends PaymentSetting {
   id: string;
   name: string;
   /** OKLCH hue used for the envelope's accent. */

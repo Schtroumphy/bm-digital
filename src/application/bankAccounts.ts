@@ -47,8 +47,12 @@ export function setMainBankAccount(d: BudgetData, id: string): boolean {
   if (!next || next.archived) return false;
   const old = mainAccount(d);
   if (old.id === id) return true;
-  for (const l of d.template.lines) l.accountId ??= old.id;
-  for (const md of Object.values(d.months)) for (const l of md.lines) l.accountId ??= old.id;
+  // Variable lines are left alone: their account is the one assigned to the box, and none means « the main account » (spec 0006).
+  const pin = (l: { block: string; accountId?: string }) => {
+    if (l.block !== 'var') l.accountId ??= old.id;
+  };
+  d.template.lines.forEach(pin);
+  for (const md of Object.values(d.months)) md.lines.forEach(pin);
   for (const t of d.transactions) t.accountId ??= old.id;
   for (const a of d.accounts) a.isDefault = a.id === id;
   return true;
@@ -131,5 +135,13 @@ export function setTransferTarget(d: BudgetData, m: MonthKey, id: string, to: Tr
   if (!t || isMonthLocked(d, m)) return false;
   if (to) t.to = to;
   else delete t.to;
+  return true;
+}
+
+/** Ticks or unticks a transfer as « fait » for a month. Refused (false) on a locked or non-initialized month. */
+export function setTransferDone(d: BudgetData, m: MonthKey, id: string, done: boolean): boolean {
+  const md = d.months[m];
+  if (!md?.initialized || isMonthLocked(d, m) || !d.transfers.some(t => t.id === id)) return false;
+  md.transfersDone[id] = done;
   return true;
 }

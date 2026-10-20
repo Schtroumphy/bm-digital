@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, isTransactionInBudget } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, isTransactionInBudget } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual } from '../domain/budget';
 import { isMonthLocked } from '../domain/ledger';
@@ -31,15 +31,17 @@ function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<stri
   };
 }
 
-/** Creates the month's lines and allocations from the budget model. */
-export function applyTemplate(d: BudgetData, m: MonthKey) {
+/** Creates the month's lines and allocations from the budget model. Refused (false) on a locked month. */
+export function applyTemplate(d: BudgetData, m: MonthKey): boolean {
+  if (isMonthLocked(d, m)) return false;
   initMonth(d, m, d.template.lines.map(l => ({ ...l, actual: null })), d.template.envAlloc);
+  return true;
 }
 
-/** Creates the month from the previous month's budgets (actuals start empty). */
+/** Creates the month from the previous month's budgets (actuals start empty). Refused (false) on a locked month. */
 export function duplicatePrevious(d: BudgetData, m: MonthKey): boolean {
   const prev = d.months[addMonths(m, -1)];
-  if (!prev?.initialized) return false;
+  if (!prev?.initialized || isMonthLocked(d, m)) return false;
   initMonth(d, m, prev.lines, prev.alloc);
   return true;
 }
@@ -111,11 +113,16 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
     actual: null,
     ...(r.accountId ? { accountId: r.accountId } : {}),
   });
+  // A variable line's « Compte » column also holds « Espèces »: that is the cash mode, not an assigned account (spec 0006, RG9).
+  const varLine = (r: SetupRow): Line => {
+    const { accountId, ...rest } = line('var', r);
+    return accountId === CASH_ACCOUNT_ID ? { ...rest, payMode: 'especes' } : { ...rest, ...(accountId ? { accountId } : {}) };
+  };
   const lines: Line[] = [
     ...rows.rev.map(r => line('rev', r)),
     ...rows.cre.map(r => line('cre', r)),
     ...rows.dep.filter(r => r.kind === 'fix').map(r => line('fix', r)),
-    ...rows.dep.filter(r => r.kind !== 'fix').map(r => line('var', r)),
+    ...rows.dep.filter(r => r.kind !== 'fix').map(varLine),
     ...rows.epa.map(r => line('epa', r, SAVINGS_SECTIONS[r.kind === 'MT' ? 'MT' : 'LT'])),
     ...rows.inv.map(r => line('inv', r)),
   ];
@@ -186,7 +193,8 @@ export const SAVINGS_SECTIONS = { LT: 'Épargne long terme', MT: 'Épargne moyen
  * block's last line. With one, it follows the last line of that section, or
  * opens the section at the end of the block when it does not exist yet.
  */
-export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string, targetSection?: string) {
+export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string, targetSection?: string): boolean {
+  if (!d.months[m]?.initialized || isMonthLocked(d, m)) return false;
   const lines = d.months[m].lines;
   const inBlock = (l: Line) => l.block === block;
   let idx = lastIndexWhere(lines, l => inBlock(l) && (targetSection === undefined || l.section === targetSection));
@@ -194,15 +202,22 @@ export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string
   const section = targetSection ?? (idx >= 0 ? lines[idx].section : '');
   const line: Line = { key, block, section, name: 'Nouvelle ligne', budget: 0, actual: null };
   lines.splice(idx >= 0 ? idx + 1 : lines.length, 0, line);
+  return true;
 }
 
-export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Partial<Pick<Line, 'name' | 'budget' | 'actual'>>) {
-  const l = d.months[m].lines.find(x => x.key === key);
-  if (l) Object.assign(l, patch);
+/** Edits a line's name, budget or actual. Refused (false) on a locked month or an unknown line. */
+export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Partial<Pick<Line, 'name' | 'budget' | 'actual'>>): boolean {
+  if (isMonthLocked(d, m)) return false;
+  const l = d.months[m]?.lines.find(x => x.key === key);
+  if (!l) return false;
+  Object.assign(l, patch);
+  return true;
 }
 
-export function deleteLine(d: BudgetData, m: MonthKey, key: string) {
+export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
+  if (!d.months[m]?.initialized || isMonthLocked(d, m)) return false;
   d.months[m].lines = d.months[m].lines.filter(l => l.key !== key);
+  return true;
 }
 
 /** An actual copied from the budget by `validateMonth`, kept to be able to undo it. */
@@ -238,21 +253,29 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
   }
 }
 
-/** Records a transaction; a variable expense also raises its line's actual. */
-export function addTransaction(d: BudgetData, t: Transaction) {
+/**
+ * Records a transaction; a variable expense also raises its line's actual. Refused (false) on a locked month.
+ * Without an account, the transaction takes the one resolved from its box (spec 0006, RG3):
+ * the account is written down, so a later change of the box does not move it (RG6).
+ */
+export function addTransaction(d: BudgetData, input: Transaction): boolean {
+  if (isMonthLocked(d, input.month)) return false;
+  const t = input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   d.transactions.push(t);
-  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return;
+  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return true;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
   if (l) l.actual = round2((l.actual ?? 0) + t.amount);
+  return true;
 }
 
-export function deleteTransaction(d: BudgetData, id: string) {
+export function deleteTransaction(d: BudgetData, id: string): boolean {
   const t = d.transactions.find(x => x.id === id);
-  if (!t) return;
+  if (!t || isMonthLocked(d, t.month)) return false;
   d.transactions = d.transactions.filter(x => x.id !== id);
-  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return;
+  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return true;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
   if (l) l.actual = round2((l.actual ?? 0) - t.amount);
+  return true;
 }
 
 export function setStatement(d: BudgetData, m: MonthKey, key: string, v: number | null) {
