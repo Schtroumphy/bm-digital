@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import { parseAmount, rawNumber } from '../domain/format';
+import { parseAmount, rawNumber } from '../../domain/format';
 import { useUi } from '../state/ui';
 
 interface BaseProps {

@@ -1,9 +1,9 @@
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
 import { tone } from '../components/tone';
-import { envelopeAlerts } from '../domain/budget';
-import { currentMonthKey, money, monthKey, monthName, MONTH_NAMES } from '../domain/format';
-import type { PlannedItem } from '../domain/types';
+import { envelopeAlerts } from '../../domain/budget';
+import { currentMonthKey, money, monthKey, monthName, MONTH_NAMES } from '../../domain/format';
+import type { PlannedItem } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 

@@ -18,7 +18,7 @@ a:hover { color: oklch(0.35 0.12 300); }
 input, button { font-family: inherit; }
 
 .app {
-  position: relative; width: 1440px; min-height: 900px; display: flex;
+  position: relative; width: 100%; min-height: 100vh; display: flex;
   background: var(--page); font-family: var(--font-body), system-ui, sans-serif; color: var(--ink);
   font-size: 12.5px; font-variant-numeric: tabular-nums; line-height: 1.3;
 }

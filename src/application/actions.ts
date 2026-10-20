@@ -1,5 +1,5 @@
-import { addMonths, round2 } from './format';
-import type { BlockKey, BudgetData, Line, MonthKey, Transaction } from './types';
+import { addMonths, round2 } from '../domain/format';
+import type { BlockKey, BudgetData, Line, MonthKey, Transaction } from '../domain/types';
 
 /** Recomputes a variable line's actual from the month's transactions, when it has any. */
 function varActualFromTx(d: BudgetData, m: MonthKey, key: string): number | null {

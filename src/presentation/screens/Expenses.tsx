@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { EditableAmount } from '../components/Editable';
 import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
-import { addTransaction, deleteTransaction, setStatement } from '../domain/actions';
-import { monthSummary } from '../domain/budget';
-import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../domain/format';
-import { accounts, isMonthLocked, monthLines } from '../domain/ledger';
-import type { MonthKey, PaymentSource, TxType } from '../domain/types';
+import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
+import { monthSummary } from '../../domain/budget';
+import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
+import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
+import type { MonthKey, PaymentSource, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne' };

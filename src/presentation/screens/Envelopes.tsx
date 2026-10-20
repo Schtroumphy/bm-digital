@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
 import { toneVars } from '../components/tone';
-import { envelopeAlerts } from '../domain/budget';
-import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../domain/format';
-import { isMonthLocked, monthAlloc } from '../domain/ledger';
-import type { Envelope, MonthKey } from '../domain/types';
+import { envelopeAlerts } from '../../domain/budget';
+import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
+import { isMonthLocked, monthAlloc } from '../../domain/ledger';
+import type { Envelope, MonthKey } from '../../domain/types';
 import { useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
