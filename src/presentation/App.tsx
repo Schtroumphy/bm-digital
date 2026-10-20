@@ -6,7 +6,7 @@ import { useUi } from './state/ui';
 import { AccountsActions, AccountsScreen } from './screens/Accounts';
 import { BudgetScreen, BudgetActions } from './screens/Budget';
 import { ClosingScreen } from './screens/Closing';
-import { EnvelopesScreen } from './screens/Envelopes';
+import { EnvelopesScreen, EnvelopesTotal } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
 import { PlanningScreen } from './screens/Planning';
 import { SetupActions, SetupScreen } from './screens/Setup';
@@ -149,6 +149,7 @@ export function App() {
           <div style={{ flex: 1 }} />
           {screen === 'budget' && <BudgetActions month={month} />}
           {screen === 'comptes' && <AccountsActions month={month} />}
+          {screen === 'env' && <EnvelopesTotal month={month} />}
           {screen === 'setup' && <SetupActions setDraft={setDraft} />}
         </header>
 

@@ -11,6 +11,19 @@ import { useUi } from '../state/ui';
 
 const CASH = 'oklch(0.82 0.12 85)';
 
+/** Header total: what is allocated to all envelopes this month. */
+export function EnvelopesTotal({ month }: { month: MonthKey }) {
+  const { data } = useStore();
+  const alloc = monthAlloc(data, month);
+  const total = round2(data.envelopes.reduce((a, e) => a + (alloc[e.id] ?? 0), 0));
+  return (
+    <div className="header-total">
+      <span className="kpi-label">Total alloué</span>
+      <b>{money(total)}</b>
+    </div>
+  );
+}
+
 export function EnvelopesScreen({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const { openMenu, setEditing } = useUi();

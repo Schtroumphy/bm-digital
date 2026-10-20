@@ -50,6 +50,24 @@ export function saveAsTemplate(d: BudgetData, m: MonthKey) {
   d.template = { lines: md.lines.map(({ actual: _actual, ...l }) => l), envAlloc: { ...md.alloc } };
 }
 
+/**
+ * Sets an envelope's allocation for a month (replacement, not addition) and
+ * copies the value into the budget model so that future months start from it,
+ * even when it equals the current allocation. 0 is valid. Refuses negative or
+ * invalid amounts, and does nothing for an unknown envelope or a month that is
+ * not initialized or is locked. Returns true when applied.
+ */
+export function setEnvelopeAllocation(d: BudgetData, m: MonthKey, envelopeId: string, amount: number): boolean {
+  const md = d.months[m];
+  if (!md?.initialized || isMonthLocked(d, m)) return false;
+  if (!d.envelopes.some(e => e.id === envelopeId)) return false;
+  if (!(amount >= 0)) return false;
+  const next = round2(amount);
+  md.alloc[envelopeId] = next;
+  d.template.envAlloc[envelopeId] = next;
+  return true;
+}
+
 /** Months the assistant can start from: one year before to one year after today, never before an existing first month. */
 export function setupMonths(d: BudgetData, today = currentMonthKey()): MonthKey[] {
   const out: MonthKey[] = [];
