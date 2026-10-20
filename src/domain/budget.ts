@@ -13,6 +13,12 @@ export function lineGap(l: Line): number | null {
   return round2(isIncomeLike(l.block) ? l.actual - l.budget : l.budget - l.actual);
 }
 
+/** Lines whose actual can be taken as equal to the budget: no actual yet, not a variable line (its actual comes from transactions), non-zero budget. */
+export const lineNeedsActual = (l: Line) => l.actual === null && l.block !== 'var' && l.budget !== 0;
+
+/** The month's lines without an entered actual (out-of-budget account lines included, they stay listed). */
+export const linesWithoutActual = (d: BudgetData, m: MonthKey): Line[] => (d.months[m]?.initialized ? d.months[m].lines.filter(lineNeedsActual) : []);
+
 export function blockTotals(lines: Line[], block: BlockKey) {
   const ls = lines.filter(l => l.block === block);
   const budget = sum(ls.map(l => l.budget));

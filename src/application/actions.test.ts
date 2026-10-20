@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, setupMonths, willReplaceMonth } from './actions';
+import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
 import { addSuggested, emptyDraft, exampleDraft, parseDraft, setupSummary, updateRow, type IdFactory } from './setup';
-import { monthSummary } from '../domain/budget';
+import { linesWithoutActual, monthSummary } from '../domain/budget';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
 import { seedData } from '../domain/seed';
@@ -191,5 +191,63 @@ describe('initialisation du budget', () => {
     expect(ledger.envMonth(id, '2027-03')!.start).toBe(500);
     expect(ledger.envMonth(id, '2027-03')!.balance).toBe(600);
     expect(d.firstMonth).toBe('2027-01');
+  });
+});
+
+describe('validateMonth', () => {
+  const M = '2027-02';
+  /** A fresh month with hand-picked lines. */
+  const month = (lines: Array<[string, 'fix' | 'var' | 'rev', number, number | null]>) => {
+    const d = seedData();
+    d.months[M] = { initialized: true, alloc: {}, transfersDone: {}, lines: lines.map(([key, block, budget, actual]) => ({ key, block, section: '', name: key, budget, actual })) };
+    return d;
+  };
+  const actual = (d: ReturnType<typeof seedData>, key: string) => line(d, M, key).actual;
+
+  it('counts only eligible lines (CA1, CA4, CA5, CA6)', () => {
+    const d = month([['a', 'fix', 100, null], ['b', 'rev', 50, null], ['c', 'fix', 10, null], ['z', 'fix', 100, 0], ['v', 'var', 100, null], ['n', 'fix', 0, null]]);
+    expect(linesWithoutActual(d, M).map(l => l.key)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('copies the budget into the actual of eligible lines only (CA2-CA6)', () => {
+    const d = month([['a', 'fix', 100, null], ['p', 'fix', 100, 80], ['z', 'fix', 100, 0], ['v', 'var', 100, null], ['n', 'fix', 0, null]]);
+    expect(validateMonth(d, M)).toEqual([{ key: 'a', value: 100 }]);
+    expect([actual(d, 'a'), actual(d, 'p'), actual(d, 'z'), actual(d, 'v'), actual(d, 'n')]).toEqual([100, 80, 0, null, null]);
+  });
+
+  it('does nothing when the year is closed (CA7)', () => {
+    const d = month([['a', 'fix', 100, null]]);
+    d.closes[2027] = { closed: true, overrides: {} };
+    expect(validateMonth(d, M)).toEqual([]);
+    expect(actual(d, 'a')).toBeNull();
+  });
+
+  it('does nothing on a month that is not initialized', () => {
+    const d = seedData();
+    expect(validateMonth(d, '2031-01')).toEqual([]);
+  });
+
+  it('undo empties the filled lines and leaves the others (CA8)', () => {
+    const d = month([['a', 'fix', 100, null], ['p', 'fix', 100, 80]]);
+    const filled = validateMonth(d, M);
+    undoValidateMonth(d, M, filled);
+    expect([actual(d, 'a'), actual(d, 'p')]).toEqual([null, 80]);
+  });
+
+  it('undo keeps a line edited after the validation (CA9)', () => {
+    const d = month([['a', 'fix', 100, null], ['b', 'fix', 40, null]]);
+    const filled = validateMonth(d, M);
+    updateLine(d, M, 'a', { actual: 90 });
+    undoValidateMonth(d, M, filled);
+    expect([actual(d, 'a'), actual(d, 'b')]).toEqual([90, null]);
+  });
+
+  it('a line added after the validation stays empty and is counted (CA14)', () => {
+    const d = month([['a', 'fix', 100, null]]);
+    validateMonth(d, M);
+    addLine(d, M, 'fix', 'new');
+    updateLine(d, M, 'new', { budget: 20 });
+    expect(actual(d, 'new')).toBeNull();
+    expect(linesWithoutActual(d, M)).toHaveLength(1);
   });
 });
