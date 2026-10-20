@@ -528,3 +528,12 @@ input, button { font-family: inherit; }
 .su-nav { display: flex; align-items: center; gap: 10px; }
 .su-warn { flex: 1; color: rgba(32, 30, 29, 0.55); }
 .su-nav .btn-outline.is-block, .su-nav .btn-dark.is-block { height: 40px; padding: 0 22px; }
+
+/* ── toast ─────────────────────────────────────────────── */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 50;
+  display: flex; align-items: center; gap: 16px; padding: 10px 12px 10px 18px; border-radius: 14px;
+  background: #201e1d; color: #fff; font-weight: 600; box-shadow: 0 8px 28px rgba(32, 30, 29, 0.3);
+}
+.toast-action { padding: 6px 12px; border-radius: 9px; border: 0; font: inherit; color: inherit; background: rgba(255, 255, 255, 0.16); cursor: pointer; }
+.toast-action:hover { background: rgba(255, 255, 255, 0.26); }

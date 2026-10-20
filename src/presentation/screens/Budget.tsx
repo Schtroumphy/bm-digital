@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
+import { Toast } from '../components/Toast';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
-import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, updateLine } from '../../application/actions';
-import { blockTotals, envelopeAlerts, lineGap, lineHistory, monthSummary } from '../../domain/budget';
+import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
+import { blockTotals, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseMonth, percent } from '../../domain/format';
 import { isMonthLocked, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
@@ -87,6 +88,18 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
   const s = monthSummary(data, ledger, month);
   const st = data.settings;
   const emergencyPct = st.emergencyTarget ? (s.emergency / st.emergencyTarget) * 100 : 0;
+  const missing = linesWithoutActual(data, month).length;
+  // Lines just validated, kept only in memory so the user can undo (not saved).
+  const [validated, setValidated] = useState<ValidatedLine[] | null>(null);
+  useEffect(() => setValidated(null), [month]);
+  const closeToast = useCallback(() => setValidated(null), []);
+  const validate = () => {
+    // The lines about to be filled, read from the current data (same rule as validateMonth).
+    const filled = linesWithoutActual(data, month).map(l => ({ key: l.key, value: l.budget }));
+    if (!filled.length) return;
+    update(d => void validateMonth(d, month));
+    setValidated(filled);
+  };
 
   return (
     <>
@@ -109,6 +122,31 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
           <Icon name="lock" size={16} />
           L’année {parseMonth(month).year} est clôturée : ce mois est en lecture seule.
         </div>
+      )}
+      {!uninit && missing > 0 && (
+        <div className="banner">
+          <div className="banner-icon">
+            <Icon name="check" size={18} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="banner-title">{missing} {missing > 1 ? 'lignes sans réel saisi' : 'ligne sans réel saisi'}</div>
+            <div className="banner-text">Considère le réel conforme au budget pour ces lignes. Les réels déjà saisis ne sont pas modifiés.</div>
+          </div>
+          <div className={`btn-dark${locked ? ' is-disabled' : ''}`} onClick={locked ? undefined : validate}>
+            Valider le mois
+          </div>
+        </div>
+      )}
+      {validated && (
+        <Toast
+          message={`${validated.length} ${validated.length > 1 ? 'lignes validées' : 'ligne validée'}`}
+          actionLabel="Annuler"
+          onAction={() => {
+            update(d => undoValidateMonth(d, month, validated));
+            setValidated(null);
+          }}
+          onClose={closeToast}
+        />
       )}
       <div className={uninit ? 'is-preview' : undefined}>
         <div className="summary">
