@@ -98,7 +98,7 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
     ...rows.cre.map(r => line('cre', r)),
     ...rows.dep.filter(r => r.kind === 'fix').map(r => line('fix', r)),
     ...rows.dep.filter(r => r.kind !== 'fix').map(r => line('var', r)),
-    ...rows.epa.map(r => line('epa', r, r.kind === 'MT' ? 'Épargne moyen terme' : 'Épargne long terme')),
+    ...rows.epa.map(r => line('epa', r, SAVINGS_SECTIONS[r.kind === 'MT' ? 'MT' : 'LT'])),
     ...rows.inv.map(r => line('inv', r)),
   ];
   const envelopes: Envelope[] = rows.env.map((r, i) => ({
@@ -154,11 +154,26 @@ function mergeAccounts(existing: BankAccount[], typed: BankAccount[]): BankAccou
   return [...existing, ...typed.filter(a => !existing.some(e => e.id === a.id)).map(a => ({ ...a, isDefault: false }))];
 }
 
-export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string) {
+/** Index of the last item matching the predicate, or -1. */
+function lastIndexWhere<T>(items: T[], test: (item: T) => boolean): number {
+  for (let i = items.length - 1; i >= 0; i--) if (test(items[i])) return i;
+  return -1;
+}
+
+/** Sections of the savings block: the horizon of a savings line is its section. */
+export const SAVINGS_SECTIONS = { LT: 'Épargne long terme', MT: 'Épargne moyen terme' } as const;
+
+/**
+ * Adds a line to a block. Without `targetSection`, it joins the section of the
+ * block's last line. With one, it follows the last line of that section, or
+ * opens the section at the end of the block when it does not exist yet.
+ */
+export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string, targetSection?: string) {
   const lines = d.months[m].lines;
-  let idx = -1;
-  lines.forEach((l, i) => l.block === block && (idx = i));
-  const section = idx >= 0 ? lines[idx].section : '';
+  const inBlock = (l: Line) => l.block === block;
+  let idx = lastIndexWhere(lines, l => inBlock(l) && (targetSection === undefined || l.section === targetSection));
+  if (idx < 0 && targetSection !== undefined) idx = lastIndexWhere(lines, inBlock);
+  const section = targetSection ?? (idx >= 0 ? lines[idx].section : '');
   const line: Line = { key, block, section, name: 'Nouvelle ligne', budget: 0, actual: null };
   lines.splice(idx >= 0 ? idx + 1 : lines.length, 0, line);
 }

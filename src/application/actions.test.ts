@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
+import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, SAVINGS_SECTIONS, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
 import { addSuggested, emptyDraft, exampleDraft, parseDraft, setupSummary, updateRow, type IdFactory } from './setup';
 import { linesWithoutActual, monthSummary } from '../domain/budget';
 import { emptyData } from '../domain/empty';
@@ -192,6 +192,60 @@ describe('initialisation du budget', () => {
     expect(ledger.envMonth(id, '2027-03')!.start).toBe(500);
     expect(ledger.envMonth(id, '2027-03')!.balance).toBe(600);
     expect(d.firstMonth).toBe('2027-01');
+  });
+});
+
+describe('ajout d’une épargne avec horizon', () => {
+  const M = '2026-12';
+  const epa = (d: ReturnType<typeof seedData>) => d.months[M].lines.filter(l => l.block === 'epa');
+
+  it('CA2: « Long terme » crée la ligne dans « Épargne long terme »', () => {
+    const d = seedData();
+    addLine(d, M, 'epa', 'new', SAVINGS_SECTIONS.LT);
+    const l = line(d, M, 'new');
+    expect(l).toMatchObject({ section: 'Épargne long terme', name: 'Nouvelle ligne', budget: 0, actual: null, block: 'epa' });
+  });
+
+  it('CA3: « Moyen terme » crée la ligne dans « Épargne moyen terme »', () => {
+    const d = seedData();
+    addLine(d, M, 'epa', 'new', SAVINGS_SECTIONS.MT);
+    expect(line(d, M, 'new').section).toBe('Épargne moyen terme');
+  });
+
+  it('CA4: la ligne suit la dernière ligne de sa section', () => {
+    const d = seedData();
+    const keysBefore = epa(d).filter(l => l.section === SAVINGS_SECTIONS.LT).map(l => l.key);
+    const lastLt = keysBefore[keysBefore.length - 1];
+    addLine(d, M, 'epa', 'new', SAVINGS_SECTIONS.LT);
+    const keys = epa(d).map(l => l.key);
+    expect(keys.indexOf('new')).toBe(keys.indexOf(lastLt) + 1);
+    // La section reste d'un seul tenant : aucune ligne d'une autre section n'est intercalée.
+    const sections = epa(d).map(l => l.section);
+    expect(sections.filter((x, i) => x !== sections[i - 1])).toHaveLength(new Set(sections).size);
+  });
+
+  it('CA5: sans la section choisie, elle est créée à la fin du bloc', () => {
+    const d = seedData();
+    d.months[M].lines = d.months[M].lines.filter(l => !(l.block === 'epa' && l.section === SAVINGS_SECTIONS.MT));
+    addLine(d, M, 'epa', 'new', SAVINGS_SECTIONS.MT);
+    const e = epa(d);
+    expect(e[e.length - 1].key).toBe('new');
+    expect(e[e.length - 1].section).toBe('Épargne moyen terme');
+    // Bloc entièrement vide.
+    const empty = seedData();
+    empty.months[M].lines = empty.months[M].lines.filter(l => l.block !== 'epa');
+    addLine(empty, M, 'epa', 'n2', SAVINGS_SECTIONS.LT);
+    expect(epa(empty)).toHaveLength(1);
+    expect(epa(empty)[0].section).toBe('Épargne long terme');
+  });
+
+  it('CA8/CA9: sans section cible le comportement est inchangé et le modèle intact', () => {
+    const d = seedData();
+    const tpl = structuredClone(d.template);
+    addLine(d, M, 'rev', 'r', undefined);
+    expect(line(d, M, 'r').section).toBe(d.months[M].lines.filter(l => l.block === 'rev' && l.key !== 'r').at(-1)!.section);
+    addLine(d, M, 'epa', 'new', SAVINGS_SECTIONS.LT);
+    expect(d.template).toEqual(tpl);
   });
 });
 

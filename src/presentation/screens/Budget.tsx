@@ -6,7 +6,7 @@ import { Toast } from '../components/Toast';
 import { TransferRoute } from '../components/TransferRoute';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount } from '../../application/bankAccounts';
-import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
+import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseMonth, percent } from '../../domain/format';
 import { isMonthLocked, monthAlloc, monthLines } from '../../domain/ledger';
@@ -216,6 +216,13 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
   const { data, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
+  const [horizonOpen, setHorizonOpen] = useState(false);
+  useEffect(() => {
+    if (!horizonOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setHorizonOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [horizonOpen]);
   const meta = BLOCKS[block];
   // Revenues, credits and fixed expenses go through a bank account.
   const hasAccount = block === 'rev' || block === 'cre' || block === 'fix';
@@ -234,6 +241,11 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
     strip = { label: 'Restant', value: money(rest), color: rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)' };
   }
   const set = (key: string, patch: Partial<Line>) => update(d => updateLine(d, month, key, patch));
+  const add = (section?: string) => {
+    const key = newId('l');
+    update(d => addLine(d, month, block, key, section));
+    setEditing(`n:${key}`);
+  };
 
   return (
     <div className="panel block" style={toneVars(meta.hue)}>
@@ -331,23 +343,36 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
       ))}
       <div style={{ flex: 1 }} />
       <div className="line-grid block-foot">
-        <div
-          className={`add-btn${locked ? ' is-disabled' : ''}`}
-          title="Ajouter une ligne"
-          onClick={
-            locked
-              ? undefined
-              : () => {
-                  const key = newId('l');
-                  update(d => addLine(d, month, block, key));
-                  setEditing(`n:${key}`);
-                }
-          }
-        >
-          <span className="add-icon">
-            <Icon name="plus" size={13} stroke={3} />
-          </span>
-          <span>Ajouter</span>
+        <div className="rel">
+          <div
+            className={`add-btn${locked ? ' is-disabled' : ''}`}
+            title="Ajouter une ligne"
+            onClick={locked ? undefined : block === 'epa' ? () => setHorizonOpen(o => !o) : () => add()}
+          >
+            <span className="add-icon">
+              <Icon name="plus" size={13} stroke={3} />
+            </span>
+            <span>Ajouter</span>
+          </div>
+          {horizonOpen && !locked && (
+            <>
+              <div className="backdrop" onClick={() => setHorizonOpen(false)} />
+              <div className="popmenu horizon-menu">
+                {([['Long terme', SAVINGS_SECTIONS.LT], ['Moyen terme', SAVINGS_SECTIONS.MT]] as const).map(([label, section]) => (
+                  <div
+                    key={section}
+                    className="popmenu-item"
+                    onClick={() => {
+                      setHorizonOpen(false);
+                      add(section);
+                    }}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div className="num pad">{money(totals.budget)}</div>
         <div className="num pad">{money(totals.actual)}</div>
