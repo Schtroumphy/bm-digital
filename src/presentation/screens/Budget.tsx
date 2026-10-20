@@ -51,7 +51,6 @@ export function BudgetActions({ month }: { month: MonthKey }) {
 
   return (
     <>
-      <EnvelopesTotal month={month} />
       <div style={{ position: 'relative' }}>
         <div className="btn-quiet" onClick={() => setOpen(o => !o)}>
           <Icon name="copy" size={15} />
@@ -504,6 +503,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
         </div>
         <div className="block-title">Enveloppes</div>
         <div style={{ flex: 1 }} />
+        <EnvelopesTotal month={month} />
         {alerts.length > 0 && (
           <div className="alert-pill">
             <Icon name="alert" size={12} stroke={2.8} />
