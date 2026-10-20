@@ -1,8 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Ledger } from '../domain/ledger';
-import { seedData } from '../domain/seed';
-import type { BudgetData } from '../domain/types';
-import { localRepository, type BudgetRepository } from './repository';
+import { Ledger } from '../../domain/ledger';
+import type { BudgetData } from '../../domain/types';
+import type { BudgetRepository } from '../../application/ports';
 
 interface Store {
   data: BudgetData;
@@ -13,16 +12,23 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null);
 
-export function StoreProvider({ children, repository = localRepository }: { children: ReactNode; repository?: BudgetRepository }) {
+interface StoreProviderProps {
+  children: ReactNode;
+  repository: BudgetRepository;
+  /** Data used when the repository has nothing stored yet. */
+  initialData: () => BudgetData;
+}
+
+export function StoreProvider({ children, repository, initialData }: StoreProviderProps) {
   const [data, setData] = useState<BudgetData | null>(null);
   const loaded = useRef(false);
 
   useEffect(() => {
     repository.load().then(d => {
       loaded.current = true;
-      setData(d ?? seedData());
+      setData(d ?? initialData());
     });
-  }, [repository]);
+  }, [repository, initialData]);
 
   useEffect(() => {
     if (data && loaded.current) void repository.save(data);

@@ -21,13 +21,17 @@ npm run build
 
 ## Code
 
-- `src/domain/`: pure logic: types, French formatting, the `Ledger` (envelope and account balances month by month), budget summaries, mutations and the sample data.
-- `src/state/`: the store (React context) and the `BudgetRepository` interface. Data is saved to `localStorage` for now.
-- `src/screens/`, `src/components/`: UI. Styles live in `src/app.css`, transcribed from the prototype, and sit on the Organic design-system sheet (`src/ds/organic.css`, which brings Figtree).
+Clean architecture, dependencies point inward (details in `docs/architecture.md`).
+
+- `src/domain/`: entities and pure rules: types, French formatting, the `Ledger` (envelope and account balances month by month), budget summaries and the sample data.
+- `src/application/`: use cases (`actions.ts`) and the `BudgetRepository` port.
+- `src/infrastructure/`: port implementations. Data is saved to `localStorage` for now.
+- `src/presentation/`: React UI: screens, components, the store and the Organic design-system sheet. Styles live in `app.css`, transcribed from the prototype.
+- `src/main.tsx`: composition root, the only place that picks the repository.
 
 ## Supabase
 
-`supabase/migrations/` holds the schema mirroring `src/domain/types.ts`, with row-level security per user. To connect it, implement `BudgetRepository` with `@supabase/supabase-js` and pass it to `<StoreProvider repository={…}>`.
+`supabase/migrations/` holds the schema mirroring `src/domain/types.ts`, with row-level security per user. To connect it, implement `BudgetRepository` in `src/infrastructure/` with `@supabase/supabase-js` and pass it to `<StoreProvider repository={…}>` in `src/main.tsx`.
 
 ## Sample data
 

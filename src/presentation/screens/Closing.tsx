@@ -1,8 +1,8 @@
 import { EditableAmount } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
 import { MUTED, tone, toneVars } from '../components/tone';
-import { money, monthKey, round2 } from '../domain/format';
-import { accounts, closeKey } from '../domain/ledger';
+import { money, monthKey, round2 } from '../../domain/format';
+import { accounts, closeKey } from '../../domain/ledger';
 import { useStore } from '../state/store';
 
 const ADJ = 'oklch(0.45 0.1 70)';

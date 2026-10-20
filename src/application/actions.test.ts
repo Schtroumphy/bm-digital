@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, monthCsv } from './actions';
-import { monthSummary } from './budget';
-import { Ledger } from './ledger';
-import { seedData } from './seed';
+import { monthSummary } from '../domain/budget';
+import { Ledger } from '../domain/ledger';
+import { seedData } from '../domain/seed';
 
 const line = (d: ReturnType<typeof seedData>, m: string, key: string) => d.months[m].lines.find(l => l.key === key)!;
 

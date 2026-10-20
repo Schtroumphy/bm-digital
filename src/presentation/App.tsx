@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon, type IconName } from './components/Icon';
-import { currentMonthKey, monthLabel, parseMonth } from './domain/format';
+import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
 import { useStore } from './state/store';
 import { useUi } from './state/ui';
 import { BudgetScreen, BudgetActions } from './screens/Budget';
