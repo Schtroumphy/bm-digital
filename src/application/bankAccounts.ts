@@ -2,7 +2,6 @@ import { CASH_ACCOUNT_ID, mainAccount, nextBankHue } from '../domain/bank';
 import { currentMonthKey } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import type { BudgetData, MonthKey, TransferTarget } from '../domain/types';
-import { refreshVarActuals } from './actions';
 
 /*
  * Use cases on bank accounts. Each one changes the data it is given and
@@ -54,12 +53,14 @@ export function setMainBankAccount(d: BudgetData, id: string): boolean {
   return true;
 }
 
-/** Changes « Compte dans le budget du mois » and recomputes the budget figures over the whole history (RG18). */
+/**
+ * Changes « Compte dans le budget du mois ». The budget figures follow it on the fly; the actual of the
+ * variable lines does not depend on it (spec 0008, RG3).
+ */
 export function setBankAccountInBudget(d: BudgetData, id: string, inBudget: boolean) {
   const a = find(d, id);
   if (!a) return;
   a.inBudget = inBudget;
-  refreshVarActuals(d);
 }
 
 /** Sets the opening balance and/or month. Entering a balance, even 0, confirms it (RG29). */
@@ -108,12 +109,11 @@ export function setLineAccount(d: BudgetData, m: MonthKey, key: string, accountI
   return true;
 }
 
-/** Changes the account of a transaction; a variable expense may enter or leave the budget with it (RG10). */
+/** Changes the account of a transaction; the actual of a variable line does not change (spec 0008, RG2). */
 export function setTransactionAccount(d: BudgetData, id: string, accountId: string): boolean {
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month)) return false;
   t.accountId = accountId;
-  if (t.type === 'var') refreshVarActuals(d, { month: t.month, key: t.target });
   return true;
 }
 

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { migrateBankAccounts } from '../../domain/migrate';
+import { migrateBankAccounts, realignVariableActuals } from '../../domain/migrate';
 import { Ledger } from '../../domain/ledger';
 import type { BudgetData } from '../../domain/types';
 import type { BudgetRepository } from '../../application/ports';
@@ -27,8 +27,8 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
   useEffect(() => {
     repository.load().then(d => {
       loaded.current = true;
-      // Data saved before bank accounts existed is brought up to date here (idempotent).
-      setData(migrateBankAccounts(d ?? initialData()));
+      // Data saved before bank accounts existed is brought up to date here (idempotent), then the variable lines' actuals are realigned (spec 0008, RG18).
+      setData(realignVariableActuals(migrateBankAccounts(d ?? initialData())));
     });
   }, [repository, initialData]);
 

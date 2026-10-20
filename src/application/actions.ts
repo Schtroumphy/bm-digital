@@ -1,26 +1,9 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, isTransactionInBudget } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
-import { lineNeedsActual } from '../domain/budget';
+import { lineNeedsActual, varActualFromTx } from '../domain/budget';
 import { isMonthLocked } from '../domain/ledger';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
-
-/** Recomputes a variable line's actual from the month's transactions, leaving out those of an out-of-budget account. */
-function varActualFromTx(d: BudgetData, m: MonthKey, key: string): number | null {
-  const txs = d.transactions.filter(t => t.month === m && t.type === 'var' && t.target === key && isTransactionInBudget(d, t));
-  return txs.length ? round2(txs.reduce((s, t) => s + t.amount, 0)) : null;
-}
-
-/** Recomputes the actual of every variable line that has transactions (after an account's budget setting changed, RG18). */
-export function refreshVarActuals(d: BudgetData, only?: { month: MonthKey; key: string }) {
-  for (const [m, md] of Object.entries(d.months)) {
-    if (!md.initialized || (only && only.month !== m)) continue;
-    for (const l of md.lines) {
-      if (l.block !== 'var' || (only && only.key !== l.key)) continue;
-      if (d.transactions.some(t => t.month === m && t.type === 'var' && t.target === l.key)) l.actual = varActualFromTx(d, m, l.key);
-    }
-  }
-}
 
 function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<string, number>) {
   d.months[m] = {
@@ -262,7 +245,8 @@ export function addTransaction(d: BudgetData, input: Transaction): boolean {
   if (isMonthLocked(d, input.month)) return false;
   const t = input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   d.transactions.push(t);
-  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return true;
+  // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).
+  if (t.type !== 'var') return true;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
   if (l) l.actual = round2((l.actual ?? 0) + t.amount);
   return true;
@@ -272,9 +256,12 @@ export function deleteTransaction(d: BudgetData, id: string): boolean {
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month)) return false;
   d.transactions = d.transactions.filter(x => x.id !== id);
-  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return true;
+  if (t.type !== 'var') return true;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
-  if (l) l.actual = round2((l.actual ?? 0) - t.amount);
+  if (!l) return true;
+  const left = round2((l.actual ?? 0) - t.amount);
+  // No expense left on the line and nothing else in its actual: the actual is empty again (spec 0008, CA2).
+  l.actual = left === 0 && !d.transactions.some(x => x.month === t.month && x.type === 'var' && x.target === t.target) ? null : left;
   return true;
 }
 

@@ -75,12 +75,13 @@ flowchart LR
   - les soldes d'enveloppes : début + allocation − dépensé ;
   - les soldes de comptes d'épargne et de placement : début + versé − retraits, ou le relevé saisi s'il existe ;
   - les soldes des comptes bancaires (`bankMonth`) : solde de départ + revenus réels + sorties d'épargne + virements « faits » reçus − dépenses (`var`, `env`) − réel des lignes `fix`, `cre`, `epa`, `inv` − virements « faits » envoyés.
-- **Comptes bancaires** (`BudgetData.accounts`) : toujours un compte principal et « Espèces ». Une opération sans `accountId` est sur le compte principal ; changer de principal fige d'abord ces opérations sur l'ancien. Un compte « hors budget » (`inBudget: false`) est exclu des chiffres du budget mais reste calculé dans son solde. Les virements ne bougent un solde que s'ils ont un compte bancaire pour destination.
+- **Comptes bancaires** (`BudgetData.accounts`) : toujours un compte principal et « Espèces ». Une opération sans `accountId` est sur le compte principal ; changer de principal fige d'abord ces opérations sur l'ancien (toutes les lignes, `var` comprises, le modèle et les transactions). Un compte « hors budget » (`inBudget: false`) est exclu des chiffres du budget (revenus, fixes, crédits, enveloppes, sorties d'épargne) mais reste calculé dans son solde. Exception (spec 0008) : ses dépenses `var` comptent dans le réel de leur ligne ; `realignVariableActuals` (domain/migrate) corrige au chargement les réels détectablement périmés (vides, ou égaux à l'ancien calcul sans les dépenses hors budget) et conserve les saisies manuelles. Les virements ne bougent un solde que s'ils ont un compte bancaire pour destination.
+- **Mode de paiement par box** (spec 0006) : une box (ligne `var` ou enveloppe) porte `payMode?` (`PayMode` : Virtuel par défaut, ou Espèces) et un compte attribué facultatif (`PaymentSetting`, dans `domain/types.ts`). Résolution du compte (RG3, RG4) dans `domain/bank.ts` (`resolveBoxAccountId`) ; cas d'usage dans `application/payment.ts`. `addTransaction` écrit le compte résolu dans la transaction.
 - **Migration** : `migrateBankAccounts` (domain) ajoute les comptes aux données qui n'en ont pas, au chargement, de façon idempotente.
 - Les cas d'usage (`application/actions.ts`) sont des fonctions qui modifient une copie des données.
-- **Clôture d'année** : elle verrouille les mois de l'année. Janvier suivant repart des soldes du 31 décembre, ajustables via `YearClose.overrides`.
 - **Disponible à placer (réel)** : `availableReal` (domain/budget) = Reste à placer budgété, corrigé des écarts de revenus du compte principal et des versements d'épargne/placement. Calculé, jamais stocké (spec 0005).
 - **Clôture d'un mois** : `MonthData.closed` verrouille un seul mois (`isMonthLocked` = année clôturée ou mois clôturé). Cas d'usage dans `application/monthClosing.ts` : clôture refusée si le mois précédent initialisé n'est pas clôturé ou si le disponible ≠ 0, seul le dernier mois clôturé se rouvre ([ADR 0004](adr/0004-cloture-d-un-mois-par-un-indicateur-sur-le-mois.md)).
+- **Clôture d'année** : elle verrouille les mois de l'année. Janvier suivant repart des soldes du 31 décembre, ajustables via `YearClose.overrides`.
 
 ## 4. État et flux de données
 
@@ -155,8 +156,8 @@ Le store et les écrans ne changent pas : on change le repository passé à `<St
 | 8 | CSS transcrit du prototype sur le design system Organic | Fidélité au design, pas de framework CSS. |
 | 9 | Soldes de départ = soldes de fin du mois précédent | Réutilise `statements` et `envHistory`, sans changer le schéma ([ADR 0001](adr/0001-soldes-de-depart-via-le-mois-precedent.md)). |
 | 10 | Brouillon de l'assistant en `localStorage`, hors `BudgetData` | État temporaire, une seule implémentation, pas de nouveau port ([ADR 0002](adr/0002-brouillon-de-l-assistant-en-local-storage.md)). |
-
 | 11 | Clôture d'un mois par `MonthData.closed` | Réutilise le garde-fou `isMonthLocked` ([ADR 0004](adr/0004-cloture-d-un-mois-par-un-indicateur-sur-le-mois.md)). |
+
 ## 7. Tests et qualité
 
 - Vitest couvre le domaine et les cas d'usage :

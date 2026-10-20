@@ -14,6 +14,21 @@ export function lineGap(l: Line): number | null {
   return round2(isIncomeLike(l.block) ? l.actual - l.budget : l.budget - l.actual);
 }
 
+/**
+ * Restant of a variable line: what is left to spend (budget − actual), an empty actual counting for 0.
+ * Same value as the écart of a variable line, but defined even before any expense (spec 0008, RG9, RG11).
+ */
+export const lineRemaining = (l: Line): number => round2(l.budget - (l.actual ?? 0));
+
+/**
+ * Actual of a variable line computed from the month's `var` transactions on it, whatever the account
+ * paying them, in budget or not (spec 0008, RG1). Null when there is none.
+ */
+export function varActualFromTx(d: BudgetData, m: MonthKey, key: string): number | null {
+  const txs = d.transactions.filter(t => t.month === m && t.type === 'var' && t.target === key);
+  return txs.length ? round2(txs.reduce((s, t) => s + t.amount, 0)) : null;
+}
+
 /** Lines whose actual can be taken as equal to the budget: no actual yet, not a variable line (its actual comes from transactions), non-zero budget. */
 export const lineNeedsActual = (l: Line) => l.actual === null && l.block !== 'var' && l.budget !== 0;
 
@@ -130,7 +145,7 @@ export function envelopeAlerts(d: BudgetData, ledger: Ledger, year: number, mont
   return out;
 }
 
-/** Popover figures for a line: year-to-date actual, and the previous month's écart. */
+/** Popover figures for a line: year-to-date actual, and the previous month's écart (restant for a variable line). */
 export function lineHistory(d: BudgetData, m: MonthKey, key: string) {
   const { year } = parseMonth(m);
   let cumul = 0;
@@ -140,5 +155,5 @@ export function lineHistory(d: BudgetData, m: MonthKey, key: string) {
   }
   const prev = d.months[addMonths(m, -1)];
   const pl = prev?.initialized ? prev.lines.find(l => l.key === key) : undefined;
-  return { cumul: round2(cumul), prevGap: pl ? lineGap(pl) : null };
+  return { cumul: round2(cumul), prevGap: pl ? (pl.block === 'var' ? lineRemaining(pl) : lineGap(pl)) : null };
 }

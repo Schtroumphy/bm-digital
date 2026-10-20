@@ -63,7 +63,7 @@ Solde par compte (fin de mois M, depuis le mois de départ du compte)
 - RG16bis. Le réglage « Compte dans le budget du mois » vaut « oui » par défaut, pour Espèces, le principal et tout nouveau compte.
 
 Budget du mois
-- RG17. Réglage « Compte dans le budget du mois » (oui/non). Quand il est « non » (Swile), les opérations de ce compte sont exclues des chiffres du budget : transactions `var` (réel de la ligne), `env` (dépensé de l'enveloppe), `epa` (sorties), et lignes `rev`/`fix`/`cre` rattachées au compte. Elles restent comptées dans le solde du compte (RG13).
+- RG17. Réglage « Compte dans le budget du mois » (oui/non). Quand il est « non » (Swile), les opérations de ce compte sont exclues des chiffres du budget : `env` (dépensé de l'enveloppe), `epa` (sorties), et lignes `rev`/`fix`/`cre` rattachées au compte. Elles restent comptées dans le solde du compte (RG13). Amendement (spec 0008) : les transactions `var` d'un compte hors budget ne sont plus exclues, elles comptent dans le réel de leur ligne variable.
 - RG18. Changer le réglage recalcule les chiffres du budget sur tout l'historique.
 
 Assistant et onglet
@@ -131,7 +131,7 @@ Assistant : étape « Comptes » (tableau éditable, style des autres étapes, t
 
 - Domaine : nouveau type `BankAccount { id, name, hue, isDefault, openingBalance, openingMonth, inBudget, archived }`, ajouté à `BudgetData` (`accounts`). `accountId?` sur `Line` et `TemplateLine` (rev, fix, cre) et sur `Transaction` ; `Transfer` gagne `fromAccountId` et `to?` (compte bancaire ou ligne épargne/placement). `PaymentSource` et `Transaction.source` supprimés. Le `Ledger` expose le solde de chaque compte par mois (`bankMonth`). `monthSummary`, les actuals des lignes variables et le dépensé des enveloppes excluent les comptes « hors budget » (RG17).
 - Domaine (migration) : fonction pure de migration appliquée au chargement (RG27, RG28).
-- Application : actions de gestion des comptes (créer, renommer, couleur, principal, budget, mois/solde de départ, archiver) avec les garde-fous RG2 à RG5 ; action de changement de compte d'une ligne, transaction ou virement ; `createFirstMonth` et le brouillon (`setup.ts`) étendus (étape « Comptes », colonne « Compte »). `addTransaction` et le recalcul du réel des variables tiennent compte de RG17.
+- Application : actions de gestion des comptes (créer, renommer, couleur, principal, budget, mois/solde de départ, archiver) avec les garde-fous RG2 à RG5 ; action de changement de compte d'une ligne, transaction ou virement ; `createFirstMonth` et le brouillon (`setup.ts`) étendus (étape « Comptes », colonne « Compte »). `addTransaction` et le recalcul du réel des variables tiennent compte de RG17 pour les enveloppes et sorties d'épargne ; depuis la spec 0008, les dépenses `var` comptent dans le réel de leur ligne quel que soit le compte.
 - Infrastructure : `localRepository` inchangé. La migration est faite au chargement par le store. Supabase repoussé.
 - Présentation : `App.tsx` (nouvel écran `comptes`, nav, titre), nouvel écran Comptes, `Expenses.tsx`, `Budget.tsx` (pastilles, virements), `Setup.tsx`, `Closing.tsx`, pastille de compte partagée.
 - Schéma Supabase : hors de cette spec.
@@ -142,8 +142,8 @@ Tests automatisés (Vitest, domaine et application) : CA1 à CA11, CA13. Le rest
 
 - CA1. Given des données sans comptes (cas du développeur), When elles sont chargées, Then il existe un compte principal et un compte Espèces à 0, les transactions `esp` sont sur Espèces, les `vir` sur le principal, `firstMonth` et les lignes sont inchangés. Test automatisé.
 - CA2. Given des données migrées, When la migration est relancée, Then le résultat est identique. Test automatisé.
-- CA3. Given un compte Swile avec solde de départ 120 € et « Dans le budget » = non, When je saisis une dépense `var` de 60 € dessus, Then le solde Swile vaut 60 €, le réel de la ligne variable et le « Reste à placer » ne changent pas. Test automatisé.
-- CA4. Given le même compte réglé sur « oui », When je change le réglage, Then le réel de la ligne et les chiffres du budget sont recalculés sur tout l'historique. Test automatisé.
+- CA3. Given un compte Swile avec solde de départ 120 € et « Dans le budget » = non, When je saisis une dépense `var` de 60 € dessus, Then le solde Swile vaut 60 €, le réel de la ligne variable vaut 60 € (spec 0008) et le « Reste à placer » ne change pas. Test automatisé.
+- CA4. Given le même compte réglé sur « oui », When je change le réglage, Then les chiffres du budget (enveloppes, revenus, fixes, crédits, sorties d'épargne) sont recalculés sur tout l'historique, et le réel de la ligne variable ne change pas (spec 0008). Test automatisé.
 - CA5. Given un revenu réel de 2 950 € sur le principal (départ 100 €), When je lis le solde, Then il vaut 3 050 €. Test automatisé.
 - CA6. Given un virement principal → Swile de 150 € non « fait », When je lis les soldes, Then rien n'a bougé ; coché « fait », Then principal −150 € et Swile +150 €. Test automatisé.
 - CA6bis. Given un virement principal → épargne ou à destination vide, coché « fait », When je lis le solde du principal, Then il n'a pas bougé. Test automatisé.
