@@ -35,7 +35,12 @@ export interface MonthSummary {
   expenses: number;
   savings: number;
   remaining: number;
+  /** Savings + investments + monthly envelope allocations, as budgeted. */
+  grossSavings: number;
+  /** Real savings over income, in %. */
   savingsRate: number;
+  /** Gross savings over income, in %. */
+  grossSavingsRate: number;
   paidIn: number;
   envelopeSpent: number;
   savingsOut: number;
@@ -55,17 +60,22 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const txs = d.transactions.filter(t => t.month === m && isTransactionInBudget(d, t));
   const envelopeSpent = sum(txs.filter(t => t.type === 'env').map(t => t.amount));
   const savingsOut = sum(txs.filter(t => t.type === 'epa').map(t => t.amount));
+  const rate = (v: number) => (income ? (v / income) * 100 : 0);
+  const grossSavings = round2(savings + allocSum);
+  const realSavings = round2(grossSavings - envelopeSpent - savingsOut);
   const bal = (key: string) => ledger.accMonth(key, m)?.balance ?? 0;
   return {
     income,
     expenses,
     savings,
     remaining: round2(income - expenses - savings),
-    savingsRate: income ? ((income - expenses) / income) * 100 : 0,
+    grossSavings,
+    savingsRate: rate(realSavings),
+    grossSavingsRate: rate(grossSavings),
     paidIn,
     envelopeSpent,
     savingsOut,
-    realSavings: round2(paidIn - envelopeSpent - savingsOut),
+    realSavings,
     emergency: sum(d.settings.emergencyAccounts.map(bal)),
     investTotal: sum(accounts(d).filter(a => a.block === 'inv').map(a => bal(a.key))),
   };

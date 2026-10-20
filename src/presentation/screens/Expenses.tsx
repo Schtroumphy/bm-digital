@@ -107,7 +107,7 @@ function EntryTab({ month }: { month: MonthKey }) {
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
     { label: 'Épargne budgétisée', value: s.savings },
-    { label: 'Versements réels', value: s.paidIn },
+    { label: '+ Allocations des enveloppes', value: round2(s.grossSavings - s.savings) },
     { label: '− Dépenses des enveloppes', value: s.envelopeSpent },
     { label: '− Sorties des comptes d’épargne', value: s.savingsOut },
     { label: 'Épargne réelle', value: s.realSavings, hero: true },

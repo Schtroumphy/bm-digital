@@ -34,11 +34,13 @@ describe('seed data matches the design', () => {
     expect(s.income).toBe(8000);
     expect(s.expenses).toBe(3856);
     expect(s.savings).toBe(1194);
-    expect(s.savingsRate.toFixed(1)).toBe('51.8');
+    expect(s.grossSavings).toBe(2060);
+    expect(s.grossSavingsRate.toFixed(1)).toBe('25.8');
+    expect(s.savingsRate.toFixed(1)).toBe('20.2');
     expect(s.paidIn).toBe(1014);
     expect(s.envelopeSpent).toBe(145);
     expect(s.savingsOut).toBe(300);
-    expect(s.realSavings).toBe(569);
+    expect(s.realSavings).toBe(1615);
     expect(s.emergency).toBe(13950);
     expect(s.investTotal).toBe(15219);
   });

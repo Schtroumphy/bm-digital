@@ -5,7 +5,7 @@ import type { BlockKey, BudgetData, EnvHistory, Line, MonthKey, Transaction, TxT
 /*
  * Sample data from the design prototype. December 2026 is the showcase month:
  * its summary reads Reste à placer 2 950 €, Revenus 8 000 €, Dépenses 3 856 €,
- * Épargne budgétisée 1 194 € (réelle 569 €), Taux d'épargne 51,8 %.
+ * Épargne brute 2 060 € (réelle 1 615 €), Taux d'épargne 20,2 % (brut 25,8 %).
  * October and November 2026 are complete past months; earlier months exist
  * only as imported history (envelope balances and account statements).
  * Replace all of it with real figures.

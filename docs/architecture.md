@@ -157,7 +157,7 @@ Le store et les écrans ne changent pas : on change le repository passé à `<St
 ## 7. Tests et qualité
 
 - Vitest couvre le domaine et les cas d'usage :
-  - `budget.test.ts` vérifie les chiffres du design (reste à placer 2 950 €, taux d'épargne 51,8 %) ;
+  - `budget.test.ts` vérifie les chiffres du design (reste à placer 2 950 €, épargne brute 2 060 €, taux d'épargne réel 20,2 %) ;
   - `application/actions.test.ts` vérifie les cas d'usage.
 - L'UI n'a pas de tests.
 - `npm run build` exécute `tsc --noEmit` puis `vite build` : une erreur de type bloque le build.
