@@ -1,4 +1,4 @@
--- Budget Perso — draft Supabase schema (not applied yet).
+-- Budget Perso — initial Supabase schema.
 -- Mirrors src/domain/types.ts so a Supabase BudgetRepository can replace the
 -- localStorage one. Every table is scoped to the signed-in user via RLS.
 -- Month keys are 'YYYY-MM' text, as in the app.
@@ -84,8 +84,8 @@ create table account_statements (
 );
 
 create table transactions (
-  id text primary key,
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  id text not null,
   month text not null,
   day int not null check (day between 1 and 31),
   label text not null,
@@ -93,7 +93,8 @@ create table transactions (
   type text not null check (type in ('var','env','epa')),
   target text not null,
   source text not null check (source in ('vir','esp')),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  primary key (user_id, id)
 );
 create index on transactions (user_id, month);
 
@@ -114,14 +115,16 @@ create table transfers_done (
 );
 
 create table planned_items (
-  id text primary key,
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  id text not null,
   year int not null,
   month int not null check (month between 0 and 11),
   label text not null,
   amount numeric(12,2) not null default 0,
-  envelope_id text not null
+  envelope_id text not null,
+  primary key (user_id, id)
 );
+create index on planned_items (user_id, year);
 
 create table year_closes (
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
@@ -139,6 +142,6 @@ begin
     'envelope_history','account_statements','transactions','transfers','transfers_done','planned_items','year_closes']
   loop
     execute format('alter table %I enable row level security', t);
-    execute format('create policy "own rows" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
+    execute format('create policy "own rows" on %I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
   end loop;
 end $$;

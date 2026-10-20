@@ -27,7 +27,7 @@ npm run build
 
 ## Supabase
 
-`supabase/schema.sql` is a draft schema mirroring `src/domain/types.ts`, with row-level security per user. To connect it, implement `BudgetRepository` with `@supabase/supabase-js` and pass it to `<StoreProvider repository={…}>`.
+`supabase/migrations/` holds the schema mirroring `src/domain/types.ts`, with row-level security per user. To connect it, implement `BudgetRepository` with `@supabase/supabase-js` and pass it to `<StoreProvider repository={…}>`.
 
 ## Sample data
 
