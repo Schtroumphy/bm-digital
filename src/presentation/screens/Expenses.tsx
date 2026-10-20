@@ -63,6 +63,9 @@ function EntryTab({ month }: { month: MonthKey }) {
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
   // Until the user picks an account (form.accountId empty), « Payé avec » follows the payment mode of the chosen box (spec 0006, RG5).
   const accountId = data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: form.type, month, target });
+  // A withdrawal cannot be credited to the dedicated account of its savings line (spec 0007, RG7).
+  const refusedAccountId = form.type === 'epa' ? lines.find(l => l.key === target)?.linkedAccountId : undefined;
+  const accountRefused = accountId === refusedAccountId;
   const amount = parseAmount(form.amount) ?? 0;
   // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
@@ -98,7 +101,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   }
 
   const add = () => {
-    if (!amount || amount < 0 || !target || locked) return;
+    if (!amount || amount < 0 || !target || locked || accountRefused) return;
     update(d =>
       addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId }),
     );
@@ -161,6 +164,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             ))}
           </div>
         </div>
+        {accountRefused && <div className="alert-box">Choisis un compte différent du compte débité (le compte dédié de la ligne).</div>}
         <div className="impact">
           <div className="field-label">Impact sur le réel</div>
           {impact.map(([l, v]) => (
@@ -170,7 +174,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             </div>
           ))}
         </div>
-        <div className={`btn-dark is-block${!amount || locked ? ' is-disabled' : ''}`} onClick={add}>
+        <div className={`btn-dark is-block${!amount || locked || accountRefused ? ' is-disabled' : ''}`} onClick={add}>
           <Icon name="plus" size={15} stroke={3} />
           Ajouter la dépense
         </div>

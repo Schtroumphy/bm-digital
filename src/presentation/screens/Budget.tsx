@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccountPicker } from '../components/AccountPicker';
+import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
 import { Toast } from '../components/Toast';
 import { TransferRoute } from '../components/TransferRoute';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
-import { setLineAccount, setTransferDone } from '../../application/bankAccounts';
+import { setLineAccount, setLineLinkedAccount, setTransferDone } from '../../application/bankAccounts';
 import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
-import { isOnMainAccount } from '../../domain/bank';
-import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineRemaining, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
+import { accountIdOf, isOnMainAccount } from '../../domain/bank';
+import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
@@ -294,7 +295,7 @@ function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: st
 }
 
 function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: MonthKey; locked: boolean; strip?: { label: string; value: string; color: string } }) {
-  const { data, update } = useStore();
+  const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
   const [horizonOpen, setHorizonOpen] = useState(false);
@@ -307,6 +308,9 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
   const meta = BLOCKS[block];
   // Revenues, credits and fixed expenses go through a bank account.
   const hasAccount = block === 'rev' || block === 'cre' || block === 'fix';
+  // Savings and investments show an estimated balance instead of the gap, and can be tied to a dedicated account (spec 0007).
+  const isSavings = block === 'epa' || block === 'inv';
+  const gridClass = `line-grid${isSavings ? ' is-balance' : ''}`;
   const all = monthLines(data, month);
   const lines = all.filter(l => l.block === block);
   // Lines of an out-of-budget account stay listed but are left out of the totals.
@@ -317,6 +321,7 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
     if (sec) sec.lines.push(l);
     else sections.push({ label: l.section, lines: [l] });
   }
+  const estimatedTotal = isSavings ? estimatedBalanceTotal(data, ledger, month, block) : 0;
   if (block === 'var') {
     const rest = totals.budget - totals.actual;
     strip = { label: 'Restant', value: money(rest), color: rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)' };
@@ -342,11 +347,11 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
           </div>
         )}
       </div>
-      <div className="line-grid line-head">
+      <div className={`${gridClass} line-head`}>
         <span>Nom</span>
         <span className="num pad">Budget</span>
         <span className="num pad">Réel</span>
-        <span className="num">{block === 'var' ? 'Restant' : 'Écart'}</span>
+        <span className="num">{block === 'var' ? 'Restant' : isSavings ? 'Solde estimé' : 'Écart'}</span>
       </div>
       {sections.map(sec => (
         <div key={sec.label}>
@@ -354,12 +359,13 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
           {sec.lines.map(l => {
             // A variable line shows what is left to spend; an empty actual shows the whole budget in grey (spec 0008, RG9, RG11).
             const gap = block === 'var' ? lineRemaining(l) : lineGap(l);
+            const est = isSavings ? estimatedBalance(data, ledger, month, l) : null;
             const rowEditing = !!editing?.endsWith(':' + l.key);
             const hist = hover === l.key && !rowEditing ? lineHistory(data, month, l.key) : null;
             return (
               <div
                 key={l.key}
-                className="line-grid line-row"
+                className={`${gridClass} line-row`}
                 onMouseEnter={() => setHover(l.key)}
                 onMouseLeave={() => setHover(null)}
                 onContextMenu={
@@ -373,6 +379,14 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
               >
                 <div className="line-name-wrap">
                   {block === 'var' && <PayModePicker data={data} box={l} disabled={locked} onChange={patch => update(d => setLinePayment(d, month, l.key, patch))} />}
+                  {isSavings && (
+                    <>
+                      <span className="acc-source">
+                        <AccountPicker data={data} accountId={l.accountId} exclude={l.linkedAccountId} disabled={locked} hint="Compte débité" onPick={id => update(d => void setLineAccount(d, month, l.key, id))} />
+                      </span>
+                      <LinkedAccountPicker data={data} linkedAccountId={l.linkedAccountId} sourceId={accountIdOf(data, l.accountId)} disabled={locked} onPick={id => update(d => void setLineLinkedAccount(d, month, l.key, id))} />
+                    </>
+                  )}
                   {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} hint={block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
                     {l.name}
@@ -398,9 +412,15 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                     {l.actual === null ? '—' : money(l.actual)}
                   </EditableAmount>
                 </div>
-                <div className="num gap" style={{ color: gapColor(block === 'var' && l.actual === null ? null : gap) }}>
-                  {gap === null ? '—' : gap === 0 ? money(0) : money(gap, true)}
-                </div>
+                {isSavings ? (
+                  <div className="num gap" style={{ color: est && est.value < 0 ? BAD : undefined }} title={gap === null ? undefined : `Écart : ${gap === 0 ? money(0) : money(gap, true)}`}>
+                    {est ? money(est.value) : '—'}
+                  </div>
+                ) : (
+                  <div className="num gap" style={{ color: gapColor(block === 'var' && l.actual === null ? null : gap) }}>
+                    {gap === null ? '—' : gap === 0 ? money(0) : money(gap, true)}
+                  </div>
+                )}
                 {block === 'var' && (
                   <div className="fill-bar">
                     <div style={{ width: `${l.actual !== null && l.budget ? Math.min(100, (l.actual / l.budget) * 100) : 0}%`, background: l.actual !== null && l.actual > l.budget ? 'oklch(0.66 0.17 25)' : undefined }} />
@@ -425,7 +445,7 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
         </div>
       ))}
       <div style={{ flex: 1 }} />
-      <div className="line-grid block-foot">
+      <div className={`${gridClass} block-foot`}>
         <div className="rel">
           <div
             className={`add-btn${locked ? ' is-disabled' : ''}`}
@@ -459,9 +479,15 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
         </div>
         <div className="num pad">{money(totals.budget)}</div>
         <div className="num pad">{money(totals.actual)}</div>
-        <div className="num" style={{ color: totals.gap >= 0 ? GOOD : BAD }}>
-          {money(totals.gap, true)}
-        </div>
+        {isSavings ? (
+          <div className="num" style={{ color: estimatedTotal < 0 ? BAD : undefined }} title="Somme des soldes estimés (un compte dédié commun n’est compté qu’une fois)">
+            {money(estimatedTotal)}
+          </div>
+        ) : (
+          <div className="num" style={{ color: totals.gap >= 0 ? GOOD : BAD }}>
+            {money(totals.gap, true)}
+          </div>
+        )}
       </div>
     </div>
   );

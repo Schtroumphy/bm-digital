@@ -30,10 +30,10 @@ type Field = 'amount' | 'balance' | 'cash';
 interface Column {
   label: string;
   /**
-   * `name`: free text, `kind`: choice between chips, `account`: bank account of the line,
+   * `name`: free text, `kind`: choice between chips, `account`: bank account of the line, `linked`: dedicated account of a savings line,
    * `color`, `main` and `inBudget`: the accounts list, otherwise a money field.
    */
-  field: 'name' | 'kind' | 'account' | 'color' | 'main' | 'inBudget' | Field;
+  field: 'name' | 'kind' | 'account' | 'linked' | 'color' | 'main' | 'inBudget' | Field;
   options?: { value: SetupKind; label: string }[];
 }
 
@@ -52,6 +52,7 @@ interface ListConfig {
 
 const NAME: Column = { label: 'Nom', field: 'name' };
 const ACCOUNT: Column = { label: 'Compte', field: 'account' };
+const LINKED: Column = { label: 'Compte dédié', field: 'linked' };
 
 const LISTS: Record<SetupListId, ListConfig> = {
   acc: {
@@ -88,7 +89,7 @@ const LISTS: Record<SetupListId, ListConfig> = {
     label: 'Épargnes', hue: 300, icon: 'bank', help: 'Comptes d’épargne avec leur solde au premier jour et le versement mensuel prévu.',
     emptyTitle: 'Aucun compte d’épargne', emptyText: 'Long terme (LT) pour le fond de secours et les travaux, moyen terme (MT) pour les projets et vacances.',
     add: 'Ajouter un compte',
-    cols: [NAME, { label: 'Horizon', field: 'kind', options: [{ value: 'LT', label: 'LT' }, { value: 'MT', label: 'MT' }] }, { label: 'Solde au départ', field: 'balance' }, { label: 'Versement mensuel', field: 'amount' }],
+    cols: [NAME, { label: 'Horizon', field: 'kind', options: [{ value: 'LT', label: 'LT' }, { value: 'MT', label: 'MT' }] }, { label: 'Solde au départ', field: 'balance' }, LINKED, { label: 'Versement mensuel', field: 'amount' }],
     main: 'balance',
   },
   env: {
@@ -101,7 +102,7 @@ const LISTS: Record<SetupListId, ListConfig> = {
   inv: {
     label: 'Investissements', hue: 250, icon: 'trend', help: 'Valeur de chaque placement au premier jour et versement mensuel.',
     emptyTitle: 'Aucun investissement', emptyText: 'Ajoute tes placements pour suivre leur évolution chaque mois.',
-    add: 'Ajouter un placement', cols: [NAME, { label: 'Solde au départ', field: 'balance' }, { label: 'Versement mensuel', field: 'amount' }], main: 'balance',
+    add: 'Ajouter un placement', cols: [NAME, { label: 'Solde au départ', field: 'balance' }, LINKED, { label: 'Versement mensuel', field: 'amount' }], main: 'balance',
   },
 };
 
@@ -119,7 +120,7 @@ const INTRO = [
   { title: 'Reste à placer', text: 'Calculé à la fin, avant de créer le budget du premier mois.', hue: 90 },
 ];
 
-const COL_WIDTH: Partial<Record<Column['field'], string>> = { name: 'minmax(0, 1fr)', kind: '130px', account: '170px', color: '150px', main: '90px', inBudget: '130px' };
+const COL_WIDTH: Partial<Record<Column['field'], string>> = { name: 'minmax(0, 1fr)', kind: '130px', account: '170px', linked: '170px', color: '150px', main: '90px', inBudget: '130px' };
 
 const sumField = (rows: SetupRow[], f: Field) => round2(rows.reduce((s, r) => s + r[f], 0));
 
@@ -286,7 +287,7 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
   const grid: CSSProperties = {
     gridTemplateColumns: `${cfg.cols.map(c => COL_WIDTH[c.field] ?? '150px').join(' ')} 30px`,
   };
-  const textCols = ['name', 'kind', 'account', 'color', 'main', 'inBudget'];
+  const textCols = ['name', 'kind', 'account', 'linked', 'color', 'main', 'inBudget'];
   const moneyCols = cfg.cols.filter(c => !textCols.includes(c.field));
   const set = (id: string, patch: Partial<Omit<SetupRow, 'id'>>) => setDraft(d => updateRow(d, list, id, patch));
   const mainRowId = draft.rows.acc.find(a => a.isDefault)?.id ?? MAIN_ACCOUNT_ID;
@@ -323,6 +324,14 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
                   return (
                     <select key={c.label} className="su-select" value={r.accountId ?? mainRowId} onChange={e => set(r.id, { accountId: e.target.value })}>
                       {draft.rows.acc.map(a => <option key={a.id} value={a.id}>{a.name.trim() || 'Sans nom'}</option>)}
+                    </select>
+                  );
+                if (c.field === 'linked')
+                  // Savings are paid from the main account, which therefore cannot be their dedicated one (spec 0007, RG2).
+                  return (
+                    <select key={c.label} className="su-select" value={r.linkedAccountId ?? ''} onChange={e => set(r.id, { linkedAccountId: e.target.value || undefined })}>
+                      <option value="">Aucun</option>
+                      {draft.rows.acc.filter(a => a.id !== mainRowId).map(a => <option key={a.id} value={a.id}>{a.name.trim() || 'Sans nom'}</option>)}
                     </select>
                   );
                 if (c.field === 'color')
