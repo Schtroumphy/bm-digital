@@ -5,11 +5,13 @@ import { Icon, type IconName } from '../components/Icon';
 import { Toast } from '../components/Toast';
 import { TransferRoute } from '../components/TransferRoute';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
-import { setLineAccount } from '../../application/bankAccounts';
+import { setLineAccount, setTransferDone } from '../../application/bankAccounts';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
+import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
+import { isOnMainAccount } from '../../domain/bank';
 import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
-import { isMonthLocked, monthAlloc, monthLines } from '../../domain/ledger';
+import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
 import { EnvelopesTotal } from './Envelopes';
 import { newId, useStore } from '../state/store';
@@ -85,7 +87,55 @@ export function BudgetActions({ month }: { month: MonthKey }) {
   );
 }
 
-export function BudgetScreen({ month }: { month: MonthKey }) {
+/** Text shown when « Clôturer le mois » is refused (RG28, RG35). */
+function closeBlockerText(b: CloseBlocker): string | null {
+  if (b.kind === 'unavailable') return null;
+  if (b.kind === 'previous') return `Clôture d’abord ${monthLabel(b.month)}.`;
+  if (b.amount > 0) return `Il reste ${money(b.amount)} à placer. Place-les (versement sur une épargne ou un placement, allocation d’une enveloppe) ou baisse le budget des revenus concernés pour revenir à 0 € avant de clôturer.`;
+  return `Tu as placé ${money(-b.amount)} de plus que disponible. Réduis un versement ou une allocation d’enveloppe, ou saisis le revenu manquant, pour revenir à 0 € avant de clôturer.`;
+}
+
+/**
+ * « Clôturer le mois » / « Rouvrir le mois », next to the month picker. A refused
+ * closing does not explain itself here: it tells the screen (`onRefused`), which shows why.
+ */
+export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKey; onRefused: () => void; onDone: () => void }) {
+  const { data, update } = useStore();
+  if (!data.months[month]?.initialized || isYearClosed(data, parseMonth(month).year)) return null;
+  if (isMonthClosed(data, month)) {
+    const blocker = reopenBlocker(data, month);
+    const hint = blocker?.kind === 'later' ? (blocker.byYear ? `Rouvre d’abord l’année ${parseMonth(blocker.month).year} (écran Clôture)` : `Rouvre d’abord ${monthLabel(blocker.month)}`) : undefined;
+    return (
+      <>
+        <span className="month-closed">
+          <Icon name="lock" size={14} />
+          Mois clôturé
+        </span>
+        <div
+          className={`btn-outline${blocker ? ' is-disabled' : ''}`}
+          title={hint}
+          onClick={blocker ? undefined : () => update(d => void reopenMonth(d, month))}
+        >
+          Rouvrir le mois
+        </div>
+      </>
+    );
+  }
+  const close = () => {
+    if (closeBlockers(data, month).length) return onRefused();
+    if (!window.confirm(`Clôturer ${monthLabel(month)} ? Le mois deviendra en lecture seule.`)) return;
+    update(d => void closeMonth(d, month));
+    onDone();
+  };
+  return (
+    <div className="btn-outline" onClick={close}>
+      <Icon name="lock" size={14} />
+      Clôturer le mois
+    </div>
+  );
+}
+
+export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: MonthKey; closeAttempt: boolean; onDismissClose: () => void }) {
   const { data, ledger, update } = useStore();
   const uninit = !data.months[month]?.initialized;
   const locked = isMonthLocked(data, month);
@@ -97,6 +147,13 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
   const [validated, setValidated] = useState<ValidatedLine[] | null>(null);
   useEffect(() => setValidated(null), [month]);
   const closeToast = useCallback(() => setValidated(null), []);
+  const monthClosed = isMonthClosed(data, month);
+  // A closed month can no longer be validated: the undo toast goes away (RG30).
+  useEffect(() => {
+    if (monthClosed) setValidated(null);
+  }, [monthClosed]);
+  // Why « Clôturer le mois » was refused, recomputed live: it disappears once the month can be closed (RG28).
+  const closeTexts = closeAttempt ? closeBlockers(data, month).map(closeBlockerText).filter((t): t is string => t !== null) : [];
   const validate = () => {
     // The lines about to be filled, read from the current data (same rule as validateMonth).
     const filled = linesWithoutActual(data, month).map(l => ({ key: l.key, value: l.budget }));
@@ -124,7 +181,23 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
       {locked && !uninit && (
         <div className="banner is-locked">
           <Icon name="lock" size={16} />
-          L’année {parseMonth(month).year} est clôturée : ce mois est en lecture seule.
+          {isYearClosed(data, parseMonth(month).year) ? `L’année ${parseMonth(month).year} est clôturée : ce mois est en lecture seule.` : 'Ce mois est clôturé : il est en lecture seule.'}
+        </div>
+      )}
+      {closeTexts.length > 0 && (
+        <div className="banner">
+          <div className="banner-icon">
+            <Icon name="alert" size={18} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="banner-title">Impossible de clôturer {monthLabel(month)}</div>
+            {closeTexts.map(t => (
+              <div key={t} className="banner-text">{t}</div>
+            ))}
+          </div>
+          <div className="btn-quiet" onClick={onDismissClose} title="Fermer">
+            <Icon name="close" size={15} />
+          </div>
         </div>
       )}
       {!uninit && missing > 0 && (
@@ -157,6 +230,11 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
           <div className="panel kpi kpi-hero">
             <div className="kpi-label">Reste à placer</div>
             <div className="kpi-hero-value">{money(s.remaining)}</div>
+            {s.availableReal !== null && (
+              <div className="kpi-sub" style={{ color: s.availableReal < 0 ? BAD : undefined }}>
+                Disponible (réel) {money(s.availableReal)}
+              </div>
+            )}
           </div>
           <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
           <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
@@ -291,7 +369,7 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                 }
               >
                 <div className="line-name-wrap">
-                  {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
+                  {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} hint={block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
                     {l.name}
                   </EditableText>
@@ -482,7 +560,8 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
   const { editing, setEditing } = useUi();
   const [warned, setWarned] = useState(false);
   useEffect(() => setWarned(false), [month]);
-  const remaining = monthSummary(data, ledger, month).remaining;
+  // The allocation warning compares with the money really available (spec 0005, RG24).
+  const available = monthSummary(data, ledger, month).availableReal ?? 0;
   const canEdit = !locked && data.envelopes.length > 0;
   const { year, month: m0 } = parseMonth(month);
   const alerts = envelopeAlerts(data, ledger, year, m0);
@@ -512,7 +591,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
         )}
       </div>
       {alerts.length > 0 && <div className="alert-box">{alertText}</div>}
-      {warned && remaining < 0 && <div className="alert-box">Dépasse le reste à placer de {money(-remaining)}</div>}
+      {warned && available < 0 && <div className="alert-box">Dépasse le disponible de {money(-available)}</div>}
       {data.envelopes.length === 0 && <div className="env-empty">Aucune enveloppe. Créez-en une pour y allouer des sous.</div>}
       <div className="env-compact">
         {data.envelopes.map(e => {
@@ -593,7 +672,7 @@ function TransfersCard({ month, locked }: { month: MonthKey; locked: boolean }) 
               key={t.id}
               className={`transfer${zero ? ' is-zero' : ''}${d ? ' is-done' : ''}`}
               style={{ cursor: can ? 'pointer' : 'default' }}
-              onClick={can ? () => update(x => void (x.months[month].transfersDone[t.id] = !d)) : undefined}
+              onClick={can ? () => update(x => void setTransferDone(x, month, t.id, !d)) : undefined}
             >
               {zero ? (
                 <span className="check is-empty" />

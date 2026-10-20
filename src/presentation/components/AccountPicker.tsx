@@ -15,6 +15,8 @@ interface PickerProps {
   /** Also writes the account's name next to the dot. */
   showName?: boolean;
   disabled?: boolean;
+  /** Tooltip on the dot, instead of the account's name. */
+  hint?: string;
   onPick: (accountId: string) => void;
 }
 
@@ -22,13 +24,13 @@ interface PickerProps {
  * The account dot of a line or transaction. Clicking it opens a menu of the
  * active accounts (an archived account only shows up as the current one).
  */
-export function AccountPicker({ data, accountId, showName, disabled, onPick }: PickerProps) {
+export function AccountPicker({ data, accountId, showName, disabled, hint, onPick }: PickerProps) {
   const [open, setOpen] = useState(false);
   const current = bankAccount(data, accountId);
   const currentId = accountIdOf(data, accountId);
   return (
     <span className="acc-picker" onClick={e => e.stopPropagation()}>
-      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}`} onClick={disabled ? undefined : () => setOpen(o => !o)}>
+      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}`} title={hint} onClick={disabled ? undefined : () => setOpen(o => !o)}>
         <AccountDot account={current} />
         {showName && <span className="ellipsis">{current?.name ?? 'Inconnu'}</span>}
       </span>
