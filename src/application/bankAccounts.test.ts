@@ -18,6 +18,7 @@ import {
 import { canRemoveRow, emptyDraft, exampleDraft, removeRow, setMainRow, setupSummary, type IdFactory } from './setup';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, mainAccount } from '../domain/bank';
 import { monthSummary } from '../domain/budget';
+import { round2 } from '../domain/format';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
 import { migrateBankAccounts } from '../domain/migrate';
@@ -154,7 +155,7 @@ describe('compte hors budget', () => {
     setBankAccountInBudget(d, 'swile', false);
   };
 
-  it('CA3: une dépense sur un compte hors budget baisse son solde mais pas le budget', () => {
+  it('CA3 (amendé 0008): une dépense variable sur un compte hors budget baisse son solde et compte dans le réel de la ligne, pas dans le reste à placer', () => {
     const d = seedData();
     swile(d);
     const l = new Ledger(d, '2026-10');
@@ -163,11 +164,11 @@ describe('compte hors budget', () => {
     addTransaction(d, { id: 'x', month: '2026-12', day: 5, label: 'Resto', amount: 60, type: 'var', target: 'v-sw', accountId: 'swile' });
     const l2 = new Ledger(d, '2026-10');
     expect(l2.bankMonth('swile', '2026-12')!.balance).toBe(60);
-    expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(sw);
+    expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(round2((sw ?? 0) + 60));
     expect(monthSummary(d, l2, '2026-12').remaining).toBe(before.remaining);
   });
 
-  it('CA4: changer le réglage recalcule le budget sur tout l’historique', () => {
+  it('CA4 (amendé 0008): changer le réglage recalcule enveloppes et budget, mais plus le réel des lignes variables', () => {
     const d = seedData();
     swile(d);
     addTransaction(d, { id: 'x', month: '2026-12', day: 5, label: 'Resto', amount: 60, type: 'var', target: 'v-sw', accountId: 'swile' });
@@ -175,14 +176,15 @@ describe('compte hors budget', () => {
     const spent0 = monthSummary(d, new Ledger(d, '2026-10'), '2026-12').envelopeSpent;
     const persoBefore = new Ledger(d, '2026-10').envMonth('perso', '2026-12')!.spent;
 
+    const swReal = d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual;
     setBankAccountInBudget(d, 'swile', true);
     const l = new Ledger(d, '2026-10');
-    expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(120);
+    expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(swReal);
     expect(monthSummary(d, l, '2026-12').envelopeSpent).toBe(spent0 + 20);
     expect(l.envMonth('perso', '2026-12')!.spent).toBe(persoBefore + 20);
 
     setBankAccountInBudget(d, 'swile', false);
-    expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(60);
+    expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(swReal);
   });
 
   it('CA6ter: les revenus et lignes fixes d’un compte hors budget sont exclus des totaux', () => {
@@ -196,16 +198,19 @@ describe('compte hors budget', () => {
     expect(bal(d, 'swile')).toBe(130);
   });
 
-  it('changer le compte d’une transaction la fait entrer ou sortir du budget', () => {
+  it('CA5 (0008): changer le compte d’une dépense variable ne change pas le réel de la ligne, mais déplace les soldes', () => {
     const d = started([ln('ali', 'var', null)]);
     addBankAccount(d, 'swile');
     setBankAccountInBudget(d, 'swile', false);
     addTransaction(d, { id: 't', month: M, day: 3, label: 'Lidl', amount: 25, type: 'var', target: 'ali' });
     expect(d.months[M].lines[0].actual).toBe(25);
     setTransactionAccount(d, 't', 'swile');
-    expect(d.months[M].lines[0].actual).toBeNull();
+    expect(d.months[M].lines[0].actual).toBe(25);
+    expect(bal(d, 'swile')).toBe(-25);
+    expect(bal(d, MAIN_ACCOUNT_ID)).toBe(100);
     setTransactionAccount(d, 't', MAIN_ACCOUNT_ID);
     expect(d.months[M].lines[0].actual).toBe(25);
+    expect(bal(d, MAIN_ACCOUNT_ID)).toBe(75);
   });
 });
 

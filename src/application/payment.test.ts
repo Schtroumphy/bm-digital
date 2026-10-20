@@ -114,17 +114,17 @@ describe('saisie d’une dépense sur une box', () => {
     expect(balance(d, CASH_ACCOUNT_ID)).toBe(35);
   });
 
-  it('CA7: compte résolu « hors budget » : budget inchangé, solde du compte en baisse', () => {
+  it('CA7 (amendé 0008): compte résolu « hors budget » : la dépense compte dans le réel de la ligne, pas dans le reste à placer, et le solde baisse', () => {
     const d = started();
     setLinePayment(d, M, 'courses', { accountId: 'swile' });
     const before = monthSummary(d, new Ledger(d, M), M);
     addTransaction(d, tx({ amount: 60 }));
     const after = monthSummary(d, new Ledger(d, M), M);
-    expect(box(d, 'courses').actual).toBeNull();
+    expect(box(d, 'courses').actual).toBe(60);
     expect(after.remaining).toBe(before.remaining);
     expect(after.expenses).toBe(before.expenses);
     expect(balance(d, 'swile')).toBe(60);
-    // Remettre le compte « dans le budget » recalcule le réel de la ligne.
+    // Le réglage du compte n'a plus d'effet sur le réel de la ligne (0008, RG3).
     setBankAccountInBudget(d, 'swile', true);
     expect(box(d, 'courses').actual).toBe(60);
   });
@@ -280,11 +280,11 @@ describe('diagnostic : réel d’une ligne variable payée en Espèces', () => {
     expect(box(d, 'alim').actual).toBe(25);
   });
 
-  it('(b) Espèces hors budget (RG17) : le réel reste null, le solde Espèces baisse', () => {
+  it('(b) Espèces hors budget (0008, RG1) : le réel compte la dépense, le solde Espèces baisse', () => {
     const d = withAlimentation(false);
     setLinePayment(d, M, 'alim', { payMode: 'especes' });
     addTransaction(d, tx({ target: 'alim', amount: 25 }));
-    expect(box(d, 'alim').actual).toBeNull();
+    expect(box(d, 'alim').actual).toBe(25);
     expect(balance(d, CASH_ACCOUNT_ID)).toBe(25);
   });
 
