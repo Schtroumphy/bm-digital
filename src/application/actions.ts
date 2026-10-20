@@ -1,13 +1,25 @@
+import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, isTransactionInBudget } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual } from '../domain/budget';
 import { isMonthLocked } from '../domain/ledger';
-import type { BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
+import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
-/** Recomputes a variable line's actual from the month's transactions, when it has any. */
+/** Recomputes a variable line's actual from the month's transactions, leaving out those of an out-of-budget account. */
 function varActualFromTx(d: BudgetData, m: MonthKey, key: string): number | null {
-  const txs = d.transactions.filter(t => t.month === m && t.type === 'var' && t.target === key);
+  const txs = d.transactions.filter(t => t.month === m && t.type === 'var' && t.target === key && isTransactionInBudget(d, t));
   return txs.length ? round2(txs.reduce((s, t) => s + t.amount, 0)) : null;
+}
+
+/** Recomputes the actual of every variable line that has transactions (after an account's budget setting changed, RG18). */
+export function refreshVarActuals(d: BudgetData, only?: { month: MonthKey; key: string }) {
+  for (const [m, md] of Object.entries(d.months)) {
+    if (!md.initialized || (only && only.month !== m)) continue;
+    for (const l of md.lines) {
+      if (l.block !== 'var' || (only && only.key !== l.key)) continue;
+      if (d.transactions.some(t => t.month === m && t.type === 'var' && t.target === l.key)) l.actual = varActualFromTx(d, m, l.key);
+    }
+  }
 }
 
 function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<string, number>) {
@@ -72,7 +84,15 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   if (!isSetupMonthAllowed(d, m, today)) return false;
   const rows = draft.rows;
 
-  const line = (block: BlockKey, r: SetupRow, section = ''): Line => ({ key: r.id, block, section, name: r.name.trim() || 'Sans nom', budget: r.amount, actual: null });
+  const line = (block: BlockKey, r: SetupRow, section = ''): Line => ({
+    key: r.id,
+    block,
+    section,
+    name: r.name.trim() || 'Sans nom',
+    budget: r.amount,
+    actual: null,
+    ...(r.accountId ? { accountId: r.accountId } : {}),
+  });
   const lines: Line[] = [
     ...rows.rev.map(r => line('rev', r)),
     ...rows.cre.map(r => line('cre', r)),
@@ -91,6 +111,7 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
 
   d.template = { lines: lines.map(({ actual: _actual, ...l }) => l), envAlloc };
   d.envelopes = envelopes;
+  d.accounts = d.firstMonth === null ? accountsFromDraft(rows.acc, m) : mergeAccounts(d.accounts, accountsFromDraft(rows.acc, m));
   initMonth(d, m, lines, envAlloc);
 
   const before = addMonths(m, -1);
@@ -98,6 +119,39 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   d.envHistory[before] = Object.fromEntries(rows.env.map((r): [string, EnvHistory] => [r.id, { alloc: 0, spent: 0, balance: r.balance }]));
   if (d.firstMonth === null) d.firstMonth = m;
   return true;
+}
+
+/** Bank accounts typed in the assistant. The main account and « Espèces » are always there, whatever was typed. */
+function accountsFromDraft(rows: SetupRow[], month: MonthKey): BankAccount[] {
+  const fallback = defaultBankAccounts(month);
+  const typed = rows.map((r, i): BankAccount => ({
+    id: r.id,
+    name: r.name.trim() || 'Sans nom',
+    hue: r.hue ?? BANK_HUES[i % BANK_HUES.length],
+    isDefault: !!r.isDefault,
+    openingBalance: r.balance,
+    openingMonth: month,
+    inBudget: r.inBudget ?? true,
+    archived: false,
+    openingConfirmed: true,
+  }));
+  if (!typed.some(a => a.id === CASH_ACCOUNT_ID)) typed.push(fallback[1]);
+  if (!typed.some(a => a.isDefault)) {
+    const first = typed.find(a => a.id !== CASH_ACCOUNT_ID) ?? typed[0];
+    first.isDefault = true;
+  }
+  // A single main account: the first one flagged.
+  let seen = false;
+  for (const a of typed) {
+    if (a.isDefault && seen) a.isDefault = false;
+    seen ||= a.isDefault;
+  }
+  return typed;
+}
+
+/** Adds the accounts of a new draft to an already started budget; existing accounts are never overwritten. */
+function mergeAccounts(existing: BankAccount[], typed: BankAccount[]): BankAccount[] {
+  return [...existing, ...typed.filter(a => !existing.some(e => e.id === a.id)).map(a => ({ ...a, isDefault: false }))];
 }
 
 export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string) {
@@ -154,7 +208,7 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
 /** Records a transaction; a variable expense also raises its line's actual. */
 export function addTransaction(d: BudgetData, t: Transaction) {
   d.transactions.push(t);
-  if (t.type !== 'var') return;
+  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
   if (l) l.actual = round2((l.actual ?? 0) + t.amount);
 }
@@ -163,7 +217,7 @@ export function deleteTransaction(d: BudgetData, id: string) {
   const t = d.transactions.find(x => x.id === id);
   if (!t) return;
   d.transactions = d.transactions.filter(x => x.id !== id);
-  if (t.type !== 'var') return;
+  if (t.type !== 'var' || !isTransactionInBudget(d, t)) return;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
   if (l) l.actual = round2((l.actual ?? 0) - t.amount);
 }

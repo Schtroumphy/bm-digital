@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AccountPicker } from '../components/AccountPicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
 import { Toast } from '../components/Toast';
+import { TransferRoute } from '../components/TransferRoute';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
+import { setLineAccount } from '../../application/bankAccounts';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
-import { blockTotals, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
+import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseMonth, percent } from '../../domain/format';
 import { isMonthLocked, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
@@ -214,9 +217,12 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
   const meta = BLOCKS[block];
+  // Revenues, credits and fixed expenses go through a bank account.
+  const hasAccount = block === 'rev' || block === 'cre' || block === 'fix';
   const all = monthLines(data, month);
   const lines = all.filter(l => l.block === block);
-  const totals = blockTotals(all, block);
+  // Lines of an out-of-budget account stay listed but are left out of the totals.
+  const totals = blockTotals(budgetLines(data, month), block);
   const sections: { label: string; lines: Line[] }[] = [];
   for (const l of lines) {
     const sec = sections.find(x => x.label === l.section);
@@ -271,9 +277,12 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                       }
                 }
               >
-                <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
-                  {l.name}
-                </EditableText>
+                <div className="line-name-wrap">
+                  {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
+                  <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
+                    {l.name}
+                  </EditableText>
+                </div>
                 <div className="rel">
                   <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked}>
                     {money(l.budget)}
@@ -499,6 +508,7 @@ function TransfersCard({ month, locked }: { month: MonthKey; locked: boolean }) 
                 </span>
               )}
               <span className="transfer-name">{t.name}</span>
+              <TransferRoute transfer={t} month={month} disabled={locked} />
               <span className="transfer-amount">{money(t.amount)}</span>
             </div>
           );

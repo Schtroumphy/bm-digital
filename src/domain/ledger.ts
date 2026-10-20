@@ -1,5 +1,6 @@
+import { accountIdOf, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
-import type { BudgetData, Line, MonthKey } from './types';
+import type { BudgetData, Line, MonthKey, Transaction } from './types';
 
 export interface EnvMonth {
   start: number;
@@ -15,6 +16,14 @@ export interface AccMonth {
   expected: number;
   statement: number | null;
   /** Statement when entered, otherwise the expected balance. */
+  balance: number;
+}
+
+/** A bank account over one month: opening, money in and out, closing balance. */
+export interface BankMonth {
+  start: number;
+  in: number;
+  out: number;
   balance: number;
 }
 
@@ -38,7 +47,7 @@ export function monthRange(d: BudgetData, today = currentMonthKey()): MonthKey[]
 export const isYearClosed = (d: BudgetData, year: number) => !!d.closes[year]?.closed;
 export const isMonthLocked = (d: BudgetData, m: MonthKey) => isYearClosed(d, parseMonth(m).year);
 
-export const closeKey = (kind: 'acc' | 'env', id: string) => `${kind}:${id}`;
+export const closeKey = (kind: 'acc' | 'env' | 'bank', id: string) => `${kind}:${id}`;
 
 /** Lines of an initialized month, or the template preview for a month not created yet. */
 export function monthLines(d: BudgetData, m: MonthKey): Line[] {
@@ -61,8 +70,8 @@ export function accounts(d: BudgetData): Account[] {
   return [...seen.values()];
 }
 
-const sumTx = (d: BudgetData, m: MonthKey, type: string, target: string) =>
-  round2(d.transactions.filter(t => t.month === m && t.type === type && t.target === target).reduce((s, t) => s + t.amount, 0));
+const sumTx = (d: BudgetData, m: MonthKey, type: string, target: string, keep = (_t: Transaction) => true) =>
+  round2(d.transactions.filter(t => t.month === m && t.type === type && t.target === target && keep(t)).reduce((s, t) => s + t.amount, 0));
 
 /**
  * Month-by-month balances of envelopes and savings/investment accounts, from
@@ -73,6 +82,7 @@ export class Ledger {
   readonly months: MonthKey[];
   private env = new Map<string, EnvMonth>();
   private acc = new Map<string, AccMonth>();
+  private bank = new Map<string, BankMonth>();
 
   constructor(private d: BudgetData, today = currentMonthKey()) {
     this.months = monthRange(d, today);
@@ -80,6 +90,7 @@ export class Ledger {
     if (first === null) return; // nothing to compute before the first month exists
     const envBal: Record<string, number> = {};
     const accBal: Record<string, number> = {};
+    const bankBal: Record<string, number> = {};
     const accs = accounts(d);
 
     for (const m of Object.keys(d.envHistory).sort()) {
@@ -105,7 +116,8 @@ export class Ledger {
       for (const e of d.envelopes) {
         const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
         const a = alloc[e.id] ?? 0;
-        const spent = sumTx(d, m, 'env', e.id);
+        // Spending paid from an account that is out of the budget does not touch the envelope.
+        const spent = sumTx(d, m, 'env', e.id, t => isTransactionInBudget(d, t));
         // An envelope opening balance set by the assistant for a later month acts like an account statement.
         const opening = d.envHistory[m]?.[e.id];
         const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - spent) };
@@ -124,11 +136,46 @@ export class Ledger {
         this.acc.set(`${m}|${a.key}`, r);
         accBal[a.key] = r.balance;
       }
+      for (const b of d.accounts) {
+        if (compareMonths(m, b.openingMonth) < 0) continue;
+        const start = prevClose?.overrides[closeKey('bank', b.id)] ?? (compareMonths(m, b.openingMonth) === 0 ? undefined : bankBal[b.id]) ?? b.openingBalance;
+        const flow = this.bankFlow(b.id, m);
+        const r = { start, in: flow.in, out: flow.out, balance: round2(start + flow.in - flow.out) };
+        this.bank.set(`${m}|${b.id}`, r);
+        bankBal[b.id] = r.balance;
+      }
     }
+  }
+
+  /**
+   * Money in and out of a bank account during a month (RG13).
+   * Variable expenses are counted through their transactions only (RG14), and a
+   * transfer moves money only between two bank accounts, once marked « fait » (RG13bis, RG16).
+   */
+  private bankFlow(id: string, m: MonthKey) {
+    const d = this.d;
+    const mine = (accountId?: string) => accountIdOf(d, accountId) === id;
+    const md = d.months[m];
+    const lines = md?.initialized ? md.lines.filter(l => mine(l.accountId)) : [];
+    const actual = (blocks: string[]) => lines.filter(l => blocks.includes(l.block)).reduce((s, l) => s + (l.actual ?? 0), 0);
+    const txs = d.transactions.filter(t => t.month === m && mine(t.accountId));
+    const txSum = (types: string[]) => txs.filter(t => types.includes(t.type)).reduce((s, t) => s + t.amount, 0);
+    const done = d.transfers.filter(t => md?.transfersDone[t.id] && t.to?.kind === 'bank');
+    const received = done.filter(t => t.to?.kind === 'bank' && t.to.id === id).reduce((s, t) => s + t.amount, 0);
+    const sent = done.filter(t => t.fromAccountId === id).reduce((s, t) => s + t.amount, 0);
+    return {
+      in: round2(actual(['rev']) + txSum(['epa']) + received),
+      out: round2(txSum(['var', 'env']) + actual(['fix', 'cre', 'epa', 'inv']) + sent),
+    };
   }
 
   envMonth(id: string, m: MonthKey): EnvMonth | null {
     return this.env.get(`${m}|${id}`) ?? null;
+  }
+
+  /** Balance of a bank account at the end of a month; null before its opening month. */
+  bankMonth(id: string, m: MonthKey): BankMonth | null {
+    return this.bank.get(`${m}|${id}`) ?? null;
   }
 
   accMonth(key: string, m: MonthKey): AccMonth | null {
