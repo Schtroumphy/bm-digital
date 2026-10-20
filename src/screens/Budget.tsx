@@ -1,0 +1,471 @@
+import { useState } from 'react';
+import { EditableAmount, EditableText } from '../components/Editable';
+import { Icon, type IconName } from '../components/Icon';
+import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
+import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, updateLine } from '../domain/actions';
+import { blockTotals, envelopeAlerts, lineGap, lineHistory, monthSummary } from '../domain/budget';
+import { addMonths, money, monthLabel, parseMonth, percent } from '../domain/format';
+import { isMonthLocked, monthAlloc, monthLines } from '../domain/ledger';
+import type { BlockKey, Line, MonthKey } from '../domain/types';
+import { newId, useStore } from '../state/store';
+import { useUi } from '../state/ui';
+
+const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: number }> = {
+  rev: { title: 'Revenus', icon: 'arrowDown', hue: HUE.rev },
+  cre: { title: 'Crédits / Dettes', icon: 'card', hue: HUE.dep },
+  fix: { title: 'Dépenses fixes', icon: 'home', hue: HUE.dep },
+  var: { title: 'Dépenses variables', icon: 'basket', hue: HUE.dep },
+  epa: { title: 'Épargnes', icon: 'bank', hue: HUE.epa },
+  inv: { title: 'Investissements', icon: 'trend', hue: HUE.inv },
+};
+
+export const BLOCK_TITLES = Object.fromEntries(Object.entries(BLOCKS).map(([k, v]) => [k, v.title])) as Record<BlockKey, string>;
+
+export function BudgetActions({ month }: { month: MonthKey }) {
+  const { data, update } = useStore();
+  const [open, setOpen] = useState(false);
+  const md = data.months[month];
+  const locked = isMonthLocked(data, month);
+  const prevReady = !!data.months[addMonths(month, -1)]?.initialized;
+  const confirmReplace = () => !md?.initialized || window.confirm(`Remplacer les lignes de ${monthLabel(month)} ? Les montants réels saisis seront effacés.`);
+
+  const exportCsv = () => {
+    const blob = new Blob([monthCsv(monthLines(data, month), BLOCK_TITLES)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `budget-${month}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const items = [
+    { label: 'Appliquer le modèle de budget', enabled: !locked, run: () => confirmReplace() && update(d => applyTemplate(d, month)) },
+    { label: 'Dupliquer le mois précédent', enabled: !locked && prevReady, run: () => confirmReplace() && update(d => duplicatePrevious(d, month)) },
+    { label: 'Enregistrer ce mois comme modèle', enabled: !!md?.initialized, run: () => update(d => saveAsTemplate(d, month)) },
+  ];
+
+  return (
+    <>
+      <div style={{ position: 'relative' }}>
+        <div className="btn-quiet" onClick={() => setOpen(o => !o)}>
+          <Icon name="copy" size={15} />
+          Dupliquer / appliquer le modèle
+        </div>
+        {open && (
+          <>
+            <div className="backdrop" onClick={() => setOpen(false)} />
+            <div className="popmenu model-menu">
+              {items.map(it => (
+                <div
+                  key={it.label}
+                  className={`popmenu-item${it.enabled ? '' : ' is-disabled'}`}
+                  onClick={() => {
+                    if (!it.enabled) return;
+                    setOpen(false);
+                    it.run();
+                  }}
+                >
+                  {it.label}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <div className="btn-outline" onClick={exportCsv}>
+        <Icon name="download" size={15} />
+        Exporter CSV
+      </div>
+    </>
+  );
+}
+
+export function BudgetScreen({ month }: { month: MonthKey }) {
+  const { data, ledger, update } = useStore();
+  const uninit = !data.months[month]?.initialized;
+  const locked = isMonthLocked(data, month);
+  const s = monthSummary(data, ledger, month);
+  const st = data.settings;
+  const emergencyPct = st.emergencyTarget ? (s.emergency / st.emergencyTarget) * 100 : 0;
+
+  return (
+    <>
+      {uninit && (
+        <div className="banner">
+          <div className="banner-icon">
+            <Icon name="calendar" size={18} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="banner-title">{monthLabel(month)} n’est pas encore initialisé</div>
+            <div className="banner-text">Appliquez le modèle de budget pour créer les lignes du mois avec les montants prévus.</div>
+          </div>
+          <div className="btn-dark" onClick={() => update(d => applyTemplate(d, month))}>
+            Appliquer le modèle de budget
+          </div>
+        </div>
+      )}
+      {locked && !uninit && (
+        <div className="banner is-locked">
+          <Icon name="lock" size={16} />
+          L’année {parseMonth(month).year} est clôturée : ce mois est en lecture seule.
+        </div>
+      )}
+      <div className={uninit ? 'is-preview' : undefined}>
+        <div className="summary">
+          <div className="panel kpi kpi-hero">
+            <div className="kpi-label">Reste à placer</div>
+            <div className="kpi-hero-value">{money(s.remaining)}</div>
+          </div>
+          <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
+          <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
+          <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.savings)} sub={'Réelle : ' + money(s.realSavings)} />
+          <Kpi label="Taux d’épargne" hue={HUE.obj} value={percent(s.savingsRate)} />
+          <div className="panel kpi emergency">
+            <div className="emergency-head">
+              <span className="kpi-label">Fond de secours</span>
+              <span className="emergency-pct">{percent(emergencyPct)}</span>
+            </div>
+            <div className="emergency-value">
+              {money(s.emergency)} <span>/ {money(st.emergencyTarget)}</span>
+            </div>
+            <div className="progress is-obj">
+              <div style={{ width: `${Math.min(100, emergencyPct)}%` }} />
+            </div>
+          </div>
+        </div>
+
+        <div className="budget-grid">
+          <div className="budget-col">
+            <BlockCard block="rev" month={month} locked={locked || uninit} />
+            <BlockCard block="cre" month={month} locked={locked || uninit} />
+            <GoalsCard month={month} />
+          </div>
+          <div className="budget-col">
+            <BlockCard block="fix" month={month} locked={locked || uninit} />
+            <BlockCard block="var" month={month} locked={locked || uninit} />
+          </div>
+          <div className="budget-col">
+            <BlockCard block="epa" month={month} locked={locked || uninit} />
+            <BlockCard block="inv" month={month} locked={locked || uninit} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+          </div>
+          <div className="budget-col">
+            <EnvelopesCompact month={month} />
+            <TransfersCard month={month} locked={locked || uninit} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: string; sub?: string }) {
+  return (
+    <div className="panel kpi">
+      <div className="kpi-label">
+        <span className="dot" style={{ background: tone(hue).base }} />
+        {label}
+      </div>
+      <div className="kpi-value">{value}</div>
+      {sub && <div className="kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
+function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: MonthKey; locked: boolean; strip?: { label: string; value: string; color: string } }) {
+  const { data, update } = useStore();
+  const { editing, setEditing, openMenu } = useUi();
+  const [hover, setHover] = useState<string | null>(null);
+  const meta = BLOCKS[block];
+  const all = monthLines(data, month);
+  const lines = all.filter(l => l.block === block);
+  const totals = blockTotals(all, block);
+  const sections: { label: string; lines: Line[] }[] = [];
+  for (const l of lines) {
+    const sec = sections.find(x => x.label === l.section);
+    if (sec) sec.lines.push(l);
+    else sections.push({ label: l.section, lines: [l] });
+  }
+  if (block === 'var') {
+    const rest = totals.budget - totals.actual;
+    strip = { label: 'Restant', value: money(rest), color: rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)' };
+  }
+  const set = (key: string, patch: Partial<Line>) => update(d => updateLine(d, month, key, patch));
+
+  return (
+    <div className="panel block" style={toneVars(meta.hue)}>
+      <div className="block-head">
+        <div className="block-icon">
+          <Icon name={meta.icon} size={14} />
+        </div>
+        <div className="block-title">{meta.title}</div>
+        <div style={{ flex: 1 }} />
+        {strip && (
+          <div className="block-strip" style={{ color: strip.color }}>
+            {strip.label} {strip.value}
+          </div>
+        )}
+      </div>
+      <div className="line-grid line-head">
+        <span>Nom</span>
+        <span className="num pad">Budget</span>
+        <span className="num pad">Réel</span>
+        <span className="num">Écart</span>
+      </div>
+      {sections.map(sec => (
+        <div key={sec.label}>
+          {sec.label && <div className="block-section">{sec.label}</div>}
+          {sec.lines.map(l => {
+            const gap = lineGap(l);
+            const rowEditing = !!editing?.endsWith(':' + l.key);
+            const hist = hover === l.key && !rowEditing ? lineHistory(data, month, l.key) : null;
+            return (
+              <div
+                key={l.key}
+                className="line-grid line-row"
+                onMouseEnter={() => setHover(l.key)}
+                onMouseLeave={() => setHover(null)}
+                onContextMenu={
+                  locked
+                    ? undefined
+                    : e => {
+                        setHover(null);
+                        openMenu(e, l.name, [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => deleteLine(d, month, l.key)) }]);
+                      }
+                }
+              >
+                <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
+                  {l.name}
+                </EditableText>
+                <div className="rel">
+                  <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked}>
+                    {money(l.budget)}
+                  </EditableAmount>
+                </div>
+                <div className="rel">
+                  <EditableAmount
+                    id={`r:${l.key}`}
+                    value={l.actual}
+                    allowEmpty
+                    onCommit={v => set(l.key, { actual: v })}
+                    className="cell"
+                    style={{ color: l.actual === null ? MUTED : undefined }}
+                    inputClassName="cell-input"
+                    hint="right"
+                    disabled={locked}
+                  >
+                    {l.actual === null ? '—' : money(l.actual)}
+                  </EditableAmount>
+                </div>
+                <div className="num gap" style={{ color: gapColor(gap) }}>
+                  {gap === null ? '—' : gap === 0 ? money(0) : money(gap, true)}
+                </div>
+                {block === 'var' && (
+                  <div className="fill-bar">
+                    <div style={{ width: `${l.actual !== null && l.budget ? Math.min(100, (l.actual / l.budget) * 100) : 0}%`, background: l.actual !== null && l.actual > l.budget ? 'oklch(0.66 0.17 25)' : undefined }} />
+                  </div>
+                )}
+                {hist && (
+                  <div className="popover">
+                    <div className="popover-title">{l.name}</div>
+                    <div className="popover-row">
+                      <span>Cumul {parseMonth(month).year}</span>
+                      <b>{money(hist.cumul)}</b>
+                    </div>
+                    <div className="popover-row">
+                      <span>Solde mois préc.</span>
+                      <b>{hist.prevGap === null ? '—' : money(hist.prevGap, true)}</b>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <div style={{ flex: 1 }} />
+      <div className="line-grid block-foot">
+        <div
+          className={`add-btn${locked ? ' is-disabled' : ''}`}
+          title="Ajouter une ligne"
+          onClick={
+            locked
+              ? undefined
+              : () => {
+                  const key = newId('l');
+                  update(d => addLine(d, month, block, key));
+                  setEditing(`n:${key}`);
+                }
+          }
+        >
+          <span className="add-icon">
+            <Icon name="plus" size={13} stroke={3} />
+          </span>
+          <span>Ajouter</span>
+        </div>
+        <div className="num pad">{money(totals.budget)}</div>
+        <div className="num pad">{money(totals.actual)}</div>
+        <div className="num" style={{ color: totals.gap >= 0 ? GOOD : BAD }}>
+          {money(totals.gap, true)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GoalsCard({ month }: { month: MonthKey }) {
+  const { data, ledger } = useStore();
+  const s = monthSummary(data, ledger, month);
+  const st = data.settings;
+  const status = (pct: number) => (pct >= 100 ? 'Atteint' : pct >= 75 ? 'En bonne voie' : 'En progression');
+  const goals = [
+    { name: 'Fond de secours', value: s.emergency, target: st.emergencyTarget, text: `${money(s.emergency)} / ${money(st.emergencyTarget)}`, hue: HUE.obj },
+    { name: `Investir ${st.investTarget / 1000}K`, value: s.investTotal, target: st.investTarget, text: `${money(s.investTotal)} / ${money(st.investTarget)}`, hue: HUE.rev },
+    { name: `Taux d’épargne > ${st.savingsRateTarget} %`, value: s.savingsRate, target: st.savingsRateTarget, text: `${percent(s.savingsRate)} / ${st.savingsRateTarget} %`, hue: 85, rate: true },
+  ];
+  return (
+    <div className="panel block" style={toneVars(HUE.obj)}>
+      <div className="block-head">
+        <div className="block-icon">
+          <Icon name="goals" size={14} />
+        </div>
+        <div className="block-title">Objectifs annuels</div>
+      </div>
+      <div className="goals">
+        {goals.map(g => {
+          const pct = g.target ? Math.min(100, (g.value / g.target) * 100) : 0;
+          const label = g.rate ? (g.value >= g.target ? 'Atteint' : 'À rattraper') : status(pct);
+          const t = tone(g.hue);
+          return (
+            <div key={g.name} className="goal">
+              <div className="goal-head">
+                <span className="goal-name">{g.name}</span>
+                <span className="pill" style={{ background: t.soft, color: t.ink }}>
+                  {label}
+                </span>
+              </div>
+              <div className="goal-values">
+                <span>{g.text}</span>
+                <b>{percent(pct)}</b>
+              </div>
+              <div className="progress is-obj">
+                <div style={{ width: `${pct}%`, background: g.rate ? 'oklch(0.82 0.13 90)' : undefined }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EnvelopesCompact({ month }: { month: MonthKey }) {
+  const { data, ledger, update } = useStore();
+  const { setEditing } = useUi();
+  const { year, month: m0 } = parseMonth(month);
+  const alerts = envelopeAlerts(data, ledger, year, m0);
+  const alloc = monthAlloc(data, month);
+  const vio = tone(HUE.epa);
+  const alertText = alerts
+    .map(a => {
+      const env = data.envelopes.find(e => e.id === a.envelopeId)!;
+      const what = a.labels.length === 1 ? a.labels[0] : env.name;
+      return `${what} ${money(a.planned)} prévu, il manque ~${money(a.missing)}`;
+    })
+    .join(' · ');
+  return (
+    <div className="panel block" style={toneVars(HUE.epa)}>
+      <div className="block-head">
+        <div className="block-icon">
+          <Icon name="mail" size={14} />
+        </div>
+        <div className="block-title">Enveloppes</div>
+        <div style={{ flex: 1 }} />
+        {alerts.length > 0 && (
+          <div className="alert-pill">
+            <Icon name="alert" size={12} stroke={2.8} />
+            {alerts.length} {alerts.length > 1 ? 'alertes' : 'alerte'}
+          </div>
+        )}
+      </div>
+      {alerts.length > 0 && <div className="alert-box">{alertText}</div>}
+      <div className="env-compact">
+        {data.envelopes.map(e => {
+          const warn = alerts.some(a => a.envelopeId === e.id);
+          return (
+            <div key={e.id} className="env-tile" style={{ background: vio.bg, borderColor: warn ? 'oklch(0.8 0.12 55)' : vio.line }}>
+              <div className="env-tile-head">
+                <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void (d.envelopes.find(x => x.id === e.id)!.name = name))} className="env-tile-name" inputClassName="cell-input is-text">
+                  {e.name}
+                </EditableText>
+                {warn && <span className="warn-dot" />}
+              </div>
+              <div className="env-tile-solde">{money(ledger.envMonth(e.id, month)?.balance ?? 0)}</div>
+              <div className="env-tile-alloc">
+                alloué <b>{money(alloc[e.id] ?? 0)}</b>
+              </div>
+            </div>
+          );
+        })}
+        <div
+          className={`env-add${data.envelopes.length % 2 === 0 ? ' is-row' : ''}`}
+          onClick={() => {
+            const id = newId('env');
+            update(d => {
+              d.envelopes.push({ id, name: 'Nouvelle enveloppe', hue: (d.envelopes.length * 47 + 20) % 360, cash: 0 });
+            });
+            setEditing(`en:${id}`);
+          }}
+        >
+          <Icon name="plus" size={14} stroke={3} />
+          Ajouter
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TransfersCard({ month, locked }: { month: MonthKey; locked: boolean }) {
+  const { data, update } = useStore();
+  const done = data.months[month]?.transfersDone ?? {};
+  const live = data.transfers.filter(t => t.amount > 0);
+  const nDone = live.filter(t => done[t.id]).length;
+  return (
+    <div className="panel block" style={toneVars(HUE.obj)}>
+      <div className="block-head">
+        <div className="block-icon">
+          <Icon name="transfer" size={14} />
+        </div>
+        <div className="block-title">Virements à effectuer</div>
+        <div style={{ flex: 1 }} />
+        <div className="block-strip" style={{ color: 'oklch(0.4 0.09 190)' }}>
+          {nDone} / {live.length} faits
+        </div>
+      </div>
+      <div className="transfers">
+        {data.transfers.map(t => {
+          const zero = t.amount === 0;
+          const d = !!done[t.id];
+          const can = !zero && !locked;
+          return (
+            <div
+              key={t.id}
+              className={`transfer${zero ? ' is-zero' : ''}${d ? ' is-done' : ''}`}
+              style={{ cursor: can ? 'pointer' : 'default' }}
+              onClick={can ? () => update(x => void (x.months[month].transfersDone[t.id] = !d)) : undefined}
+            >
+              {zero ? (
+                <span className="check is-empty" />
+              ) : (
+                <span className="check">
+                  <Icon name="check" size={12} stroke={3.5} color="#fff" style={{ opacity: d ? 1 : 0 }} />
+                </span>
+              )}
+              <span className="transfer-name">{t.name}</span>
+              <span className="transfer-amount">{money(t.amount)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
