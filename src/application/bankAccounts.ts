@@ -1,4 +1,4 @@
-import { CASH_ACCOUNT_ID, mainAccount, nextBankHue } from '../domain/bank';
+import { canLinkAccount, CASH_ACCOUNT_ID, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
 import { currentMonthKey } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import type { BudgetData, MonthKey, TransferTarget } from '../domain/types';
@@ -100,19 +100,42 @@ export function confirmOpeningBalances(d: BudgetData) {
 export const needsOpeningBalances = (d: BudgetData): boolean =>
   d.accounts.some(a => (a.isDefault || a.id === CASH_ACCOUNT_ID) && a.openingBalance === 0 && !a.openingConfirmed);
 
-/** Moves a budget line to another account. The line keeps it in the months created from it later. */
+/**
+ * Moves a budget line to another account. The line keeps it in the months created from it later.
+ * A savings/investment line cannot be paid from its own dedicated account (spec 0007, RG2).
+ */
 export function setLineAccount(d: BudgetData, m: MonthKey, key: string, accountId: string): boolean {
   if (isMonthLocked(d, m)) return false;
   const l = d.months[m]?.lines.find(x => x.key === key);
-  if (!l) return false;
+  if (!l || (l.linkedAccountId && l.linkedAccountId === accountId)) return false;
   l.accountId = accountId;
+  return true;
+}
+
+/**
+ * Ties a savings/investment line to the bank account that receives its payments, or removes the tie with
+ * `undefined` (spec 0007, RG1 to RG5). Applies to the month and to the budget model. Refused (false) on a
+ * locked month, an unknown line, a line that is not epa/inv, or an account that is unknown, archived or the line's source.
+ */
+export function setLineLinkedAccount(d: BudgetData, m: MonthKey, key: string, accountId: string | undefined): boolean {
+  if (isMonthLocked(d, m)) return false;
+  const l = d.months[m]?.lines.find(x => x.key === key);
+  if (!l || (l.block !== 'epa' && l.block !== 'inv')) return false;
+  if (accountId !== undefined && !canLinkAccount(d, l, accountId)) return false;
+  const apply = (line: { linkedAccountId?: string }) => {
+    if (accountId === undefined) delete line.linkedAccountId;
+    else line.linkedAccountId = accountId;
+  };
+  apply(l);
+  const model = d.template.lines.find(x => x.key === key);
+  if (model) apply(model);
   return true;
 }
 
 /** Changes the account of a transaction; the actual of a variable line does not change (spec 0008, RG2). */
 export function setTransactionAccount(d: BudgetData, id: string, accountId: string): boolean {
   const t = d.transactions.find(x => x.id === id);
-  if (!t || isMonthLocked(d, t.month)) return false;
+  if (!t || isMonthLocked(d, t.month) || !isSavingsWithdrawalAllowed(d, { ...t, accountId })) return false;
   t.accountId = accountId;
   return true;
 }

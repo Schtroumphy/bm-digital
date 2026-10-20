@@ -1,4 +1,4 @@
-import { accountIdOf, isTransactionInBudget } from './bank';
+import { accountIdOf, isSavingsBlock, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
 import type { BudgetData, Line, MonthKey, Transaction } from './types';
 
@@ -173,9 +173,13 @@ export class Ledger {
     const done = d.transfers.filter(t => md?.transfersDone[t.id] && t.to?.kind === 'bank');
     const received = done.filter(t => t.to?.kind === 'bank' && t.to.id === id).reduce((s, t) => s + t.amount, 0);
     const sent = done.filter(t => t.fromAccountId === id).reduce((s, t) => s + t.amount, 0);
+    // Lines whose dedicated account is this one: it receives their payments and funds their withdrawals (spec 0007, RG6).
+    const linked = md?.initialized ? md.lines.filter(l => isSavingsBlock(l.block) && l.linkedAccountId === id) : [];
+    const paidIn = linked.reduce((s, l) => s + (l.actual ?? 0), 0);
+    const withdrawn = d.transactions.filter(t => t.month === m && t.type === 'epa' && linked.some(l => l.key === t.target)).reduce((s, t) => s + t.amount, 0);
     return {
-      in: round2(actual(['rev']) + txSum(['epa']) + received),
-      out: round2(txSum(['var', 'env']) + actual(['fix', 'cre', 'epa', 'inv']) + sent),
+      in: round2(actual(['rev']) + txSum(['epa']) + received + paidIn),
+      out: round2(txSum(['var', 'env']) + actual(['fix', 'cre', 'epa', 'inv']) + sent + withdrawn),
     };
   }
 

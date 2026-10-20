@@ -30,6 +30,8 @@ export interface SetupRow {
   cash: number;
   /** Revenue, credit and expense rows: the bank account used; absent = the main account. */
   accountId?: string;
+  /** Savings and investment rows: dedicated bank account receiving the payments; absent = none (spec 0007, RG16). */
+  linkedAccountId?: string;
   /** Account rows only: colour, main account choice and « Dans le budget » setting. The starting balance is `balance`. */
   hue?: number;
   isDefault?: boolean;

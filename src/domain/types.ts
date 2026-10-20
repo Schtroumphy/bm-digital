@@ -21,6 +21,8 @@ export interface Line extends PaymentSetting {
   name: string;
   budget: number;
   actual: number | null;
+  /** `epa`/`inv` lines only: bank account that receives the line's payments (spec 0007); absent = no dedicated account. */
+  linkedAccountId?: string;
   // `accountId` (from PaymentSetting): bank account the line goes through; absent = the main account.
   // For a `var` line it is the account assigned to the box, and `payMode` its mode (spec 0006).
 }

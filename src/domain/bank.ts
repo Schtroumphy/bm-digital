@@ -78,3 +78,25 @@ export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 
   const box = transactionBox(d, t);
   return box ? resolveBoxAccountId(d, box) : mainAccount(d).id;
 }
+
+/** Savings and investment lines are the ones that can be tied to a dedicated bank account (spec 0007, RG1). */
+export const isSavingsBlock = (block: string): boolean => block === 'epa' || block === 'inv';
+
+/**
+ * Whether a savings/investment line can be tied to the given bank account (spec 0007, RG2, RG5):
+ * the account exists, is active, and differs from the account the line is paid from.
+ */
+export function canLinkAccount(d: BudgetData, line: Pick<Line, 'block' | 'accountId'>, accountId: string): boolean {
+  const target = d.accounts.find(a => a.id === accountId);
+  return isSavingsBlock(line.block) && !!target && !target.archived && accountIdOf(d, line.accountId) !== accountId;
+}
+
+/** Dedicated account of the savings/investment line `key` in month `m`, if any. */
+export function linkedAccountOfLine(d: BudgetData, m: MonthKey, key: string): string | undefined {
+  const md = d.months[m];
+  return md?.initialized ? md.lines.find(l => l.key === key && isSavingsBlock(l.block))?.linkedAccountId : undefined;
+}
+
+/** A withdrawal from a linked line cannot be credited to the line's own dedicated account (spec 0007, RG7). */
+export const isSavingsWithdrawalAllowed = (d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target' | 'accountId'>): boolean =>
+  t.type !== 'epa' || linkedAccountOfLine(d, t.month, t.target) !== accountIdOf(d, t.accountId);
