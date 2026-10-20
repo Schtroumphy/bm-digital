@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
 import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, isAccountInBudget, mainAccount } from '../../domain/bank';
+import { activeBankAccounts, defaultTransactionAccountId, isAccountInBudget } from '../../domain/bank';
 import { monthSummary } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
@@ -57,12 +57,12 @@ function EntryTab({ month }: { month: MonthKey }) {
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', amount: '', type: 'var', target: '', accountId: '' });
-  // Empty = the main account, so the default follows a change of main account.
-  const accountId = data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : mainAccount(data).id;
 
   const targets: [string, string][] =
     form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
+  // Until the user picks an account (form.accountId empty), « Payé avec » follows the payment mode of the chosen box (spec 0006, RG5).
+  const accountId = data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: form.type, month, target });
   const amount = parseAmount(form.amount) ?? 0;
   // Paid from an account out of the budget: the budget figures do not move.
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
@@ -102,7 +102,8 @@ function EntryTab({ month }: { month: MonthKey }) {
     update(d =>
       addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId }),
     );
-    setForm(f => ({ ...f, label: '', amount: '' }));
+    // Picking another account is a one-off: the next expense follows its box again.
+    setForm(f => ({ ...f, label: '', amount: '', accountId: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
