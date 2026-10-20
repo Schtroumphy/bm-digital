@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccountPicker } from '../components/AccountPicker';
+import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
 import { Toast } from '../components/Toast';
 import { TransferRoute } from '../components/TransferRoute';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount, setTransferDone } from '../../application/bankAccounts';
+import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { isOnMainAccount } from '../../domain/bank';
@@ -369,6 +371,7 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                 }
               >
                 <div className="line-name-wrap">
+                  {block === 'var' && <PayModePicker data={data} box={l} disabled={locked} onChange={patch => update(d => setLinePayment(d, month, l.key, patch))} />}
                   {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} hint={block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
                     {l.name}

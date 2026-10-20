@@ -544,6 +544,9 @@ input, button { font-family: inherit; }
 .acc-trigger.is-disabled { cursor: default; }
 .acc-menu { top: 22px; left: 0; width: 190px; }
 .acc-item { display: flex; align-items: center; gap: 8px; }
+.pay-menu { width: 230px; }
+.popmenu-label { padding: 6px 10px 3px; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
+.popmenu-sep { height: 1px; margin: 4px 6px; background: var(--hairline); }
 .line-name-wrap { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .line-name-wrap .line-name { flex: 1; min-width: 0; }
 .line-name-wrap .edit-wrap { flex: 1; min-width: 0; }

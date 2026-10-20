@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
+import { PayModePicker } from '../components/PayModePicker';
+import { setEnvelopePayment } from '../../application/payment';
 import { toneVars } from '../components/tone';
 import { envelopeAlerts } from '../../domain/budget';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
@@ -44,6 +46,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
   const alerts = envelopeAlerts(data, ledger, year, m0);
   const alloc = monthAlloc(data, month);
   const editable = !!data.months[month]?.initialized && !isMonthLocked(data, month);
+  const locked = isMonthLocked(data, month);
   const drawerEnv = data.envelopes.find(e => e.id === open);
 
   return (
@@ -77,6 +80,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
               <div className="env-card-head">
                 <span className="dot is-12" style={{ background: 'var(--t-base)' }} />
                 <span className="env-card-name">{e.name}</span>
+                <PayModePicker data={data} box={e} disabled={locked} onChange={patch => update(d => setEnvelopePayment(d, month, e.id, patch))} />
                 <div style={{ flex: 1 }} />
                 {alert && (
                   <div className="alert-pill">
