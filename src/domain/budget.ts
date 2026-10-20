@@ -1,4 +1,4 @@
-import { isLineInBudget, isTransactionInBudget } from './bank';
+import { isLineInBudget, isOnMainAccount, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, Ledger, monthAlloc, monthLines } from './ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from './types';
@@ -30,11 +30,37 @@ export function blockTotals(lines: Line[], block: BlockKey) {
 /** The month's lines that count in the budget figures: those of an out-of-budget account are left out (RG17). */
 export const budgetLines = (d: BudgetData, m: MonthKey): Line[] => monthLines(d, m).filter(l => isLineInBudget(d, l));
 
+/** The plan of the month: budgeted income − budgeted expenses (envelope allocations included) − budgeted savings. */
+function remainingToPlace(d: BudgetData, m: MonthKey): number {
+  const lines = budgetLines(d, m);
+  const b = (k: BlockKey) => blockTotals(lines, k).budget;
+  const allocSum = sum(Object.values(monthAlloc(d, m)));
+  return round2(b('rev') - (b('cre') + b('fix') + b('var') + allocSum) - (b('epa') + b('inv')));
+}
+
+/**
+ * Money the user can place now (RG1): the planned « Reste à placer », minus the
+ * budgets of income that does not land on the main account, plus the income
+ * gaps of the main account, minus what is paid into savings and investments
+ * beyond (or short of) their budget. Null for a month that is not initialized (RG9).
+ */
+export function availableReal(d: BudgetData, m: MonthKey): number | null {
+  if (!d.months[m]?.initialized) return null;
+  const lines = budgetLines(d, m);
+  const income = lines.filter(l => l.block === 'rev');
+  const elsewhere = sum(income.filter(l => !isOnMainAccount(d, l.accountId)).map(l => l.budget));
+  const mainGaps = sum(income.filter(l => isOnMainAccount(d, l.accountId)).map(l => lineGap(l) ?? 0));
+  const paidIn = sum(lines.filter(l => l.block === 'epa' || l.block === 'inv').map(l => lineGap(l) ?? 0));
+  return round2(remainingToPlace(d, m) - elsewhere + mainGaps - paidIn);
+}
+
 export interface MonthSummary {
   income: number;
   expenses: number;
   savings: number;
   remaining: number;
+  /** Money that can really be placed now; null while the month is not initialized. */
+  availableReal: number | null;
   /** Savings + investments + monthly envelope allocations, as budgeted. */
   grossSavings: number;
   /** Real savings over income, in %. */
@@ -68,7 +94,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
     income,
     expenses,
     savings,
-    remaining: round2(income - expenses - savings),
+    remaining: remainingToPlace(d, m),
+    availableReal: availableReal(d, m),
     grossSavings,
     savingsRate: rate(realSavings),
     grossSavingsRate: rate(grossSavings),

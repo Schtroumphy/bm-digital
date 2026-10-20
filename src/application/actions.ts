@@ -278,10 +278,13 @@ export function deleteTransaction(d: BudgetData, id: string): boolean {
   return true;
 }
 
-export function setStatement(d: BudgetData, m: MonthKey, key: string, v: number | null) {
+/** Sets (or clears with null) a savings/investment account statement. Refused (false) on a locked month. */
+export function setStatement(d: BudgetData, m: MonthKey, key: string, v: number | null): boolean {
+  if (isMonthLocked(d, m)) return false;
   const rec = (d.statements[m] ??= {});
   if (v === null) delete rec[key];
   else rec[key] = v;
+  return true;
 }
 
 /** CSV of the month's lines, in the French spreadsheet dialect (semicolons, decimal commas). */
