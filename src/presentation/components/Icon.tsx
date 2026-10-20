@@ -50,6 +50,7 @@ const ICONS = {
       <path d="M2 10h20" />
     </>
   ),
+  flag: <path d="M4 22V4M4 4h13l-2 4 2 4H4" />,
   save: <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8" />,
 } satisfies Record<string, ReactNode>;
 
