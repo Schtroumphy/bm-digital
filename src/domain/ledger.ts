@@ -45,7 +45,17 @@ export function monthRange(d: BudgetData, today = currentMonthKey()): MonthKey[]
 }
 
 export const isYearClosed = (d: BudgetData, year: number) => !!d.closes[year]?.closed;
-export const isMonthLocked = (d: BudgetData, m: MonthKey) => isYearClosed(d, parseMonth(m).year);
+/** The month itself was closed by the user (not through its year). */
+export const isMonthClosed = (d: BudgetData, m: MonthKey) => !!d.months[m]?.closed;
+/** Read-only: the month's year is closed, or the month itself is. */
+export const isMonthLocked = (d: BudgetData, m: MonthKey) => isYearClosed(d, parseMonth(m).year) || isMonthClosed(d, m);
+
+/** The closest initialized month before `m`, or null for the first month of the budget (months not created are skipped). */
+export function previousInitializedMonth(d: BudgetData, m: MonthKey): MonthKey | null {
+  if (d.firstMonth === null || compareMonths(m, d.firstMonth) <= 0) return null;
+  const before = Object.keys(d.months).filter(k => d.months[k].initialized && compareMonths(k, m) < 0);
+  return before.length ? before.sort().at(-1)! : null;
+}
 
 export const closeKey = (kind: 'acc' | 'env' | 'bank', id: string) => `${kind}:${id}`;
 
