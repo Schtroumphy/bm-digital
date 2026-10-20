@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { accountIdOf, activeBankAccounts, bankAccount } from '../../domain/bank';
+import { accountIdOf, activeBankAccounts, bankAccount, mainAccount } from '../../domain/bank';
 import type { BankAccount, BudgetData } from '../../domain/types';
 import { tone } from './tone';
 
@@ -28,9 +28,11 @@ export function AccountPicker({ data, accountId, showName, disabled, hint, onPic
   const [open, setOpen] = useState(false);
   const current = bankAccount(data, accountId);
   const currentId = accountIdOf(data, accountId);
+  // The main account is the default: its dot is hidden (shown on hover) to keep lines light.
+  const quiet = !showName && currentId === mainAccount(data).id;
   return (
     <span className="acc-picker" onClick={e => e.stopPropagation()}>
-      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}`} title={hint} onClick={disabled ? undefined : () => setOpen(o => !o)}>
+      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}${quiet ? ' is-quiet' : ''}`} title={hint} onClick={disabled ? undefined : () => setOpen(o => !o)}>
         <AccountDot account={current} />
         {showName && <span className="ellipsis">{current?.name ?? 'Inconnu'}</span>}
       </span>

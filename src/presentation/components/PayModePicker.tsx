@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CASH_ACCOUNT_ID, activeBankAccounts, bankAccount, resolveBoxAccountId } from '../../domain/bank';
+import { CASH_ACCOUNT_ID, activeBankAccounts, bankAccount, isOnMainAccount, resolveBoxAccountId } from '../../domain/bank';
 import type { BudgetData, PaymentSetting } from '../../domain/types';
 import type { PaymentPatch } from '../../application/payment';
 import { AccountDot } from './AccountPicker';
@@ -15,12 +15,13 @@ interface Props {
 
 /**
  * Chip of a box: the dot of the account its expenses go to (a banknote in cash
- * mode). Clicking it opens a menu with the payment mode and the assigned account.
+ * mode), hidden while it is the main account. Clicking it opens a menu with the payment mode and the assigned account.
  */
 export function PayModePicker({ data, box, disabled, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const cash = box.payMode === 'especes';
   const resolved = bankAccount(data, resolveBoxAccountId(data, box));
+  const quiet = !cash && isOnMainAccount(data, resolved?.id);
   // What « Virtuel » means for this box, whatever the current mode.
   const virtual = bankAccount(data, resolveBoxAccountId(data, { ...box, payMode: 'virtuel' }));
   const assigned = box.accountId ? data.accounts.find(a => a.id === box.accountId) : undefined;
@@ -33,7 +34,7 @@ export function PayModePicker({ data, box, disabled, onChange }: Props) {
 
   return (
     <span className="acc-picker" onClick={e => e.stopPropagation()}>
-      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}`} title={`Mode de paiement : ${cash ? 'Espèces' : resolved?.name ?? 'Inconnu'}`} onClick={disabled ? undefined : () => setOpen(o => !o)}>
+      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}${quiet ? ' is-quiet' : ''}`} title={`Mode de paiement : ${cash ? 'Espèces' : resolved?.name ?? 'Inconnu'}`} onClick={disabled ? undefined : () => setOpen(o => !o)}>
         {cash ? <Icon name="cash" size={13} stroke={2.2} /> : <AccountDot account={resolved} />}
       </span>
       {open && (
