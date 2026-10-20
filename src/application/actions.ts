@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, isSavingsWithdrawalAllowed, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual, varActualFromTx } from '../domain/budget';
 import { isMonthLocked } from '../domain/ledger';
@@ -87,6 +87,9 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   if (!isSetupMonthAllowed(d, m, today)) return false;
   const rows = draft.rows;
 
+  // The assistant has no source column for savings: they are paid from the main account, which cannot also be their dedicated one (RG2).
+  const mainId = rows.acc.find(a => a.isDefault)?.id ?? MAIN_ACCOUNT_ID;
+  const linkOf = (r: SetupRow) => (isValidSetupLink(r, mainId, rows.acc) ? { linkedAccountId: r.linkedAccountId } : {});
   const line = (block: BlockKey, r: SetupRow, section = ''): Line => ({
     key: r.id,
     block,
@@ -95,7 +98,10 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
     budget: r.amount,
     actual: null,
     ...(r.accountId ? { accountId: r.accountId } : {}),
+    // Dedicated account of a savings/investment line (spec 0007, RG16); only epa/inv rows carry it.
+    ...(block === 'epa' || block === 'inv' ? linkOf(r) : {}),
   });
+
   // A variable line's « Compte » column also holds « Espèces »: that is the cash mode, not an assigned account (spec 0006, RG9).
   const varLine = (r: SetupRow): Line => {
     const { accountId, ...rest } = line('var', r);
@@ -127,6 +133,12 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   d.envHistory[before] = Object.fromEntries(rows.env.map((r): [string, EnvHistory] => [r.id, { alloc: 0, spent: 0, balance: r.balance }]));
   if (d.firstMonth === null) d.firstMonth = m;
   return true;
+}
+
+/** A draft row's dedicated account is kept when it differs from the account paying the row and exists in the draft (spec 0007, RG2, RG16). */
+function isValidSetupLink(r: SetupRow, mainId: string, accountRows: SetupRow[]): boolean {
+  const id = r.linkedAccountId;
+  return !!id && id !== (r.accountId ?? mainId) && (id === CASH_ACCOUNT_ID || accountRows.some(a => a.id === id));
 }
 
 /** Bank accounts typed in the assistant. The main account and « Espèces » are always there, whatever was typed. */
@@ -237,12 +249,13 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
 }
 
 /**
- * Records a transaction; a variable expense also raises its line's actual. Refused (false) on a locked month.
+ * Records a transaction; a variable expense also raises its line's actual. Refused (false) on a locked month,
+ * or for a withdrawal credited to the dedicated account of its savings line (spec 0007, RG7).
  * Without an account, the transaction takes the one resolved from its box (spec 0006, RG3):
  * the account is written down, so a later change of the box does not move it (RG6).
  */
 export function addTransaction(d: BudgetData, input: Transaction): boolean {
-  if (isMonthLocked(d, input.month)) return false;
+  if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
   const t = input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   d.transactions.push(t);
   // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).

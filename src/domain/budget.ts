@@ -1,6 +1,6 @@
-import { isLineInBudget, isOnMainAccount, isTransactionInBudget } from './bank';
+import { isLineInBudget, isOnMainAccount, isSavingsBlock, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
-import { accounts, Ledger, monthAlloc, monthLines } from './ledger';
+import { accounts, isYearClosed, Ledger, monthAlloc, monthLines } from './ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from './types';
 
 /** Blocks where getting more than budgeted is favourable. */
@@ -67,6 +67,76 @@ export function availableReal(d: BudgetData, m: MonthKey): number | null {
   const mainGaps = sum(income.filter(l => isOnMainAccount(d, l.accountId)).map(l => lineGap(l) ?? 0));
   const paidIn = sum(lines.filter(l => l.block === 'epa' || l.block === 'inv').map(l => lineGap(l) ?? 0));
   return round2(remainingToPlace(d, m) - elsewhere + mainGaps - paidIn);
+}
+
+/**
+ * Budgets of the savings/investment lines that have no actual yet, month by month from `from` to `to`
+ * (months not initialized count 0), for the lines picked by `keep` (RG22bis: only these lines fall back to their budget).
+ */
+function pendingBudgets(d: BudgetData, ledger: Ledger, from: MonthKey, to: MonthKey, keep: (l: Line) => boolean): number {
+  let total = 0;
+  for (const k of ledger.months) {
+    if (compareMonths(k, from) < 0 || compareMonths(k, to) > 0) continue;
+    const md = d.months[k];
+    if (!md?.initialized) continue;
+    for (const l of md.lines) if (isSavingsBlock(l.block) && l.actual === null && keep(l)) total += l.budget;
+  }
+  return round2(total);
+}
+
+/** First month the estimate accumulates from: the first of the budget, or the January after the latest closed year up to `m` (RG22ter). */
+function accumulationStart(d: BudgetData, ledger: Ledger, m: MonthKey): MonthKey {
+  let start = ledger.months[0];
+  for (const k of ledger.months) {
+    if (compareMonths(k, m) > 0) break;
+    const { year, month } = parseMonth(k);
+    if (month === 0 && isYearClosed(d, year - 1)) start = k;
+  }
+  return start;
+}
+
+/**
+ * Estimated end-of-month balance shown for a savings/investment line (spec 0007, RG20 to RG23), with the
+ * key of what it measures: the dedicated bank account, or the line's own account when it has none.
+ * It is the real balance of the Ledger plus the budgets of the lines still without an actual, over every
+ * month since the account opened (or since the last closed year, or the last statement for a line without
+ * dedicated account). An actual replaces the budget of its month. Null when the month is not initialized
+ * or the dedicated account is not open yet. The Ledger itself is untouched.
+ */
+export function estimatedBalance(d: BudgetData, ledger: Ledger, m: MonthKey, l: Line): { subject: string; value: number } | null {
+  const md = d.months[m];
+  if (!md?.initialized || !isSavingsBlock(l.block)) return null;
+  const restart = accumulationStart(d, ledger, m);
+  if (l.linkedAccountId) {
+    const id = l.linkedAccountId;
+    const bank = ledger.bankMonth(id, m);
+    const opening = d.accounts.find(a => a.id === id)?.openingMonth;
+    if (!bank || !opening) return null;
+    const from = compareMonths(opening, restart) > 0 ? opening : restart;
+    return { subject: `bank:${id}`, value: round2(bank.balance + pendingBudgets(d, ledger, from, m, x => x.linkedAccountId === id)) };
+  }
+  const acc = ledger.accMonth(l.key, m);
+  if (!acc) return null;
+  // A statement restarts the line's balance: budgets up to its month no longer count.
+  let from = restart;
+  for (const k of ledger.months) {
+    if (compareMonths(k, m) > 0) break;
+    if (d.statements[k]?.[l.key] === undefined) continue;
+    // A statement only counts when it moves the starting point forward (a closed year may have restarted it later).
+    const next = addMonths(k, 1);
+    if (compareMonths(next, from) > 0) from = next;
+  }
+  return { subject: `line:${l.key}`, value: round2(acc.balance + pendingBudgets(d, ledger, from, m, x => x.key === l.key)) };
+}
+
+/** Sum of the estimated balances of a block's lines; an account shared by several lines counts once (RG24). */
+export function estimatedBalanceTotal(d: BudgetData, ledger: Ledger, m: MonthKey, block: BlockKey): number {
+  const bySubject = new Map<string, number>();
+  for (const l of monthLines(d, m).filter(x => x.block === block)) {
+    const e = estimatedBalance(d, ledger, m, l);
+    if (e) bySubject.set(e.subject, e.value);
+  }
+  return sum([...bySubject.values()]);
 }
 
 export interface MonthSummary {
