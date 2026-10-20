@@ -20,8 +20,8 @@ Le projet suit la **clean architecture**, les principes **SOLID** et **KISS**.
 ```
 src/
   main.tsx          racine de composition : choisit le repository et l'injecte
-  domain/           entités (types) et règles pures : ledger, budget, format, seed
-  application/      cas d'usage (actions) et ports (BudgetRepository)
+  domain/           entités (types) et règles pures : ledger, budget, format, empty, seed (tests)
+  application/      cas d'usage (actions, setup de l'assistant) et ports (BudgetRepository)
   infrastructure/   implémentations des ports : localRepository (Supabase à venir)
   presentation/     App, screens, components, state (store, ui), ds, app.css
 supabase/
@@ -69,7 +69,7 @@ flowchart LR
 
 ## 3. Modèle de domaine
 
-- Un seul agrégat sérialisable, `BudgetData` (version 1). Il contient le modèle de budget, les mois, les enveloppes, l'historique importé, les relevés de comptes, les transactions, les virements, le prévisionnel, les clôtures et les réglages.
+- Un seul agrégat sérialisable, `BudgetData` (version 1). `firstMonth` vaut `null` tant que l'assistant n'a pas créé le premier mois. Il contient le modèle de budget, les mois, les enveloppes, l'historique importé, les relevés de comptes, les transactions, les virements, le prévisionnel, les clôtures et les réglages.
 - Six blocs de budget : `rev`, `cre`, `fix`, `var`, `epa`, `inv`. Une `Line` a une `key` stable d'un mois à l'autre.
 - `Ledger` calcule mois par mois :
   - les soldes d'enveloppes : début + allocation − dépensé ;
@@ -97,7 +97,9 @@ sequenceDiagram
 ```
 
 - `StoreProvider` ne rend rien tant que le chargement n'est pas terminé.
-- Sans données, il utilise `initialData()`, injecté par `main.tsx` (`seedData`, chiffres de décembre 2026).
+- Sans données, il utilise `initialData()`, injecté par `main.tsx` : `emptyData` (budget vide, `firstMonth: null`). `seedData` (chiffres de décembre 2026) ne sert plus qu'aux tests.
+- Tant que `firstMonth` est `null`, l'application n'affiche que l'écran « Démarrage » (assistant en 8 étapes). `createFirstMonth` (`application/actions.ts`) crée le premier mois à partir du brouillon ; les soldes de départ sont stockés comme soldes de fin du mois précédent (ADR 0001).
+- Le brouillon de l'assistant vit dans `localStorage` (clé `budget-perso:setup-draft`), hors de `BudgetData` (ADR 0002).
 - La sauvegarde se déclenche à chaque changement de `data`, sans debounce, sur l'agrégat entier.
 - `presentation/state/ui.tsx` gère les menus contextuels et popovers, séparément des données.
 - L'écran actif et le mois courant sont un état local de `presentation/App.tsx`.
@@ -146,6 +148,8 @@ Le store et les écrans ne changent pas : on change le repository passé à `<St
 | 6 | Sync cible par diff par table | Écritures minimales sans modifier le store ni les actions. |
 | 7 | RLS par `user_id` | L'isolation des données est garantie par la base, pas par le client. |
 | 8 | CSS transcrit du prototype sur le design system Organic | Fidélité au design, pas de framework CSS. |
+| 9 | Soldes de départ = soldes de fin du mois précédent | Réutilise `statements` et `envHistory`, sans changer le schéma ([ADR 0001](adr/0001-soldes-de-depart-via-le-mois-precedent.md)). |
+| 10 | Brouillon de l'assistant en `localStorage`, hors `BudgetData` | État temporaire, une seule implémentation, pas de nouveau port ([ADR 0002](adr/0002-brouillon-de-l-assistant-en-local-storage.md)). |
 
 ## 7. Tests et qualité
 
@@ -157,7 +161,7 @@ Le store et les écrans ne changent pas : on change le repository passé à `<St
 
 ## 8. Roadmap et dette technique
 
-- Implémenter `SupabaseRepository` avec diff par table, et ajouter l'authentification.
+- Implémenter `SupabaseRepository` avec diff par table, et ajouter l'authentification. La migration rendant `settings.first_month` nullable (`firstMonth: null` côté domaine) est à écrire avec cette spec.
 - Migrer les données `localStorage` existantes vers Supabase.
 - Ajouter des tests d'UI et configurer un linter.
 - Ajouter un test de contrat réutilisable pour valider chaque implémentation de `BudgetRepository` (Liskov).
