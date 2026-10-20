@@ -64,7 +64,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   // Until the user picks an account (form.accountId empty), « Payé avec » follows the payment mode of the chosen box (spec 0006, RG5).
   const accountId = data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: form.type, month, target });
   const amount = parseAmount(form.amount) ?? 0;
-  // Paid from an account out of the budget: the budget figures do not move.
+  // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
 
   const s = monthSummary(data, ledger, month);
@@ -79,8 +79,8 @@ function EntryTab({ month }: { month: MonthKey }) {
     const varB = lines.filter(x => x.block === 'var').reduce((a, x) => a + x.budget, 0);
     const varR = lines.filter(x => x.block === 'var').reduce((a, x) => a + (x.actual ?? 0), 0);
     impact = [
-      [`${l.name} · réel`, `${money(cur)} → ${money(cur + budgetAmount)}`],
-      ['Restant des variables', `${money(varB - varR)} → ${money(varB - varR - budgetAmount)}`],
+      [`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`],
+      ['Restant des variables', `${money(varB - varR)} → ${money(varB - varR - amount)}`],
     ];
   } else if (target && form.type === 'env') {
     const e = data.envelopes.find(x => x.id === target)!;

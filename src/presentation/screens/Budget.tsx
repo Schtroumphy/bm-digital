@@ -11,7 +11,7 @@ import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { isOnMainAccount } from '../../domain/bank';
-import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
+import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineRemaining, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
@@ -346,13 +346,14 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
         <span>Nom</span>
         <span className="num pad">Budget</span>
         <span className="num pad">Réel</span>
-        <span className="num">Écart</span>
+        <span className="num">{block === 'var' ? 'Restant' : 'Écart'}</span>
       </div>
       {sections.map(sec => (
         <div key={sec.label}>
           {sec.label && <div className="block-section">{sec.label}</div>}
           {sec.lines.map(l => {
-            const gap = lineGap(l);
+            // A variable line shows what is left to spend; an empty actual shows the whole budget in grey (spec 0008, RG9, RG11).
+            const gap = block === 'var' ? lineRemaining(l) : lineGap(l);
             const rowEditing = !!editing?.endsWith(':' + l.key);
             const hist = hover === l.key && !rowEditing ? lineHistory(data, month, l.key) : null;
             return (
@@ -397,7 +398,7 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                     {l.actual === null ? '—' : money(l.actual)}
                   </EditableAmount>
                 </div>
-                <div className="num gap" style={{ color: gapColor(gap) }}>
+                <div className="num gap" style={{ color: gapColor(block === 'var' && l.actual === null ? null : gap) }}>
                   {gap === null ? '—' : gap === 0 ? money(0) : money(gap, true)}
                 </div>
                 {block === 'var' && (

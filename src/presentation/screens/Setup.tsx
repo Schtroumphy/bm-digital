@@ -19,6 +19,7 @@ import {
   type SetupListId,
   type SetupRow,
 } from '../../application/setup';
+import { IN_BUDGET_HINT } from '../components/hints';
 import { BANK_HUES, MAIN_ACCOUNT_ID } from '../../domain/bank';
 import { money, monthLabel, monthName, parseAmount, parseMonth, rawNumber, round2, sanitizeAmountInput } from '../../domain/format';
 import { newId, useStore } from '../state/store';
@@ -335,7 +336,7 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
                 if (c.field === 'main') return <div key={c.label} className={`accounts-radio${r.isDefault ? ' is-on' : ''}`} title="Compte principal" onClick={() => setDraft(d => setMainRow(d, r.id))} />;
                 if (c.field === 'inBudget')
                   return (
-                    <div key={c.label} className="su-kinds">
+                    <div key={c.label} className="su-kinds" title={IN_BUDGET_HINT}>
                       {([[true, 'Oui'], [false, 'Non']] as const).map(([v, label]) => (
                         <div key={label} className={`su-kind${(r.inBudget ?? true) === v ? ' is-on' : ''}`} onClick={() => set(r.id, { inBudget: v })}>{label}</div>
                       ))}

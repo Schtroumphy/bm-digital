@@ -17,6 +17,7 @@ import {
   unarchiveBankAccount,
 } from '../../application/bankAccounts';
 import { BANK_HUES } from '../../domain/bank';
+import { IN_BUDGET_HINT } from '../components/hints';
 import { money, monthLabel } from '../../domain/format';
 import { isMonthLocked } from '../../domain/ledger';
 import type { BankAccount, MonthKey } from '../../domain/types';
@@ -94,7 +95,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           <div
             className="su-kind is-on"
             style={{ ...toneVars(a.hue), cursor: locked ? 'default' : 'pointer', width: 'max-content' }}
-            title="Les opérations de ce compte comptent dans le budget du mois"
+            title={IN_BUDGET_HINT}
             onClick={locked ? undefined : () => update(d => setBankAccountInBudget(d, a.id, !a.inBudget))}
           >
             {a.inBudget ? 'oui' : 'non'}
