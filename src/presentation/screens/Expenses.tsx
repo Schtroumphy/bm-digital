@@ -1,19 +1,18 @@
 import { useState } from 'react';
+import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
 import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
 import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
+import { setTransactionAccount } from '../../application/bankAccounts';
+import { activeBankAccounts, isAccountInBudget, mainAccount } from '../../domain/bank';
 import { monthSummary } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
-import type { MonthKey, PaymentSource, TxType } from '../../domain/types';
+import type { MonthKey, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne' };
-const SOURCE_STYLE: Record<PaymentSource, { label: string; bg: string; ink: string }> = {
-  esp: { label: 'Espèces', bg: 'oklch(0.95 0.06 85)', ink: 'oklch(0.38 0.07 80)' },
-  vir: { label: 'Virtuel', bg: 'oklch(0.95 0.03 250)', ink: 'oklch(0.38 0.08 250)' },
-};
 
 export function ExpensesScreen({ month }: { month: MonthKey }) {
   const [tab, setTab] = useState<'saisie' | 'soldes'>('saisie');
@@ -23,7 +22,7 @@ export function ExpensesScreen({ month }: { month: MonthKey }) {
         {(
           [
             ['saisie', 'Saisie des dépenses'],
-            ['soldes', 'Soldes des comptes'],
+            ['soldes', 'Soldes épargnes'],
           ] as const
         ).map(([id, label]) => (
           <div key={id} className={`tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
@@ -57,12 +56,16 @@ function EntryTab({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; amount: string; type: TxType; target: string; source: PaymentSource }>({ label: '', amount: '', type: 'var', target: '', source: 'vir' });
+  const [form, setForm] = useState<{ label: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', amount: '', type: 'var', target: '', accountId: '' });
+  // Empty = the main account, so the default follows a change of main account.
+  const accountId = data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : mainAccount(data).id;
 
   const targets: [string, string][] =
     form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
   const amount = parseAmount(form.amount) ?? 0;
+  // Paid from an account out of the budget: the budget figures do not move.
+  const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
 
   const s = monthSummary(data, ledger, month);
   const txs = data.transactions.filter(t => t.month === month);
@@ -76,28 +79,28 @@ function EntryTab({ month }: { month: MonthKey }) {
     const varB = lines.filter(x => x.block === 'var').reduce((a, x) => a + x.budget, 0);
     const varR = lines.filter(x => x.block === 'var').reduce((a, x) => a + (x.actual ?? 0), 0);
     impact = [
-      [`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`],
-      ['Restant des variables', `${money(varB - varR)} → ${money(varB - varR - amount)}`],
+      [`${l.name} · réel`, `${money(cur)} → ${money(cur + budgetAmount)}`],
+      ['Restant des variables', `${money(varB - varR)} → ${money(varB - varR - budgetAmount)}`],
     ];
   } else if (target && form.type === 'env') {
     const e = data.envelopes.find(x => x.id === target)!;
     const spent = ledger.envMonth(e.id, month)?.spent ?? 0;
     impact = [
-      [`${e.name} · dépensé`, `${money(spent)} → ${money(spent + amount)}`],
-      ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - amount)}`],
+      [`${e.name} · dépensé`, `${money(spent)} → ${money(spent + budgetAmount)}`],
+      ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - budgetAmount)}`],
     ];
   } else if (target) {
     const out = round2(txs.filter(t => t.type === 'epa' && t.target === target).reduce((a, t) => a + t.amount, 0));
     impact = [
       [`${targetName('epa', target)} · sorties`, `${money(out)} → ${money(out + amount)}`],
-      ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - amount)}`],
+      ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - budgetAmount)}`],
     ];
   }
 
   const add = () => {
     if (!amount || amount < 0 || !target || locked) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, source: form.source }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId }),
     );
     setForm(f => ({ ...f, label: '', amount: '' }));
   };
@@ -145,11 +148,14 @@ function EntryTab({ month }: { month: MonthKey }) {
           </div>
         </div>
         <div>
-          <div className="field-label is-gap">Payé avec</div>
-          <div className="chips">
-            {(['vir', 'esp'] as const).map(src => (
-              <Chip key={src} on={form.source === src} onClick={() => setForm(f => ({ ...f, source: src }))}>
-                {SOURCE_STYLE[src].label}
+          <div className="field-label is-gap">{form.type === 'epa' ? 'Reçu sur' : 'Payé avec'}</div>
+          <div className="chips is-wrap">
+            {activeBankAccounts(data).map(a => (
+              <Chip key={a.id} on={accountId === a.id} onClick={() => setForm(f => ({ ...f, accountId: a.id }))}>
+                <span className="acc-item">
+                  <AccountDot account={a} />
+                  {a.name}
+                </span>
               </Chip>
             ))}
           </div>
@@ -187,7 +193,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             <span>Date</span>
             <span>Libellé</span>
             <span>Imputation</span>
-            <span>Moyen</span>
+            <span>Compte</span>
             <span className="num">Montant</span>
             <span />
           </div>
@@ -204,9 +210,7 @@ function EntryTab({ month }: { month: MonthKey }) {
                   <span className="ellipsis">{targetName(t.type, t.target)}</span>
                   <span className="tx-type">{TYPE_LABEL[t.type]}</span>
                 </span>
-                <span className="pill" style={{ background: SOURCE_STYLE[t.source].bg, color: SOURCE_STYLE[t.source].ink }}>
-                  {SOURCE_STYLE[t.source].label}
-                </span>
+                <AccountPicker data={data} accountId={t.accountId} showName disabled={locked} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
                 <b className="num">{money(t.amount)}</b>
                 {locked ? <span /> : (
                   <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>

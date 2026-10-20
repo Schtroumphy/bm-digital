@@ -1,0 +1,59 @@
+import { useState } from 'react';
+import { accountIdOf, activeBankAccounts, bankAccount } from '../../domain/bank';
+import type { BankAccount, BudgetData } from '../../domain/types';
+import { tone } from './tone';
+
+/** Round marker of a bank account, in its colour; the name is the tooltip. */
+export function AccountDot({ account }: { account?: BankAccount }) {
+  return <span className="dot is-10" title={account?.name} style={{ background: account ? tone(account.hue).base : 'rgba(32, 30, 29, 0.2)' }} />;
+}
+
+interface PickerProps {
+  data: BudgetData;
+  /** Account of the operation; absent = the main account. */
+  accountId?: string;
+  /** Also writes the account's name next to the dot. */
+  showName?: boolean;
+  disabled?: boolean;
+  onPick: (accountId: string) => void;
+}
+
+/**
+ * The account dot of a line or transaction. Clicking it opens a menu of the
+ * active accounts (an archived account only shows up as the current one).
+ */
+export function AccountPicker({ data, accountId, showName, disabled, onPick }: PickerProps) {
+  const [open, setOpen] = useState(false);
+  const current = bankAccount(data, accountId);
+  const currentId = accountIdOf(data, accountId);
+  return (
+    <span className="acc-picker" onClick={e => e.stopPropagation()}>
+      <span className={`acc-trigger${disabled ? ' is-disabled' : ''}`} onClick={disabled ? undefined : () => setOpen(o => !o)}>
+        <AccountDot account={current} />
+        {showName && <span className="ellipsis">{current?.name ?? 'Inconnu'}</span>}
+      </span>
+      {open && (
+        <>
+          <div className="backdrop" onClick={() => setOpen(false)} />
+          <div className="popmenu acc-menu">
+            {activeBankAccounts(data).map(a => (
+              <div
+                key={a.id}
+                className={`popmenu-item${a.id === currentId ? ' is-active' : ''}`}
+                onClick={() => {
+                  setOpen(false);
+                  onPick(a.id);
+                }}
+              >
+                <span className="acc-item">
+                  <AccountDot account={a} />
+                  {a.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}

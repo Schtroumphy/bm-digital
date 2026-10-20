@@ -4,6 +4,7 @@ import { addSuggested, emptyDraft, exampleDraft, parseDraft, setupSummary, updat
 import { linesWithoutActual, monthSummary } from '../domain/budget';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
+import { CASH_ACCOUNT_ID } from '../domain/bank';
 import { seedData } from '../domain/seed';
 
 const line = (d: ReturnType<typeof seedData>, m: string, key: string) => d.months[m].lines.find(l => l.key === key)!;
@@ -11,7 +12,7 @@ const line = (d: ReturnType<typeof seedData>, m: string, key: string) => d.month
 describe('actions', () => {
   it('a variable expense raises its line, and deleting it restores it', () => {
     const d = seedData();
-    addTransaction(d, { id: 'x', month: '2026-12', day: 3, label: 'Lidl', amount: 25.5, type: 'var', target: 'v-ali', source: 'vir' });
+    addTransaction(d, { id: 'x', month: '2026-12', day: 3, label: 'Lidl', amount: 25.5, type: 'var', target: 'v-ali' });
     expect(line(d, '2026-12', 'v-ali').actual).toBe(337.9);
     deleteTransaction(d, 'x');
     expect(line(d, '2026-12', 'v-ali').actual).toBe(312.4);
@@ -19,7 +20,7 @@ describe('actions', () => {
 
   it('envelope spending lowers real savings and the envelope balance', () => {
     const d = seedData();
-    addTransaction(d, { id: 'x', month: '2026-12', day: 3, label: 'Pharmacie', amount: 15, type: 'env', target: 'sante', source: 'esp' });
+    addTransaction(d, { id: 'x', month: '2026-12', day: 3, label: 'Pharmacie', amount: 15, type: 'env', target: 'sante', accountId: CASH_ACCOUNT_ID });
     const l = new Ledger(d, '2026-10');
     expect(monthSummary(d, l, '2026-12').realSavings).toBe(554);
     expect(l.envMonth('sante', '2026-12')!.balance).toBe(25);
@@ -27,7 +28,7 @@ describe('actions', () => {
 
   it('applying the model to a new month keeps expenses already recorded', () => {
     const d = seedData();
-    addTransaction(d, { id: 'x', month: '2027-01', day: 2, label: 'Courses', amount: 40, type: 'var', target: 'v-ali', source: 'vir' });
+    addTransaction(d, { id: 'x', month: '2027-01', day: 2, label: 'Courses', amount: 40, type: 'var', target: 'v-ali' });
     applyTemplate(d, '2027-01');
     expect(d.months['2027-01'].initialized).toBe(true);
     expect(line(d, '2027-01', 'v-ali').actual).toBe(40);
@@ -174,7 +175,7 @@ describe('initialisation du budget', () => {
   it('un brouillon dont l’étape est invalide est ignoré', () => {
     const ok = exampleDraft('2027-01', mkId);
     expect(parseDraft(JSON.parse(JSON.stringify(ok)))).not.toBeNull();
-    for (const step of [-1, 8, 1.5, Number.NaN]) expect(parseDraft({ ...ok, step })).toBeNull();
+    for (const step of [-1, 9, 1.5, Number.NaN]) expect(parseDraft({ ...ok, step })).toBeNull();
   });
 
   it('création sur un mois postérieur à firstMonth: le solde d’enveloppe saisi remplace le calculé', () => {

@@ -22,6 +22,15 @@ export function ClosingScreen({ year }: { year: number }) {
 
   const accs = accounts(data);
   const groups: { title: string; hue: number; icon: IconName; rows: { id: string; name: string; calc: number }[] }[] = [
+    // Bank accounts: archived ones stay while they have a balance to carry over.
+    {
+      title: 'Comptes bancaires',
+      hue: 200,
+      icon: 'card',
+      rows: data.accounts
+        .filter(a => ledger.bankMonth(a.id, dec) && (!a.archived || ledger.bankMonth(a.id, dec)!.balance !== 0))
+        .map(a => ({ id: closeKey('bank', a.id), name: a.name, calc: ledger.bankMonth(a.id, dec)!.balance })),
+    },
     { title: 'Comptes et épargnes', hue: 300, icon: 'bank', rows: accs.filter(a => a.block === 'epa').map(a => ({ id: closeKey('acc', a.key), name: a.name, calc: ledger.accMonth(a.key, dec)?.balance ?? 0 })) },
     { title: 'Enveloppes', hue: 280, icon: 'mail', rows: data.envelopes.map(e => ({ id: closeKey('env', e.id), name: e.name, calc: ledger.envMonth(e.id, dec)?.balance ?? 0 })) },
     { title: 'Investissements', hue: 250, icon: 'trend', rows: accs.filter(a => a.block === 'inv').map(a => ({ id: closeKey('acc', a.key), name: a.name, calc: ledger.accMonth(a.key, dec)?.balance ?? 0 })) },
@@ -51,7 +60,7 @@ export function ClosingScreen({ year }: { year: number }) {
     <div className="close-layout">
       <div className="close-main">
         <div className="intro">
-          Vérifie les soldes de chaque compte, enveloppe et investissement au 1er janvier {next}. Ils serviront de base de départ pour {next}. Clique sur un montant pour l’ajuster.
+          Vérifie les soldes de chaque compte bancaire, épargne, enveloppe et investissement au 1er janvier {next}. Ils serviront de base de départ pour {next}. Clique sur un montant pour l’ajuster.
         </div>
         {view.map(g => (
           <div key={g.title} className="panel-lg" style={toneVars(g.hue)}>

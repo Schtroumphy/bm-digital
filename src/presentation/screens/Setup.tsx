@@ -1,15 +1,17 @@
 import type { CSSProperties } from 'react';
 import { Icon, type IconName } from '../components/Icon';
-import { BAD, GOOD, HUE, toneVars } from '../components/tone';
+import { BAD, GOOD, HUE, tone, toneVars } from '../components/tone';
 import { createFirstMonth, isSetupMonthAllowed, setupMonths, willReplaceMonth } from '../../application/actions';
 import {
   addRow,
   addSuggested,
+  canRemoveRow,
   cashExceedsBalance,
   emptyDraft,
   exampleDraft,
   hasCashOverflow,
   removeRow,
+  setMainRow,
   setupSummary,
   updateRow,
   type SetupDraft,
@@ -17,6 +19,7 @@ import {
   type SetupListId,
   type SetupRow,
 } from '../../application/setup';
+import { BANK_HUES, MAIN_ACCOUNT_ID } from '../../domain/bank';
 import { money, monthLabel, monthName, parseAmount, parseMonth, rawNumber, round2, sanitizeAmountInput } from '../../domain/format';
 import { newId, useStore } from '../state/store';
 
@@ -25,8 +28,11 @@ type Field = 'amount' | 'balance' | 'cash';
 
 interface Column {
   label: string;
-  /** `name`: free text, `kind`: choice between chips, otherwise a money field. */
-  field: 'name' | 'kind' | Field;
+  /**
+   * `name`: free text, `kind`: choice between chips, `account`: bank account of the line,
+   * `color`, `main` and `inBudget`: the accounts list, otherwise a money field.
+   */
+  field: 'name' | 'kind' | 'account' | 'color' | 'main' | 'inBudget' | Field;
   options?: { value: SetupKind; label: string }[];
 }
 
@@ -44,23 +50,37 @@ interface ListConfig {
 }
 
 const NAME: Column = { label: 'Nom', field: 'name' };
+const ACCOUNT: Column = { label: 'Compte', field: 'account' };
 
 const LISTS: Record<SetupListId, ListConfig> = {
+  acc: {
+    label: 'Comptes', hue: 200, icon: 'card', help: 'Tes comptes bancaires avec leur solde au premier jour. Choisis le compte principal, et sors du budget ceux qui n’y comptent pas (Swile).',
+    emptyTitle: 'Aucun compte', emptyText: 'Le compte principal et Espèces existent toujours.',
+    add: 'Ajouter un compte',
+    cols: [
+      NAME,
+      { label: 'Couleur', field: 'color' },
+      { label: 'Solde au départ', field: 'balance' },
+      { label: 'Principal', field: 'main' },
+      { label: 'Dans le budget', field: 'inBudget' },
+    ],
+    main: 'balance',
+  },
   rev: {
     label: 'Revenus', hue: 150, icon: 'arrowDown', help: 'Les entrées d’argent attendues chaque mois.',
     emptyTitle: 'Aucun revenu pour le moment', emptyText: 'Ajoute ton salaire et les autres entrées récurrentes. Les montants se modifient chaque mois ensuite.',
-    add: 'Ajouter un revenu', cols: [NAME, { label: 'Montant mensuel', field: 'amount' }], main: 'amount',
+    add: 'Ajouter un revenu', cols: [NAME, ACCOUNT, { label: 'Montant mensuel', field: 'amount' }], main: 'amount',
   },
   cre: {
     label: 'Crédits et dettes', hue: 38, icon: 'card', help: 'Les mensualités en cours.',
     emptyTitle: 'Aucun crédit ni dette', emptyText: 'Ajoute chaque mensualité (crédits, assurances de prêt ou d’habitation). Passe cette étape si tu n’en as pas.',
-    add: 'Ajouter un crédit', cols: [NAME, { label: 'Mensualité', field: 'amount' }], main: 'amount',
+    add: 'Ajouter un crédit', cols: [NAME, ACCOUNT, { label: 'Mensualité', field: 'amount' }], main: 'amount',
   },
   dep: {
     label: 'Dépenses', hue: 38, icon: 'list', help: 'Budget mensuel de chaque dépense, fixe ou variable.',
     emptyTitle: 'Aucune dépense', emptyText: 'Les dépenses fixes sont identiques chaque mois. Les variables ont une enveloppe de budget dont on suit le restant.',
     add: 'Ajouter une dépense',
-    cols: [NAME, { label: 'Type', field: 'kind', options: [{ value: 'fix', label: 'Fixe' }, { value: 'var', label: 'Variable' }] }, { label: 'Budget mensuel', field: 'amount' }],
+    cols: [NAME, { label: 'Type', field: 'kind', options: [{ value: 'fix', label: 'Fixe' }, { value: 'var', label: 'Variable' }] }, ACCOUNT, { label: 'Budget mensuel', field: 'amount' }],
     main: 'amount',
   },
   epa: {
@@ -84,19 +104,21 @@ const LISTS: Record<SetupListId, ListConfig> = {
   },
 };
 
-/** The eight steps, in order. */
+/** The nine steps, in order. */
 const STEPS: { id: 'start' | SetupListId | 'fin'; label: string; hue: number }[] = [
   { id: 'start', label: 'Période', hue: 90 },
-  ...(['rev', 'cre', 'dep', 'epa', 'env', 'inv'] as SetupListId[]).map(id => ({ id, label: LISTS[id].label, hue: LISTS[id].hue })),
+  ...(['acc', 'rev', 'cre', 'dep', 'epa', 'env', 'inv'] as SetupListId[]).map(id => ({ id, label: LISTS[id].label, hue: LISTS[id].hue })),
   { id: 'fin', label: 'Récapitulatif', hue: 90 },
 ];
 const LAST = STEPS.length - 1;
 
 const INTRO = [
   { title: 'Lignes du budget', text: 'Revenus, crédits, dépenses fixes et variables avec leurs montants mensuels.', hue: HUE.rev },
-  { title: 'Soldes de départ', text: 'Épargnes, enveloppes et investissements tels qu’ils sont au premier jour.', hue: HUE.epa },
+  { title: 'Soldes de départ', text: 'Comptes, épargnes, enveloppes et investissements tels qu’ils sont au premier jour.', hue: HUE.epa },
   { title: 'Reste à placer', text: 'Calculé à la fin, avant de créer le budget du premier mois.', hue: 90 },
 ];
+
+const COL_WIDTH: Partial<Record<Column['field'], string>> = { name: 'minmax(0, 1fr)', kind: '130px', account: '170px', color: '150px', main: '90px', inBudget: '130px' };
 
 const sumField = (rows: SetupRow[], f: Field) => round2(rows.reduce((s, r) => s + r[f], 0));
 
@@ -165,6 +187,8 @@ export function SetupScreen({ draft, setDraft, onOpenBudget }: { draft: SetupDra
     const s = STEPS[i];
     if (s.id === 'start') return draft.step > 0;
     if (s.id === 'fin') return created;
+    // The accounts list is never empty: it counts as done once the user moved past it.
+    if (s.id === 'acc') return draft.step > i;
     return draft.rows[s.id].length > 0;
   };
 
@@ -259,10 +283,12 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
   const cfg = LISTS[list];
   const rows = draft.rows[list];
   const grid: CSSProperties = {
-    gridTemplateColumns: `${cfg.cols.map(c => (c.field === 'name' ? 'minmax(0, 1fr)' : c.field === 'kind' ? '130px' : '150px')).join(' ')} 30px`,
+    gridTemplateColumns: `${cfg.cols.map(c => COL_WIDTH[c.field] ?? '150px').join(' ')} 30px`,
   };
-  const moneyCols = cfg.cols.filter(c => c.field !== 'name' && c.field !== 'kind');
+  const textCols = ['name', 'kind', 'account', 'color', 'main', 'inBudget'];
+  const moneyCols = cfg.cols.filter(c => !textCols.includes(c.field));
   const set = (id: string, patch: Partial<Omit<SetupRow, 'id'>>) => setDraft(d => updateRow(d, list, id, patch));
+  const mainRowId = draft.rows.acc.find(a => a.isDefault)?.id ?? MAIN_ACCOUNT_ID;
 
   return (
     <div className="panel-lg" style={toneVars(cfg.hue)}>
@@ -277,7 +303,7 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
       {rows.length > 0 && (
         <>
           <div className="su-row su-cols" style={grid}>
-            {cfg.cols.map(c => <span key={c.label} className={c.field === 'name' || c.field === 'kind' ? undefined : 'is-right'}>{c.label}</span>)}
+            {cfg.cols.map(c => <span key={c.label} className={textCols.includes(c.field) ? undefined : 'is-right'}>{c.label}</span>)}
             <span />
           </div>
           {rows.map(r => (
@@ -292,9 +318,36 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
                       ))}
                     </div>
                   );
+                if (c.field === 'account')
+                  return (
+                    <select key={c.label} className="su-select" value={r.accountId ?? mainRowId} onChange={e => set(r.id, { accountId: e.target.value })}>
+                      {draft.rows.acc.map(a => <option key={a.id} value={a.id}>{a.name.trim() || 'Sans nom'}</option>)}
+                    </select>
+                  );
+                if (c.field === 'color')
+                  return (
+                    <div key={c.label} className="su-palette">
+                      {BANK_HUES.map(h => (
+                        <span key={h} className={`palette-dot${r.hue === h ? ' is-on' : ''}`} style={{ background: tone(h).base }} onClick={() => set(r.id, { hue: h })} />
+                      ))}
+                    </div>
+                  );
+                if (c.field === 'main') return <div key={c.label} className={`accounts-radio${r.isDefault ? ' is-on' : ''}`} title="Compte principal" onClick={() => setDraft(d => setMainRow(d, r.id))} />;
+                if (c.field === 'inBudget')
+                  return (
+                    <div key={c.label} className="su-kinds">
+                      {([[true, 'Oui'], [false, 'Non']] as const).map(([v, label]) => (
+                        <div key={label} className={`su-kind${(r.inBudget ?? true) === v ? ' is-on' : ''}`} onClick={() => set(r.id, { inBudget: v })}>{label}</div>
+                      ))}
+                    </div>
+                  );
                 return <MoneyInput key={c.label} value={r[c.field]} invalid={c.field === 'cash' && cashExceedsBalance(r)} onCommit={v => set(r.id, { [c.field]: v })} />;
               })}
-              <span className="icon-btn" title="Supprimer" onClick={() => setDraft(d => removeRow(d, list, r.id))}><Icon name="close" size={14} /></span>
+              {canRemoveRow(draft, list, r.id) ? (
+                <span className="icon-btn" title="Supprimer" onClick={() => setDraft(d => removeRow(d, list, r.id))}><Icon name="close" size={14} /></span>
+              ) : (
+                <span />
+              )}
             </div>
           ))}
           <div className="su-row su-total" style={grid}>
@@ -351,6 +404,7 @@ function RecapStep({ draft, created, onOpenBudget }: { draft: SetupDraft; create
       title: `Soldes au 1er ${first}`,
       hue: 300,
       items: [
+        { label: `Comptes bancaires (${draft.rows.acc.length})`, value: money(s.bankBalance) },
         { label: `Épargnes (${draft.rows.epa.length})`, value: money(s.savingsBalance) },
         { label: `Enveloppes (${draft.rows.env.length})`, value: money(s.envelopesBalance) },
         { label: `Investissements (${draft.rows.inv.length})`, value: money(s.investBalance) },

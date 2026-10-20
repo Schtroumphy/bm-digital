@@ -1,3 +1,4 @@
+import { defaultBankAccounts } from './bank';
 import type { BudgetData } from './types';
 
 /**
@@ -11,6 +12,7 @@ export function emptyData(): BudgetData {
     template: { lines: [], envAlloc: {} },
     months: {},
     envelopes: [],
+    accounts: defaultBankAccounts(),
     envHistory: {},
     statements: {},
     transactions: [],

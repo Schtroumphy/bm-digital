@@ -3,6 +3,7 @@ import { Icon, type IconName } from './components/Icon';
 import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
 import { useStore } from './state/store';
 import { useUi } from './state/ui';
+import { AccountsActions, AccountsScreen } from './screens/Accounts';
 import { BudgetScreen, BudgetActions } from './screens/Budget';
 import { ClosingScreen } from './screens/Closing';
 import { EnvelopesScreen } from './screens/Envelopes';
@@ -11,12 +12,13 @@ import { PlanningScreen } from './screens/Planning';
 import { SetupActions, SetupScreen } from './screens/Setup';
 import { useSetupDraft } from './state/setupDraft';
 
-export type Screen = 'budget' | 'dep' | 'env' | 'prevAnn' | 'setup' | 'close';
+export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'setup' | 'close';
 
 const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'budget', label: 'Budget', icon: 'budget' },
   { id: 'dep', label: 'Dépenses', icon: 'list' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
+  { id: 'comptes', label: 'Comptes', icon: 'bank' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
   { id: 'setup', label: 'Démarrage', icon: 'flag' },
   { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
@@ -28,6 +30,7 @@ const TITLES: Record<Screen, string> = {
   budget: 'Budget mensuel',
   dep: 'Dépenses et soldes',
   env: 'Enveloppes',
+  comptes: 'Comptes',
   prevAnn: 'Prévisionnel annuel',
   setup: 'Initialisation',
   close: 'Clôture de l’année',
@@ -145,12 +148,14 @@ export function App() {
           )}
           <div style={{ flex: 1 }} />
           {screen === 'budget' && <BudgetActions month={month} />}
+          {screen === 'comptes' && <AccountsActions month={month} />}
           {screen === 'setup' && <SetupActions setDraft={setDraft} />}
         </header>
 
         {screen === 'budget' && <BudgetScreen month={month} />}
         {screen === 'dep' && <ExpensesScreen month={month} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
+        {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
         {screen === 'setup' && (
           <SetupScreen

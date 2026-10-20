@@ -1,3 +1,4 @@
+import { BANK_HUES, CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { round2 } from '../domain/format';
 import type { MonthKey } from '../domain/types';
 
@@ -7,9 +8,11 @@ import type { MonthKey } from '../domain/types';
  * so it can be saved as JSON and tested without React.
  */
 
-/** The six editable lists of the assistant (steps 2 to 7). */
-export type SetupListId = 'rev' | 'cre' | 'dep' | 'epa' | 'env' | 'inv';
-export const SETUP_LISTS: SetupListId[] = ['rev', 'cre', 'dep', 'epa', 'env', 'inv'];
+/** The seven editable lists of the assistant (steps 2 to 8). */
+export type SetupListId = 'acc' | 'rev' | 'cre' | 'dep' | 'epa' | 'env' | 'inv';
+export const SETUP_LISTS: SetupListId[] = ['acc', 'rev', 'cre', 'dep', 'epa', 'env', 'inv'];
+/** Lists that can be left empty: the accounts list always has at least two lines. */
+const OPTIONAL_LISTS = SETUP_LISTS.filter(id => id !== 'acc');
 
 /** `fix`/`var` for expenses, `LT`/`MT` (long / moyen terme) for savings. */
 export type SetupKind = 'fix' | 'var' | 'LT' | 'MT';
@@ -25,10 +28,16 @@ export interface SetupRow {
   balance: number;
   /** Envelopes only: part of the balance held in cash. */
   cash: number;
+  /** Revenue, credit and expense rows: the bank account used; absent = the main account. */
+  accountId?: string;
+  /** Account rows only: colour, main account choice and « Dans le budget » setting. The starting balance is `balance`. */
+  hue?: number;
+  isDefault?: boolean;
+  inBudget?: boolean;
 }
 
 export interface SetupDraft {
-  /** Index of the current step, 0 to 7. */
+  /** Index of the current step, 0 to 8. */
   step: number;
   /** First month of the budget. */
   month: MonthKey;
@@ -41,8 +50,17 @@ export type IdFactory = (prefix: string) => string;
 export const emptyDraft = (month: MonthKey): SetupDraft => ({
   step: 0,
   month,
-  rows: { rev: [], cre: [], dep: [], epa: [], env: [], inv: [] },
+  rows: { acc: defaultAccountRows(), rev: [], cre: [], dep: [], epa: [], env: [], inv: [] },
 });
+
+/** The two accounts every draft starts with. */
+function defaultAccountRows(): SetupRow[] {
+  const base = { amount: 0, balance: 0, cash: 0, inBudget: true };
+  return [
+    { id: MAIN_ACCOUNT_ID, name: 'Compte principal', hue: BANK_HUES[0], isDefault: true, ...base },
+    { id: CASH_ACCOUNT_ID, name: 'Espèces', hue: BANK_HUES[1], isDefault: false, ...base },
+  ];
+}
 
 const DEFAULT_KIND: Partial<Record<SetupListId, SetupKind>> = { dep: 'fix', epa: 'LT' };
 
@@ -57,17 +75,34 @@ const newRow = (list: SetupListId, id: string, name = '', kind = DEFAULT_KIND[li
 
 const withRows = (d: SetupDraft, list: SetupListId, rows: SetupRow[]): SetupDraft => ({ ...d, rows: { ...d.rows, [list]: rows } });
 
+/** A new account row gets the next palette colour, inBudget « oui ». */
+const accountRow = (d: SetupDraft, id: string, name = ''): SetupRow => ({
+  ...newRow('acc', id, name),
+  hue: BANK_HUES.find(h => !d.rows.acc.some(r => r.hue === h)) ?? BANK_HUES[d.rows.acc.length % BANK_HUES.length],
+  isDefault: false,
+  inBudget: true,
+});
+
 export const addRow = (d: SetupDraft, list: SetupListId, mkId: IdFactory): SetupDraft =>
-  withRows(d, list, [...d.rows[list], newRow(list, mkId('s'))]);
+  withRows(d, list, [...d.rows[list], list === 'acc' ? accountRow(d, mkId('s')) : newRow(list, mkId('s'))]);
 
 export const updateRow = (d: SetupDraft, list: SetupListId, id: string, patch: Partial<Omit<SetupRow, 'id'>>): SetupDraft =>
   withRows(d, list, d.rows[list].map(r => (r.id === id ? { ...r, ...patch } : r)));
 
+/** « Espèces » and the main account cannot be removed from the accounts list (RG20). */
+export const canRemoveRow = (d: SetupDraft, list: SetupListId, id: string): boolean =>
+  list !== 'acc' || (id !== CASH_ACCOUNT_ID && !d.rows.acc.find(r => r.id === id)?.isDefault);
+
 export const removeRow = (d: SetupDraft, list: SetupListId, id: string): SetupDraft =>
-  withRows(d, list, d.rows[list].filter(r => r.id !== id));
+  canRemoveRow(d, list, id) ? withRows(d, list, d.rows[list].filter(r => r.id !== id)) : d;
+
+/** Single choice of the main account among the account rows. */
+export const setMainRow = (d: SetupDraft, id: string): SetupDraft =>
+  withRows(d, 'acc', d.rows.acc.map(r => ({ ...r, isDefault: r.id === id })));
 
 /** Suggested lines of each step (names only, amounts are left to fill in). */
 export const SUGGESTIONS: Record<SetupListId, { name: string; kind?: SetupKind }[]> = {
+  acc: [{ name: 'Swile' }],
   rev: ['Salaire', 'Prêt Manioune', 'Remboursement', 'Prime', 'Autres'].map(name => ({ name })),
   cre: ['CRN …108', 'CRN …109', 'CRN …110', 'Assurance de prêt', 'Ass. habitation', 'Ass. protection juridique'].map(name => ({ name })),
   dep: [
@@ -86,7 +121,9 @@ export const SUGGESTIONS: Record<SetupListId, { name: string; kind?: SetupKind }
 };
 
 export const addSuggested = (d: SetupDraft, list: SetupListId, mkId: IdFactory): SetupDraft =>
-  withRows(d, list, [...d.rows[list], ...SUGGESTIONS[list].map(s => newRow(list, mkId('s'), s.name, s.kind ?? DEFAULT_KIND[list]))]);
+  list === 'acc'
+    ? SUGGESTIONS.acc.reduce((acc, s) => withRows(acc, 'acc', [...acc.rows.acc, accountRow(acc, mkId('s'), s.name)]), d)
+    : withRows(d, list, [...d.rows[list], ...SUGGESTIONS[list].map(s => newRow(list, mkId('s'), s.name, s.kind ?? DEFAULT_KIND[list]))]);
 
 /** « Remplir avec un exemple »: a small complete budget, then step 2. */
 export function exampleDraft(month: MonthKey, mkId: IdFactory): SetupDraft {
@@ -95,6 +132,7 @@ export function exampleDraft(month: MonthKey, mkId: IdFactory): SetupDraft {
     step: 1,
     month,
     rows: {
+      acc: defaultAccountRows().map(a => ({ ...a, balance: a.id === MAIN_ACCOUNT_ID ? 1800 : 40 })),
       rev: [r('Salaire', { amount: 6500 }), r('Prêt Manioune', { amount: 800 }), r('Remboursement', { amount: 350 })],
       cre: [r('CRN …108', { amount: 612 }), r('CRN …109', { amount: 485 }), r('Assurance de prêt', { amount: 58 })],
       dep: [
@@ -136,6 +174,8 @@ export interface SetupSummary {
   envelopesBalance: number;
   investBalance: number;
   totalBalance: number;
+  /** Bank accounts, at their opening balance. */
+  bankBalance: number;
   /** Lists left without any line. */
   emptyLists: SetupListId[];
 }
@@ -151,6 +191,7 @@ export function setupSummary(d: SetupDraft): SetupSummary {
   const savingsBalance = sum(d.rows.epa, r => r.balance);
   const envelopesBalance = sum(d.rows.env, r => r.balance);
   const investBalance = sum(d.rows.inv, r => r.balance);
+  const bankBalance = sum(d.rows.acc, r => r.balance);
   return {
     income,
     credits,
@@ -161,8 +202,9 @@ export function setupSummary(d: SetupDraft): SetupSummary {
     savingsBalance,
     envelopesBalance,
     investBalance,
-    totalBalance: round2(savingsBalance + envelopesBalance + investBalance),
-    emptyLists: SETUP_LISTS.filter(id => d.rows[id].length === 0),
+    bankBalance,
+    totalBalance: round2(bankBalance + savingsBalance + envelopesBalance + investBalance),
+    emptyLists: OPTIONAL_LISTS.filter(id => d.rows[id].length === 0),
   };
 }
 
@@ -174,7 +216,7 @@ export const hasCashOverflow = (d: SetupDraft) => d.rows.env.some(cashExceedsBal
 export function parseDraft(raw: unknown): SetupDraft | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const o = raw as Partial<SetupDraft>;
-  if (typeof o.step !== 'number' || !Number.isInteger(o.step) || o.step < 0 || o.step > 7 || typeof o.month !== 'string' || typeof o.rows !== 'object' || o.rows === null) return null;
+  if (typeof o.step !== 'number' || !Number.isInteger(o.step) || o.step < 0 || o.step > 8 || typeof o.month !== 'string' || typeof o.rows !== 'object' || o.rows === null) return null;
   const rows = o.rows as Partial<Record<SetupListId, SetupRow[]>>;
   if (!SETUP_LISTS.every(id => Array.isArray(rows[id]))) return null;
   return o as SetupDraft;

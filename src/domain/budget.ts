@@ -1,3 +1,4 @@
+import { isLineInBudget, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, Ledger, monthAlloc, monthLines } from './ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from './types';
@@ -26,6 +27,9 @@ export function blockTotals(lines: Line[], block: BlockKey) {
   return { budget, actual, gap: round2(isIncomeLike(block) ? actual - budget : budget - actual) };
 }
 
+/** The month's lines that count in the budget figures: those of an out-of-budget account are left out (RG17). */
+export const budgetLines = (d: BudgetData, m: MonthKey): Line[] => monthLines(d, m).filter(l => isLineInBudget(d, l));
+
 export interface MonthSummary {
   income: number;
   expenses: number;
@@ -41,14 +45,14 @@ export interface MonthSummary {
 }
 
 export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthSummary {
-  const lines = monthLines(d, m);
+  const lines = budgetLines(d, m);
   const b = (k: BlockKey) => blockTotals(lines, k).budget;
   const allocSum = sum(Object.values(monthAlloc(d, m)));
   const income = b('rev');
   const expenses = round2(b('cre') + b('fix') + b('var') + allocSum);
   const savings = round2(b('epa') + b('inv'));
   const paidIn = round2(blockTotals(lines, 'epa').actual + blockTotals(lines, 'inv').actual);
-  const txs = d.transactions.filter(t => t.month === m);
+  const txs = d.transactions.filter(t => t.month === m && isTransactionInBudget(d, t));
   const envelopeSpent = sum(txs.filter(t => t.type === 'env').map(t => t.amount));
   const savingsOut = sum(txs.filter(t => t.type === 'epa').map(t => t.amount));
   const bal = (key: string) => ledger.accMonth(key, m)?.balance ?? 0;

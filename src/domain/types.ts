@@ -11,6 +11,8 @@ export interface Line {
   name: string;
   budget: number;
   actual: number | null;
+  /** Bank account the line goes through; absent = the main account. */
+  accountId?: string;
 }
 
 export type TemplateLine = Omit<Line, 'actual'>;
@@ -52,7 +54,6 @@ export interface EnvHistory {
  * - `epa`: withdrawal from a savings/investment account (target = line key)
  */
 export type TxType = 'var' | 'env' | 'epa';
-export type PaymentSource = 'vir' | 'esp';
 
 export interface Transaction {
   id: string;
@@ -62,13 +63,38 @@ export interface Transaction {
   amount: number;
   type: TxType;
   target: string;
-  source: PaymentSource;
+  /** Bank account the money comes from (`var`, `env`) or goes to (`epa`); absent = the main account. */
+  accountId?: string;
 }
+
+/** A bank account (principal, Espèces, Swile…). Not to be confused with savings/investment lines. */
+export interface BankAccount {
+  id: string;
+  name: string;
+  /** OKLCH hue of the account's dot. */
+  hue: number;
+  /** Exactly one account is the main one. */
+  isDefault: boolean;
+  /** Amount on the 1st day of `openingMonth`. */
+  openingBalance: number;
+  openingMonth: MonthKey;
+  /** False: the account's operations are left out of the monthly budget figures (still counted in its balance). */
+  inBudget: boolean;
+  archived: boolean;
+  /** The user has entered (or dismissed) the opening balance; drives the reminder banner. */
+  openingConfirmed?: boolean;
+}
+
+/** Where a transfer goes: another bank account, or a savings/investment line. Absent = informative only. */
+export type TransferTarget = { kind: 'bank'; id: string } | { kind: 'saving'; key: string };
 
 export interface Transfer {
   id: string;
   name: string;
   amount: number;
+  /** Bank account the transfer leaves. */
+  fromAccountId: string;
+  to?: TransferTarget;
 }
 
 export interface PlannedItem {
@@ -83,7 +109,7 @@ export interface PlannedItem {
 
 export interface YearClose {
   closed: boolean;
-  /** `acc:<lineKey>` or `env:<envelopeId>` → adjusted base for 1 January of the next year. */
+  /** `acc:<lineKey>`, `env:<envelopeId>` or `bank:<accountId>` → adjusted base for 1 January of the next year. */
   overrides: Record<string, number>;
 }
 
@@ -104,6 +130,8 @@ export interface BudgetData {
   template: Template;
   months: Record<MonthKey, MonthData>;
   envelopes: Envelope[];
+  /** Bank accounts: always one main account and the « Espèces » account. */
+  accounts: BankAccount[];
   envHistory: Record<MonthKey, Record<string, EnvHistory>>;
   /** Statement balance entered for an account (epa/inv line key) at the end of a month. */
   statements: Record<MonthKey, Record<string, number>>;

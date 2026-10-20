@@ -1,3 +1,4 @@
+import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from './bank';
 import { addMonths, monthKey, round2 } from './format';
 import type { BlockKey, BudgetData, EnvHistory, Line, MonthKey, Transaction, TxType } from './types';
 
@@ -71,7 +72,7 @@ export function seedData(): BudgetData {
   const transactions: Transaction[] = [];
   let txn = 0;
   const tx = (month: MonthKey, day: number, label: string, amount: number, type: TxType, target: string, source: 'vir' | 'esp' = 'vir') =>
-    transactions.push({ id: `t${++txn}`, month, day, label, amount: round2(amount), type, target, source });
+    transactions.push({ id: `t${++txn}`, month, day, label, amount: round2(amount), type, target, ...(source === 'esp' ? { accountId: CASH_ACCOUNT_ID } : {}) });
 
   // Imported history: envelopes Jan → Sep, statements Jul → Sep.
   const envHistory: BudgetData['envHistory'] = {};
@@ -136,6 +137,7 @@ export function seedData(): BudgetData {
     template,
     months,
     envelopes: ENVELOPES.map(({ id, name, hue, cash }) => ({ id, name, hue, cash })),
+    accounts: defaultBankAccounts('2026-10'),
     envHistory,
     statements,
     transactions,
@@ -143,7 +145,7 @@ export function seedData(): BudgetData {
       { id: 'bou', name: 'Boursorama', amount: 360 }, { id: 'ce', name: 'Caisse d’épargne', amount: 400 }, { id: 'lyd', name: 'Lydia', amount: 100 },
       { id: 'ram', name: 'Ramify', amount: 100 }, { id: 'icm', name: 'Interne CM', amount: 0 }, { id: 'bd', name: 'Bourse Direct', amount: 0 },
       { id: 'trr', name: 'Trade Republic', amount: 0 }, { id: 'esp', name: 'Espèces', amount: 0 }, { id: 'cm', name: 'Crédit Mutuel', amount: 0 },
-    ],
+    ].map(t => ({ ...t, fromAccountId: MAIN_ACCOUNT_ID })),
     planned: PLANNED.map(([month, label, amount, envelopeId], i) => ({ id: `p${i}`, year: 2026, month, label, amount, envelopeId })),
     closes: { 2026: { closed: false, overrides: { 'acc:e-vc': 300 } } },
     settings: { emergencyAccounts: ['e-la', 'e-ld'], emergencyTarget: 22950, investTarget: 20000, savingsRateTarget: 60 },
