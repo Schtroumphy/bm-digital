@@ -161,8 +161,8 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
           </div>
           <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
           <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
-          <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.savings)} sub={'Réelle : ' + money(s.realSavings)} />
-          <Kpi label="Taux d’épargne" hue={HUE.obj} value={percent(s.savingsRate)} />
+          <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.grossSavings)} sub={'Réelle : ' + money(s.realSavings)} />
+          <Kpi label="Taux d’épargne" hue={HUE.obj} value={percent(s.savingsRate)} sub={'Brut : ' + percent(s.grossSavingsRate)} />
           <div className="panel kpi emergency">
             <div className="emergency-head">
               <span className="kpi-label">Fond de secours</span>
