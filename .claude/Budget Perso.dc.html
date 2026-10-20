@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/organic-032e2390-b7c6-4bc4-8ad6-d59cbb5009ff/styles.css">
+<script src="_ds/organic-032e2390-b7c6-4bc4-8ad6-d59cbb5009ff/_ds_bundle.js"></script>
+<style>body{margin:0;background:#faf8f4}a{color:oklch(0.45 0.12 300)}a:hover{color:oklch(0.35 0.12 300)}input{font-family:inherit}button{font-family:inherit}</style>
+</helmet>
+<div style="position:relative;width:1440px;min-height:900px;display:flex;background:#faf8f4;font-family:var(--font-body),system-ui,sans-serif;color:#201e1d;font-size:12.5px;font-variant-numeric:tabular-nums;line-height:1.3">
+
+<!-- SIDEBAR -->
+<div style="width:78px;flex:none;border-right:1px solid rgba(32,30,29,.07);background:#fff;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 0">
+  <div style="width:38px;height:38px;border-radius:12px;background:oklch(0.93 0.05 300);color:oklch(0.38 0.1 300);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;margin-bottom:14px">b</div>
+  <sc-for list="{{ nav }}" as="n" hint-placeholder-count="6">
+    <div data-s="{{ n.id }}" onClick="{{ goScreen }}" title="{{ n.title }}" style="{{ n.box }}">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.icon }}"></path></svg>
+      <span style="font-size:10.5px;font-weight:600">{{ n.label }}</span>
+    </div>
+  </sc-for>
+</div>
+
+<!-- MAIN -->
+<div style="flex:1;min-width:0;padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px">
+
+  <!-- HEADER -->
+  <div style="display:flex;align-items:center;gap:14px;height:40px">
+    <div style="font-size:23px;font-weight:800;letter-spacing:-.02em">{{ title }}</div>
+    <sc-if value="{{ showMonth }}" hint-placeholder-val="{{ true }}">
+    <div style="position:relative;display:flex;align-items:center;gap:2px;background:#fff;border:1px solid rgba(32,30,29,.09);border-radius:999px;padding:3px;margin-left:10px">
+      <div onClick="{{ prevMonth }}" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:oklch(0.95 0.03 300)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></div>
+      <div onClick="{{ toggleMenu }}" style="display:flex;align-items:center;gap:6px;padding:0 10px;height:28px;cursor:pointer;font-weight:700;font-size:13.5px;min-width:120px;justify-content:center">{{ monthLabel }}<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div>
+      <div onClick="{{ nextMonth }}" style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:oklch(0.95 0.03 300)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+      <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;top:40px;left:34px;width:170px;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(32,30,29,.16);border:1px solid rgba(32,30,29,.07);padding:5px;z-index:60">
+        <sc-for list="{{ monthList }}" as="m" hint-placeholder-count="5">
+          <div data-i="{{ m.i }}" onClick="{{ pickMonth }}" style="{{ m.st }}"><span>{{ m.label }}</span><span style="font-size:10.5px;opacity:.6">{{ m.tag }}</span></div>
+        </sc-for>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+    <sc-if value="{{ showYear }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:2px;background:#fff;border:1px solid rgba(32,30,29,.09);border-radius:999px;padding:3px;margin-left:10px">
+      <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></div>
+      <div style="padding:0 14px;font-weight:700;font-size:13.5px">Année 2026</div>
+      <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+    </div>
+    </sc-if>
+    <div style="flex:1"></div>
+    <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ suClear }}" style="display:flex;align-items:center;padding:0 12px;height:32px;border-radius:999px;color:rgba(32,30,29,.62);cursor:pointer;font-weight:600" style-hover="background:rgba(32,30,29,.05)">Tout vider</div>
+      <div onClick="{{ suExample }}" style="display:flex;align-items:center;gap:7px;padding:0 14px;height:34px;border-radius:999px;background:#fff;border:1px solid rgba(32,30,29,.12);font-weight:700;cursor:pointer" style-hover="background:oklch(0.96 0.03 300)">Remplir avec un exemple</div>
+    </sc-if>
+    <sc-if value="{{ isBudget }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:6px;padding:0 10px;height:32px;border-radius:999px;color:rgba(32,30,29,.62);cursor:pointer;font-weight:600" style-hover="background:rgba(32,30,29,.05)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V6a2 2 0 0 1 2-2h10"></path></svg>Dupliquer / appliquer le modèle</div>
+      <div style="display:flex;align-items:center;gap:7px;padding:0 14px;height:34px;border-radius:999px;background:#fff;border:1px solid rgba(32,30,29,.12);font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(32,30,29,.05)" style-hover="background:oklch(0.96 0.03 300)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>Exporter CSV</div>
+    </sc-if>
+  </div>
+
+  <!-- UNINIT BANNER -->
+  <sc-if value="{{ uninit }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:14px;background:oklch(0.96 0.045 90);border:1px solid oklch(0.87 0.09 90)">
+    <div style="width:32px;height:32px;border-radius:10px;background:oklch(0.9 0.09 90);color:oklch(0.38 0.08 80);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 6h18v15H3zM3 10h18"></path></svg></div>
+    <div style="flex:1"><div style="font-weight:700;font-size:14px;color:oklch(0.3 0.06 80)">{{ monthLabel }} n’est pas encore initialisé</div><div style="color:oklch(0.38 0.06 80)">Appliquez le modèle de budget pour créer les lignes du mois avec les montants prévus.</div></div>
+    <div onClick="{{ applyModel }}" style="padding:0 16px;height:34px;display:flex;align-items:center;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer">Appliquer le modèle de budget</div>
+  </div>
+  </sc-if>
+
+  <!-- ============ SCREEN 1 ============ -->
+  <sc-if value="{{ isBudget }}" hint-placeholder-val="{{ true }}">
+  <div style="{{ gridWrap }}">
+    <!-- SUMMARY BAND -->
+    <div style="display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1fr 1.7fr;gap:16px;height:76px">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:10px 14px;display:flex;flex-direction:column;justify-content:center;background-image:linear-gradient(135deg,oklch(0.97 0.025 300),#fff 70%)">
+        <div style="font-size:11.5px;font-weight:600;color:rgba(32,30,29,.62)">Reste à placer</div>
+        <div style="font-size:28px;font-weight:800;letter-spacing:-.025em;color:oklch(0.36 0.12 300)">{{ s.reste }}</div>
+      </div>
+      <sc-for list="{{ s.kpis }}" as="k" hint-placeholder-count="4">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:10px 14px;display:flex;flex-direction:column;justify-content:center">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:rgba(32,30,29,.62)"><span style="width:8px;height:8px;border-radius:50%;background:{{ k.dot }}"></span>{{ k.label }}</div>
+        <div style="font-size:21px;font-weight:700;letter-spacing:-.02em;line-height:1.15">{{ k.val }}</div>
+        <sc-if value="{{ k.sub }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;font-weight:600;color:{{ k.subColor }}">{{ k.sub }}</div></sc-if>
+      </div>
+      </sc-for>
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:7px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:11.5px;font-weight:600;color:rgba(32,30,29,.62)">Fond de secours</span><span style="font-weight:700;color:oklch(0.4 0.1 190)">60,8 %</span></div>
+        <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">13 950 € <span style="font-weight:500;color:rgba(32,30,29,.55)">/ 22 950 €</span></div>
+        <div style="height:7px;border-radius:99px;background:oklch(0.94 0.03 190)"><div style="width:60.8%;height:100%;border-radius:99px;background:oklch(0.75 0.11 190)"></div></div>
+      </div>
+    </div>
+
+    <!-- GRID -->
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 16px;margin-top:12px;align-items:stretch">
+
+      <!-- COL 1 -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ col1 }}" as="blk" hint-placeholder-count="2">
+        <div style="flex:1 1 auto;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);display:flex;flex-direction:column;position:relative">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:{{ blk.bg }};border-radius:13px 13px 0 0;border-bottom:1px solid {{ blk.line }}">
+            <div style="width:22px;height:22px;border-radius:7px;background:#fff;color:{{ blk.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ blk.icon }}"></path></svg></div>
+            <div style="font-weight:700;font-size:13.5px;color:{{ blk.ink }}">{{ blk.title }}</div><div style="flex:1"></div>
+            <sc-if value="{{ blk.strip }}" hint-placeholder-val="{{ false }}"><div style="padding:2px 9px;border-radius:99px;background:#fff;font-weight:700;font-size:11.5px;color:{{ blk.stripColor }}">{{ blk.stripLabel }} {{ blk.stripVal }}</div></sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;padding:6px 14px 2px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Nom</span><span style="text-align:right;padding-right:4px">Budget</span><span style="text-align:right;padding-right:4px">Réel</span><span style="text-align:right">Écart</span></div>
+          <sc-for list="{{ blk.sections }}" as="sec" hint-placeholder-count="1">
+            <sc-if value="{{ sec.label }}" hint-placeholder-val="{{ false }}"><div style="padding:6px 14px 1px;font-size:11px;font-weight:700;color:{{ blk.ink }}">{{ sec.label }}</div></sc-if>
+            <sc-for list="{{ sec.rows }}" as="row" hint-placeholder-count="5">
+              <div data-id="{{ row.id }}" onContextMenu="{{ openCtx }}" onMouseEnter="{{ enter }}" onMouseLeave="{{ leave }}" style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;align-items:center;height:{{ rowH }}px;padding:0 14px" style-hover="background:rgba(32,30,29,.025)">
+                <div title="{{ row.name }}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ row.name }}</div>
+                <div style="position:relative">
+                  <sc-if value="{{ row.editB }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ row.id }}" data-f="b" data-edit="1" data-v="{{ row.bRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ blk.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ blk.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:26px;right:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+                  <sc-if value="{{ row.notEditB }}" hint-placeholder-val="{{ true }}"><div data-id="{{ row.id }}" data-f="b" onClick="{{ startEdit }}" style="text-align:right;padding:2px 5px;border-radius:6px;cursor:text" style-hover="background:rgba(32,30,29,.06)">{{ row.b }}</div></sc-if>
+                </div>
+                <div style="position:relative">
+                  <sc-if value="{{ row.editR }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ row.id }}" data-f="r" data-edit="1" data-v="{{ row.rRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ blk.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ blk.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:26px;right:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+                  <sc-if value="{{ row.notEditR }}" hint-placeholder-val="{{ true }}"><div data-id="{{ row.id }}" data-f="r" onClick="{{ startEdit }}" style="text-align:right;padding:2px 5px;border-radius:6px;cursor:text;color:{{ row.rColor }}" style-hover="background:rgba(32,30,29,.06)">{{ row.r }}</div></sc-if>
+                </div>
+                <div style="text-align:right;font-weight:600;color:{{ row.ec }}">{{ row.e }}</div>
+                <sc-if value="{{ row.showBar }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:14px;right:14px;bottom:1px;height:3px;border-radius:9px;background:rgba(32,30,29,.06)"><div style="width:{{ row.bw }}%;height:100%;border-radius:9px;background:{{ row.barColor }}"></div></div></sc-if>
+                <sc-if value="{{ row.pop }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:16px;top:25px;z-index:50;background:#fff;border:1px solid rgba(32,30,29,.08);border-radius:11px;box-shadow:0 12px 32px rgba(32,30,29,.18);padding:8px 12px;width:190px;display:flex;flex-direction:column;gap:4px">
+                  <div style="font-weight:700;font-size:12px">{{ row.name }}</div>
+                  <div style="display:flex;justify-content:space-between"><span style="color:rgba(32,30,29,.6)">Cumul</span><b>{{ row.cumul }}</b></div>
+                  <div style="display:flex;justify-content:space-between"><span style="color:rgba(32,30,29,.6)">Solde mois préc.</span><b>{{ row.prev }}</b></div>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </sc-for>
+          <div style="flex:1"></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;align-items:center;height:30px;padding:0 14px;border-top:1px solid rgba(32,30,29,.07);font-weight:700;font-size:12px">
+            <div data-b="{{ blk.key }}" onClick="{{ addRow }}" title="Ajouter une ligne" style="display:flex;align-items:center;gap:4px;cursor:pointer;color:{{ blk.ink }}"><span style="width:20px;height:20px;border-radius:7px;background:{{ blk.bg }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span><span style="font-weight:600;font-size:11.5px">Ajouter</span></div>
+            <div style="text-align:right;padding-right:5px">{{ blk.tb }}</div><div style="text-align:right;padding-right:5px">{{ blk.tr }}</div><div style="text-align:right;color:{{ blk.tec }}">{{ blk.te }}</div>
+          </div>
+        </div>
+        </sc-for>
+        <!-- OBJECTIFS -->
+        <div style="flex:1 1 auto;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:oklch(0.965 0.03 190);border-radius:13px 13px 0 0;border-bottom:1px solid oklch(0.85 0.07 190)">
+            <div style="width:22px;height:22px;border-radius:7px;background:#fff;color:oklch(0.38 0.08 190);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle></svg></div>
+            <div style="font-weight:700;font-size:13.5px;color:oklch(0.38 0.08 190)">Objectifs annuels</div>
+          </div>
+          <div style="padding:8px 14px 10px;display:flex;flex-direction:column;gap:10px;flex:1;justify-content:space-around">
+            <sc-for list="{{ goals }}" as="g" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;align-items:center;gap:6px"><span style="font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.n }}</span><span style="padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:700;background:{{ g.sbg }};color:{{ g.sink }}">{{ g.status }}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11.5px"><span style="color:rgba(32,30,29,.62)">{{ g.v }}</span><b>{{ g.p }}</b></div>
+                <div style="height:6px;border-radius:99px;background:oklch(0.95 0.025 190)"><div style="width:{{ g.w }}%;height:100%;border-radius:99px;background:{{ g.bar }}"></div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- COL 2 -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ col2 }}" as="blk" hint-placeholder-count="2">
+        <div style="flex:1 1 auto;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);display:flex;flex-direction:column;position:relative">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:{{ blk.bg }};border-radius:13px 13px 0 0;border-bottom:1px solid {{ blk.line }}">
+            <div style="width:22px;height:22px;border-radius:7px;background:#fff;color:{{ blk.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ blk.icon }}"></path></svg></div>
+            <div style="font-weight:700;font-size:13.5px;color:{{ blk.ink }}">{{ blk.title }}</div><div style="flex:1"></div>
+            <sc-if value="{{ blk.strip }}" hint-placeholder-val="{{ false }}"><div style="padding:2px 9px;border-radius:99px;background:#fff;font-weight:700;font-size:11.5px;color:{{ blk.stripColor }}">{{ blk.stripLabel }} {{ blk.stripVal }}</div></sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;padding:6px 14px 2px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Nom</span><span style="text-align:right;padding-right:4px">Budget</span><span style="text-align:right;padding-right:4px">Réel</span><span style="text-align:right">Écart</span></div>
+          <sc-for list="{{ blk.sections }}" as="sec" hint-placeholder-count="1">
+            <sc-if value="{{ sec.label }}" hint-placeholder-val="{{ false }}"><div style="padding:6px 14px 1px;font-size:11px;font-weight:700;color:{{ blk.ink }}">{{ sec.label }}</div></sc-if>
+            <sc-for list="{{ sec.rows }}" as="row" hint-placeholder-count="5">
+              <div data-id="{{ row.id }}" onContextMenu="{{ openCtx }}" onMouseEnter="{{ enter }}" onMouseLeave="{{ leave }}" style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;align-items:center;height:{{ rowH }}px;padding:0 14px" style-hover="background:rgba(32,30,29,.025)">
+                <div title="{{ row.name }}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ row.name }}</div>
+                <div style="position:relative">
+                  <sc-if value="{{ row.editB }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ row.id }}" data-f="b" data-edit="1" data-v="{{ row.bRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ blk.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ blk.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:26px;right:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+                  <sc-if value="{{ row.notEditB }}" hint-placeholder-val="{{ true }}"><div data-id="{{ row.id }}" data-f="b" onClick="{{ startEdit }}" style="text-align:right;padding:2px 5px;border-radius:6px;cursor:text" style-hover="background:rgba(32,30,29,.06)">{{ row.b }}</div></sc-if>
+                </div>
+                <div style="position:relative">
+                  <sc-if value="{{ row.editR }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ row.id }}" data-f="r" data-edit="1" data-v="{{ row.rRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ blk.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ blk.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:26px;right:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+                  <sc-if value="{{ row.notEditR }}" hint-placeholder-val="{{ true }}"><div data-id="{{ row.id }}" data-f="r" onClick="{{ startEdit }}" style="text-align:right;padding:2px 5px;border-radius:6px;cursor:text;color:{{ row.rColor }}" style-hover="background:rgba(32,30,29,.06)">{{ row.r }}</div></sc-if>
+                </div>
+                <div style="text-align:right;font-weight:600;color:{{ row.ec }}">{{ row.e }}</div>
+                <sc-if value="{{ row.showBar }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:14px;right:14px;bottom:1px;height:3px;border-radius:9px;background:rgba(32,30,29,.06)"><div style="width:{{ row.bw }}%;height:100%;border-radius:9px;background:{{ row.barColor }}"></div></div></sc-if>
+                <sc-if value="{{ row.pop }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:16px;top:25px;z-index:50;background:#fff;border:1px solid rgba(32,30,29,.08);border-radius:11px;box-shadow:0 12px 32px rgba(32,30,29,.18);padding:8px 12px;width:190px;display:flex;flex-direction:column;gap:4px">
+                  <div style="font-weight:700;font-size:12px">{{ row.name }}</div>
+                  <div style="display:flex;justify-content:space-between"><span style="color:rgba(32,30,29,.6)">Cumul</span><b>{{ row.cumul }}</b></div>
+                  <div style="display:flex;justify-content:space-between"><span style="color:rgba(32,30,29,.6)">Solde mois préc.</span><b>{{ row.prev }}</b></div>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </sc-for>
+          <div style="flex:1"></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;align-items:center;height:30px;padding:0 14px;border-top:1px solid rgba(32,30,29,.07);font-weight:700;font-size:12px">
+            <div data-b="{{ blk.key }}" onClick="{{ addRow }}" title="Ajouter une ligne" style="display:flex;align-items:center;gap:4px;cursor:pointer;color:{{ blk.ink }}"><span style="width:20px;height:20px;border-radius:7px;background:{{ blk.bg }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span><span style="font-weight:600;font-size:11.5px">Ajouter</span></div>
+            <div style="text-align:right;padding-right:5px">{{ blk.tb }}</div><div style="text-align:right;padding-right:5px">{{ blk.tr }}</div><div style="text-align:right;color:{{ blk.tec }}">{{ blk.te }}</div>
+          </div>
+        </div>
+        </sc-for>
+              </div>
+
+      <!-- COL 3 -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ col3 }}" as="blk" hint-placeholder-count="2">
+        <div style="flex:1 1 auto;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);display:flex;flex-direction:column;position:relative">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:{{ blk.bg }};border-radius:13px 13px 0 0;border-bottom:1px solid {{ blk.line }}">
+            <div style="width:22px;height:22px;border-radius:7px;background:#fff;color:{{ blk.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ blk.icon }}"></path></svg></div>
+            <div style="font-weight:700;font-size:13.5px;color:{{ blk.ink }}">{{ blk.title }}</div><div style="flex:1"></div>
+            <sc-if value="{{ blk.strip }}" hint-placeholder-val="{{ false }}"><div style="padding:2px 9px;border-radius:99px;background:#fff;font-weight:700;font-size:11.5px;color:{{ blk.stripColor }}">{{ blk.stripLabel }} {{ blk.stripVal }}</div></sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;padding:6px 14px 2px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Nom</span><span style="text-align:right;padding-right:4px">Budget</span><span style="text-align:right;padding-right:4px">Réel</span><span style="text-align:right">Écart</span></div>
+          <sc-for list="{{ blk.sections }}" as="sec" hint-placeholder-count="1">
+            <sc-if value="{{ sec.label }}" hint-placeholder-val="{{ false }}"><div style="padding:6px 14px 1px;font-size:11px;font-weight:700;color:{{ blk.ink }}">{{ sec.label }}</div></sc-if>
+            <sc-for list="{{ sec.rows }}" as="row" hint-placeholder-count="5">
+              <div data-id="{{ row.id }}" onContextMenu="{{ openCtx }}" onMouseEnter="{{ enter }}" onMouseLeave="{{ leave }}" style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;align-items:center;height:{{ rowH }}px;padding:0 14px" style-hover="background:rgba(32,30,29,.025)">
+                <div title="{{ row.name }}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ row.name }}</div>
+                <div style="position:relative">
+                  <sc-if value="{{ row.editB }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ row.id }}" data-f="b" data-edit="1" data-v="{{ row.bRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ blk.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ blk.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:26px;right:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+                  <sc-if value="{{ row.notEditB }}" hint-placeholder-val="{{ true }}"><div data-id="{{ row.id }}" data-f="b" onClick="{{ startEdit }}" style="text-align:right;padding:2px 5px;border-radius:6px;cursor:text" style-hover="background:rgba(32,30,29,.06)">{{ row.b }}</div></sc-if>
+                </div>
+                <div style="position:relative">
+                  <sc-if value="{{ row.editR }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ row.id }}" data-f="r" data-edit="1" data-v="{{ row.rRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ blk.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ blk.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:26px;right:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+                  <sc-if value="{{ row.notEditR }}" hint-placeholder-val="{{ true }}"><div data-id="{{ row.id }}" data-f="r" onClick="{{ startEdit }}" style="text-align:right;padding:2px 5px;border-radius:6px;cursor:text;color:{{ row.rColor }}" style-hover="background:rgba(32,30,29,.06)">{{ row.r }}</div></sc-if>
+                </div>
+                <div style="text-align:right;font-weight:600;color:{{ row.ec }}">{{ row.e }}</div>
+                <sc-if value="{{ row.pop }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:16px;top:25px;z-index:50;background:#fff;border:1px solid rgba(32,30,29,.08);border-radius:11px;box-shadow:0 12px 32px rgba(32,30,29,.18);padding:8px 12px;width:190px;display:flex;flex-direction:column;gap:4px">
+                  <div style="font-weight:700;font-size:12px">{{ row.name }}</div>
+                  <div style="display:flex;justify-content:space-between"><span style="color:rgba(32,30,29,.6)">Cumul</span><b>{{ row.cumul }}</b></div>
+                  <div style="display:flex;justify-content:space-between"><span style="color:rgba(32,30,29,.6)">Solde mois préc.</span><b>{{ row.prev }}</b></div>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </sc-for>
+          <div style="flex:1"></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 70px 66px;column-gap:4px;align-items:center;height:30px;padding:0 14px;border-top:1px solid rgba(32,30,29,.07);font-weight:700;font-size:12px">
+            <div data-b="{{ blk.key }}" onClick="{{ addRow }}" title="Ajouter une ligne" style="display:flex;align-items:center;gap:4px;cursor:pointer;color:{{ blk.ink }}"><span style="width:20px;height:20px;border-radius:7px;background:{{ blk.bg }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span><span style="font-weight:600;font-size:11.5px">Ajouter</span></div>
+            <div style="text-align:right;padding-right:5px">{{ blk.tb }}</div><div style="text-align:right;padding-right:5px">{{ blk.tr }}</div><div style="text-align:right;color:{{ blk.tec }}">{{ blk.te }}</div>
+          </div>
+        </div>
+        </sc-for>
+      </div>
+
+      <!-- COL 4 -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <!-- ENVELOPPES compact -->
+        <div style="flex:1 1 auto;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:oklch(0.965 0.03 300);border-radius:13px 13px 0 0;border-bottom:1px solid oklch(0.85 0.07 300)">
+            <div style="width:22px;height:22px;border-radius:7px;background:#fff;color:oklch(0.38 0.1 300);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4zM4 7l8 6 8-6"></path></svg></div>
+            <div style="font-weight:700;font-size:13.5px;color:oklch(0.38 0.1 300)">Enveloppes</div><div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:4px;padding:2px 9px 2px 7px;border-radius:99px;background:oklch(0.94 0.07 55);color:oklch(0.4 0.12 45);font-weight:700;font-size:11.5px"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>1 alerte</div>
+          </div>
+          <div style="margin:10px 14px 0;padding:7px 10px;border-radius:10px;background:oklch(0.96 0.04 55);border:1px solid oklch(0.88 0.07 55);color:oklch(0.35 0.1 45);font-weight:600;font-size:12px">{{ envAlert }}</div>
+          <div style="padding:10px 14px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;align-content:space-between">
+            <sc-for list="{{ envCompact }}" as="e" hint-placeholder-count="5">
+              <div style="border-radius:12px;padding:8px 10px;background:{{ e.bg }};border:1px solid {{ e.line }};display:flex;flex-direction:column;gap:2px">
+                <div style="display:flex;align-items:center;justify-content:space-between;font-weight:600;color:{{ e.ink }}"><span>{{ e.n }}</span><sc-if value="{{ e.warn }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.68 0.17 45)"></span></sc-if></div>
+                <div style="font-size:17px;font-weight:800;letter-spacing:-.02em">{{ e.solde }}</div>
+                <div style="font-size:11px;color:rgba(32,30,29,.62)">alloué <b style="color:#201e1d">{{ e.alloc }}</b></div>
+              </div>
+            </sc-for>
+            <div style="border-radius:12px;border:1.5px dashed oklch(0.82 0.06 300);display:flex;align-items:center;justify-content:center;gap:5px;color:oklch(0.45 0.1 300);font-weight:600;cursor:pointer;min-height:62px" style-hover="background:oklch(0.97 0.025 300)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg>Ajouter</div>
+          </div>
+        </div>
+        <!-- VIREMENTS -->
+        <div style="flex:1 1 auto;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:oklch(0.965 0.03 190);border-radius:13px 13px 0 0;border-bottom:1px solid oklch(0.85 0.07 190)">
+            <div style="width:22px;height:22px;border-radius:7px;background:#fff;color:oklch(0.38 0.08 190);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"></path></svg></div>
+            <div style="font-weight:700;font-size:13.5px;color:oklch(0.38 0.08 190)">Virements à effectuer</div><div style="flex:1"></div>
+            <div style="padding:2px 9px;border-radius:99px;background:#fff;font-weight:700;font-size:11.5px;color:oklch(0.4 0.09 190)">{{ vCount }} faits</div>
+          </div>
+          <div style="padding:6px 0 8px;display:flex;flex-direction:column;flex:1;justify-content:space-around">
+            <sc-for list="{{ virs }}" as="v" hint-placeholder-count="9">
+              <div data-id="{{ v.id }}" onClick="{{ toggleV }}" style="{{ v.st }}">
+                <sc-if value="{{ v.live }}" hint-placeholder-val="{{ true }}"><span style="{{ v.box }}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="{{ v.tick }}"><path d="M20 6 9 17l-5-5"></path></svg></span></sc-if>
+                <sc-if value="{{ v.zero }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:6px;background:rgba(32,30,29,.05)"></span></sc-if>
+                <span style="{{ v.nst }}">{{ v.n }}</span>
+                <span style="{{ v.ast }}">{{ v.a }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ============ SCREEN 2 : ENVELOPPES ============ -->
+  <sc-if value="{{ isEnv }}" hint-placeholder-val="{{ false }}">
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px">
+    <sc-for list="{{ envCards }}" as="e" hint-placeholder-count="6">
+    <div data-id="{{ e.id }}" onClick="{{ openEnv }}" style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:22px 24px 22px;display:flex;flex-direction:column;gap:18px;cursor:pointer;position:relative" style-hover="box-shadow:0 8px 24px rgba(32,30,29,.1)">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span style="width:12px;height:12px;border-radius:50%;background:{{ e.base }}"></span>
+        <span style="font-size:16px;font-weight:700">{{ e.n }}</span>
+        <div style="flex:1"></div>
+        <sc-if value="{{ e.warn }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:4px;padding:3px 9px 3px 7px;border-radius:99px;background:oklch(0.94 0.07 55);color:oklch(0.4 0.12 45);font-weight:700;font-size:11.5px"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>Manque ~{{ e.manque }}</div></sc-if>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+        <div><div style="font-size:11.5px;font-weight:600;color:rgba(32,30,29,.6)">Solde cumulé</div><div style="font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.05">{{ e.solde }}</div></div>
+        <div style="width:168px">
+          <svg viewBox="0 0 168 52" width="168" height="52" style="display:block;overflow:visible"><path d="{{ e.area }}" fill="{{ e.soft }}"></path><path d="{{ e.line }}" fill="none" stroke="{{ e.base }}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="{{ e.cx }}" cy="{{ e.cy }}" r="3.5" fill="#fff" stroke="{{ e.base }}" stroke-width="2"></circle></svg>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(32,30,29,.5);margin-top:2px"><span>janv.</span><span>12 mois</span><span>déc.</span></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px">
+        <div style="border-radius:11px;background:{{ e.bg }};border:1px solid {{ e.lineC }};padding:8px 10px" data-id="{{ e.id }}" data-f="al" onClick="{{ startEditEnv }}">
+          <div style="font-size:11px;font-weight:600;color:{{ e.ink }}">Alloué ce mois</div>
+          <sc-if value="{{ e.editing }}" hint-placeholder-val="{{ false }}"><div style="position:relative"><input data-id="{{ e.id }}" data-f="al" data-edit="1" data-v="{{ e.allocRaw }}" onClick="{{ stop }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:26px;font-size:14px;font-weight:700;border:1.5px solid {{ e.base }};border-radius:7px;outline:none;box-shadow:0 0 0 3px {{ e.lineC }};padding:0 6px;background:#fff;margin-top:2px;font-variant-numeric:tabular-nums"></input><div style="position:absolute;top:32px;left:0;z-index:40;white-space:nowrap;background:#201e1d;color:#fff;font-size:10.5px;padding:3px 8px;border-radius:7px">↵ valider · Échap annuler</div></div></sc-if>
+          <sc-if value="{{ e.notEditing }}" hint-placeholder-val="{{ true }}"><div style="font-size:16px;font-weight:700;margin-top:2px;cursor:text;border-bottom:1.5px dashed {{ e.base }};display:inline-block">{{ e.alloc }}</div></sc-if>
+        </div>
+        <div style="border-radius:11px;background:#faf8f4;padding:8px 10px"><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6)">Dépensé</div><div style="font-size:16px;font-weight:700;margin-top:2px">{{ e.dep }}</div></div>
+        <div style="border-radius:11px;background:#faf8f4;padding:8px 10px"><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6)">Prévu</div><div style="font-size:16px;font-weight:700;margin-top:2px">{{ e.prevu }}</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="height:8px;border-radius:99px;overflow:hidden;display:flex;background:{{ e.soft }}"><div style="width:{{ e.pc }}%;background:oklch(0.82 0.12 85)"></div><div style="flex:1;background:{{ e.base }}"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:rgba(32,30,29,.65)"><span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.82 0.12 85)"></span>Espèces <b style="color:#201e1d">{{ e.cashT }}</b></span><span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:{{ e.base }}"></span>Virtuel <b style="color:#201e1d">{{ e.virtT }}</b></span></div>
+      </div>
+    </div>
+    </sc-for>
+  </div>
+  </sc-if>
+
+  <!-- ============ SCREEN : INITIALISATION ============ -->
+  <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ false }}">
+  <div style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:22px;align-items:start">
+    <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:14px 10px;display:flex;flex-direction:column;gap:2px">
+      <div style="padding:2px 10px 10px;font-size:11px;font-weight:700;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.05em">Mise en route</div>
+      <sc-for list="{{ suSteps }}" as="st" hint-placeholder-count="8">
+        <div data-i="{{ st.i }}" onClick="{{ suGo }}" style="{{ st.box }}">
+          <div style="{{ st.dot }}"><sc-if value="{{ st.done }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if><sc-if value="{{ st.todo }}" hint-placeholder-val="{{ true }}"><span>{{ st.num }}</span></sc-if></div>
+          <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px">{{ st.label }}</div><div style="font-size:11px;color:{{ st.subc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.sub }}</div></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <sc-if value="{{ su.isStart }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+        <div style="padding:14px 22px;background:oklch(0.965 0.04 90);border-radius:15px 15px 0 0;border-bottom:1px solid oklch(0.9 0.07 90)"><div style="font-size:16px;font-weight:700;color:oklch(0.32 0.07 80)">Bienvenue. Configurons ton budget.</div><div style="color:oklch(0.38 0.06 80);margin-top:2px">Aucune donnée pour le moment. Les étapes suivantes créent tes lignes et tes soldes de départ.</div></div>
+        <div style="padding:22px;display:flex;flex-direction:column;gap:16px">
+          <div><div style="font-weight:700;font-size:14px">Premier mois du budget</div><div style="color:rgba(32,30,29,.6);margin-top:2px">Les soldes que tu saisis sont ceux du 1er jour de ce mois.</div></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ suMonths }}" as="m" hint-placeholder-count="6"><div data-v="{{ m.v }}" onClick="{{ suStart }}" style="{{ m.st }}">{{ m.v }}</div></sc-for></div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:6px">
+            <sc-for list="{{ suIntro }}" as="it" hint-placeholder-count="3"><div style="padding:14px 16px;border-radius:14px;background:{{ it.bg }}"><div style="font-weight:700;color:{{ it.ink }}">{{ it.t }}</div><div style="color:rgba(32,30,29,.65);margin-top:3px">{{ it.d }}</div></div></sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ su.isList }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 22px;background:{{ su.T.bg }};border-radius:15px 15px 0 0;border-bottom:1px solid {{ su.T.line }}">
+          <div style="width:30px;height:30px;border-radius:10px;background:#fff;color:{{ su.T.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ su.icon }}"></path></svg></div>
+          <div style="flex:1"><div style="font-size:16px;font-weight:700;color:{{ su.T.ink }}">{{ su.label }}</div><div style="color:rgba(32,30,29,.65)">{{ su.help }}</div></div>
+        </div>
+        <div style="{{ su.gridSt }};padding-top:12px;padding-bottom:4px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em">
+          <sc-for list="{{ su.heads }}" as="h" hint-placeholder-count="3"><span style="{{ h.st }}">{{ h.l }}</span></sc-for><span></span>
+        </div>
+        <sc-for list="{{ su.rows }}" as="r" hint-placeholder-count="3">
+          <div style="{{ su.gridSt }};height:42px;border-top:1px solid rgba(32,30,29,.05)" style-hover="background:rgba(32,30,29,.02)">
+            <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="3">
+              <div>
+                <sc-if value="{{ c.isText }}" hint-placeholder-val="{{ false }}"><input data-r="{{ r.id }}" data-c="{{ c.k }}" value="{{ c.val }}" onChange="{{ suInput }}" placeholder="Nom de la ligne" style="width:100%;box-sizing:border-box;height:30px;border:1.5px solid transparent;border-radius:8px;padding:0 8px;font-size:13px;font-weight:600;background:transparent;outline:none" style-focus="border-color:{{ su.T.base }};background:#fff;box-shadow:0 0 0 3px {{ su.T.line }}"></input></sc-if>
+                <sc-if value="{{ c.isMoney }}" hint-placeholder-val="{{ false }}"><div style="position:relative"><input data-r="{{ r.id }}" data-c="{{ c.k }}" value="{{ c.val }}" onChange="{{ suInput }}" placeholder="0" style="{{ c.st }}" style-focus="border-color:{{ su.T.base }};background:#fff;box-shadow:0 0 0 3px {{ su.T.line }}"></input><span style="position:absolute;right:10px;top:6px;color:rgba(32,30,29,.4);font-size:12px">€</span></div></sc-if>
+                <sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:4px"><sc-for list="{{ c.opts }}" as="o" hint-placeholder-count="2"><div data-r="{{ r.id }}" data-c="{{ c.k }}" data-v="{{ o.v }}" onClick="{{ suChip }}" style="{{ o.st }}">{{ o.v }}</div></sc-for></div></sc-if>
+              </div>
+            </sc-for>
+            <span data-r="{{ r.id }}" onClick="{{ suDel }}" title="Supprimer" style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:rgba(32,30,29,.4)" style-hover="background:rgba(32,30,29,.07)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ su.empty }}" hint-placeholder-val="{{ true }}">
+        <div style="margin:6px 22px 22px;padding:30px 20px;border:1.5px dashed {{ su.T.line }};border-radius:14px;background:{{ su.T.bg }};display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:50%;background:#fff;color:{{ su.T.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ su.icon }}"></path></svg></div>
+          <div style="font-weight:700;font-size:14px;color:{{ su.T.ink }}">{{ su.emptyT }}</div>
+          <div style="color:rgba(32,30,29,.62);max-width:420px">{{ su.emptyD }}</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <div onClick="{{ suSug }}" style="height:34px;padding:0 16px;display:flex;align-items:center;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer">Ajouter les lignes suggérées</div>
+            <div onClick="{{ suAdd }}" style="height:34px;padding:0 16px;display:flex;align-items:center;border-radius:999px;background:#fff;border:1.5px solid rgba(32,30,29,.16);font-weight:700;cursor:pointer">Ligne vide</div>
+          </div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ su.hasRows }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ su.gridSt }};height:44px;border-top:1px solid rgba(32,30,29,.07)">
+          <div data-x="1" onClick="{{ suAdd }}" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:{{ su.T.ink }};width:max-content"><span style="width:22px;height:22px;border-radius:50%;background:{{ su.T.bg }};border:1px solid {{ su.T.line }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>{{ su.add }}</div>
+          <sc-for list="{{ su.totals }}" as="t" hint-placeholder-count="2"><div style="{{ t.st }}">{{ t.v }}</div></sc-for><span></span>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ su.isFin }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
+        <sc-for list="{{ su.fin }}" as="g" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+          <div style="padding:12px 20px;background:{{ g.T.bg }};border-radius:15px 15px 0 0;border-bottom:1px solid {{ g.T.line }};font-weight:700;font-size:14.5px;color:{{ g.T.ink }}">{{ g.t }}</div>
+          <div style="padding:8px 20px 14px;display:flex;flex-direction:column">
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:8px;height:32px;border-top:{{ it.bt }}"><span style="flex:1;font-weight:{{ it.fw }}">{{ it.l }}</span><span style="font-weight:{{ it.fw }};color:{{ it.c }}">{{ it.v }}</span></div></sc-for>
+          </div>
+        </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ su.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:14px;background:oklch(0.95 0.05 150);color:oklch(0.35 0.09 150);font-weight:700"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg><span style="flex:1">Budget créé. Les lignes et les soldes de départ sont enregistrés.</span><span onClick="{{ suOpen }}" style="cursor:pointer;text-decoration:underline">Ouvrir le budget mensuel</span></div></sc-if>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:10px">
+        <div onClick="{{ suPrev }}" style="{{ su.prevSt }}">Précédent</div>
+        <div style="flex:1;color:rgba(32,30,29,.55)">{{ su.warn }}</div>
+        <div onClick="{{ suNext }}" style="{{ su.nextSt }}">{{ su.nextLabel }}</div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ ctx.open }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeCtx }}" onContextMenu="{{ closeCtx }}" style="position:fixed;inset:0;z-index:90"></div>
+  <div style="position:fixed;left:{{ ctx.x }}px;top:{{ ctx.y }}px;z-index:91;min-width:210px;background:#fff;border:1px solid rgba(32,30,29,.1);border-radius:12px;box-shadow:0 8px 28px rgba(32,30,29,.16);padding:5px">
+    <div style="padding:6px 10px 4px;font-size:11px;font-weight:600;color:rgba(32,30,29,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px">{{ ctx.name }}</div>
+    <div data-id="{{ ctx.id }}" onClick="{{ delRow }}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:600;color:oklch(0.5 0.17 25)" style-hover="background:oklch(0.96 0.03 25)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"></path></svg>Supprimer la ligne</div>
+  </div>
+  </sc-if>
+
+  <!-- ============ SCREEN : DEPENSES ============ -->
+  <sc-if value="{{ isDep }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;gap:4px;background:#fff;border:1px solid rgba(32,30,29,.09);border-radius:999px;padding:3px;width:max-content">
+    <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="2"><div data-t="{{ tb.id }}" onClick="{{ setTab }}" style="{{ tb.st }}">{{ tb.label }}</div></sc-for>
+  </div>
+
+  <sc-if value="{{ tabSaisie }}" hint-placeholder-val="{{ true }}">
+  <div style="display:grid;grid-template-columns:400px minmax(0,1fr);gap:22px;align-items:start">
+    <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:20px 22px;display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:16px;font-weight:700">Nouvelle dépense</div>
+      <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
+        <div><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6);margin-bottom:4px">Libellé</div><input data-k="t" value="{{ form.t }}" onChange="{{ onForm }}" placeholder="Ex. Pharmacie" style="width:100%;box-sizing:border-box;height:36px;border:1.5px solid rgba(32,30,29,.14);border-radius:10px;padding:0 12px;font-size:13px;outline:none;background:#fff"></input></div>
+        <div><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6);margin-bottom:4px">Montant</div><input data-k="a" value="{{ form.a }}" onChange="{{ onForm }}" placeholder="0,00 €" style="width:100%;box-sizing:border-box;height:36px;border:1.5px solid rgba(32,30,29,.14);border-radius:10px;padding:0 12px;font-size:13px;font-weight:700;text-align:right;outline:none;background:#fff;font-variant-numeric:tabular-nums"></input></div>
+      </div>
+      <div><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6);margin-bottom:6px">Type</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{ typeOpts }}" as="o" hint-placeholder-count="3"><div data-k="type" data-v="{{ o.id }}" onClick="{{ setForm }}" style="{{ o.st }}">{{ o.label }}</div></sc-for></div></div>
+      <div><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6);margin-bottom:6px">{{ targetLabel }}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ targetOpts }}" as="o" hint-placeholder-count="6"><div data-k="target" data-v="{{ o.id }}" onClick="{{ setForm }}" style="{{ o.st }}">{{ o.label }}</div></sc-for></div></div>
+      <div><div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6);margin-bottom:6px">Payé avec</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{ srcOpts }}" as="o" hint-placeholder-count="2"><div data-k="src" data-v="{{ o.id }}" onClick="{{ setForm }}" style="{{ o.st }}">{{ o.label }}</div></sc-for></div></div>
+      <div style="padding:10px 12px;border-radius:12px;background:#faf8f4;border:1px dashed rgba(32,30,29,.16)">
+        <div style="font-size:11px;font-weight:600;color:rgba(32,30,29,.6)">Impact sur le réel</div>
+        <sc-for list="{{ impact }}" as="im" hint-placeholder-count="2"><div style="display:flex;justify-content:space-between;margin-top:3px"><span>{{ im.l }}</span><b>{{ im.v }}</b></div></sc-for>
+      </div>
+      <div onClick="{{ addTx }}" style="height:42px;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg>Ajouter la dépense</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:16px 22px;display:flex;align-items:stretch;gap:0">
+        <sc-for list="{{ flow }}" as="fl" hint-placeholder-count="5">
+          <div style="{{ fl.st }}"><div style="font-size:11px;font-weight:600;color:{{ fl.lc }}">{{ fl.l }}</div><div style="font-size:{{ fl.fs }}px;font-weight:800;letter-spacing:-.02em;color:{{ fl.vc }}">{{ fl.v }}</div></div>
+        </sc-for>
+      </div>
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+        <div style="display:flex;align-items:center;padding:14px 22px 6px"><div style="font-size:15px;font-weight:700;flex:1">Dépenses de {{ monthLabel }}</div><div style="font-weight:700">{{ txTotal }}</div></div>
+        <div style="display:grid;grid-template-columns:54px minmax(0,1fr) 220px 86px 96px 30px;column-gap:10px;padding:4px 22px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Date</span><span>Libellé</span><span>Imputation</span><span>Moyen</span><span style="text-align:right">Montant</span><span></span></div>
+        <sc-for list="{{ txs }}" as="t" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:54px minmax(0,1fr) 220px 86px 96px 30px;column-gap:10px;align-items:center;height:34px;padding:0 22px;border-top:1px solid rgba(32,30,29,.05)" style-hover="background:rgba(32,30,29,.025)">
+            <span style="color:rgba(32,30,29,.6)">{{ t.d }}</span><span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.t }}</span>
+            <span style="display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden"><span style="flex:none;width:9px;height:9px;border-radius:50%;background:{{ t.dot }}"></span><span style="overflow:hidden;text-overflow:ellipsis">{{ t.tg }}</span><span style="color:rgba(32,30,29,.45);font-size:11px">{{ t.ty }}</span></span>
+            <span style="padding:1px 9px;border-radius:99px;font-size:11px;font-weight:700;background:{{ t.sbg }};color:{{ t.sink }};width:max-content">{{ t.src }}</span>
+            <b style="text-align:right">{{ t.a }}</b>
+            <span data-id="{{ t.id }}" onClick="{{ delTx }}" title="Supprimer" style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:rgba(32,30,29,.4)" style-hover="background:rgba(32,30,29,.07)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+          </div>
+        </sc-for>
+        <div style="height:8px"></div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ tabSoldes }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;align-items:center;gap:12px"><div style="color:rgba(32,30,29,.65);font-size:13.5px;max-width:720px;flex:1">Solde attendu = début de mois + versements réels − sorties. Saisis le solde relevé de chaque compte pour valider le mois.</div>
+    <div style="padding:5px 14px;border-radius:99px;background:oklch(0.95 0.05 150);color:oklch(0.35 0.09 150);font-weight:700">{{ validCount }} validés</div></div>
+  <sc-for list="{{ accGroups }}" as="g" hint-placeholder-count="2">
+  <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+    <div style="padding:10px 20px;background:{{ g.bg }};border-radius:15px 15px 0 0;border-bottom:1px solid {{ g.line }};font-weight:700;font-size:14.5px;color:{{ g.ink }}">{{ g.t }}</div>
+    <div style="display:grid;grid-template-columns:minmax(0,1.2fr) 96px 104px 96px 96px 108px 128px 100px 106px;column-gap:10px;padding:10px 20px 4px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Compte</span><span>6 mois</span><span style="text-align:right">Début</span><span style="text-align:right">+ Versé</span><span style="text-align:right">− Sorties</span><span style="text-align:right">= Attendu</span><span style="text-align:right;padding-right:8px">Solde relevé</span><span style="text-align:right">Écart</span><span style="text-align:right">Statut</span></div>
+    <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="5">
+      <div style="display:grid;grid-template-columns:minmax(0,1.2fr) 96px 104px 96px 96px 108px 128px 100px 106px;column-gap:10px;align-items:center;height:42px;padding:0 20px;border-top:1px solid rgba(32,30,29,.05)" style-hover="background:rgba(32,30,29,.025)">
+        <span style="font-weight:600">{{ r.n }}</span>
+        <div><svg viewBox="0 0 84 26" width="84" height="26" style="display:block;overflow:visible"><path d="{{ r.line }}" fill="none" stroke="{{ g.base }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="{{ r.cx }}" cy="{{ r.cy }}" r="3" fill="#fff" stroke="{{ g.base }}" stroke-width="2"></circle></svg></div>
+        <span style="text-align:right;color:rgba(32,30,29,.65)">{{ r.deb }}</span><span style="text-align:right;color:rgba(32,30,29,.65)">{{ r.vers }}</span><span style="text-align:right;color:rgba(32,30,29,.65)">{{ r.sort }}</span><b style="text-align:right">{{ r.att }}</b>
+        <div style="position:relative">
+          <sc-if value="{{ r.editing }}" hint-placeholder-val="{{ false }}"><input data-id="{{ r.eid }}" data-f="rel" data-edit="1" data-v="{{ r.raw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:28px;text-align:right;font-size:13px;font-weight:700;border:1.5px solid {{ g.base }};border-radius:7px;outline:none;box-shadow:0 0 0 3px {{ g.line }};padding:0 8px;background:#fff;font-variant-numeric:tabular-nums"></input></sc-if>
+          <sc-if value="{{ r.notEditing }}" hint-placeholder-val="{{ true }}"><div data-id="{{ r.eid }}" data-f="rel" onClick="{{ startEdit }}" style="text-align:right;padding:4px 8px;border-radius:7px;cursor:text;font-weight:700;background:{{ r.bgc }}" style-hover="background:rgba(32,30,29,.06)">{{ r.rel }}</div></sc-if>
+        </div>
+        <span style="text-align:right;font-weight:600;color:{{ r.ec }}">{{ r.ecart }}</span>
+        <span style="justify-self:end;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;background:{{ r.sbg }};color:{{ r.sink }}">{{ r.status }}</span>
+      </div>
+    </sc-for>
+    <div style="height:8px"></div>
+  </div>
+  </sc-for>
+  </sc-if>
+  </sc-if>
+
+  <!-- ============ SCREEN 4 : CLOTURE ============ -->
+  <sc-if value="{{ isClose }}" hint-placeholder-val="{{ false }}">
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="color:rgba(32,30,29,.65);font-size:13.5px;max-width:640px">Vérifie les soldes de chaque compte, enveloppe et investissement au 1er janvier 2027. Ils serviront de base de départ pour 2027. Clique sur un montant pour l’ajuster.</div>
+      <sc-for list="{{ closeGroups }}" as="g" hint-placeholder-count="3">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+        <div style="display:flex;align-items:center;gap:9px;padding:11px 18px;background:{{ g.bg }};border-radius:15px 15px 0 0;border-bottom:1px solid {{ g.line }}">
+          <div style="width:24px;height:24px;border-radius:8px;background:#fff;color:{{ g.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ g.icon }}"></path></svg></div>
+          <div style="font-weight:700;font-size:14.5px;color:{{ g.ink }}">{{ g.t }}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 170px 110px;column-gap:10px;padding:10px 18px 4px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Nom</span><span style="text-align:right;padding-right:8px">Solde au 31 déc. 2026</span><span style="text-align:right;padding-right:8px">Base au 1er janv. 2027</span><span style="text-align:right">Ajustement</span></div>
+        <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 170px 110px;column-gap:10px;align-items:center;height:36px;padding:0 18px" style-hover="background:rgba(32,30,29,.025)">
+            <div style="font-weight:500">{{ r.n }}</div>
+            <div style="text-align:right;padding-right:8px;color:rgba(32,30,29,.65)">{{ r.calc }}</div>
+            <div style="position:relative">
+              <sc-if value="{{ r.editing }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ r.id }}" data-f="k" data-edit="1" data-v="{{ r.raw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:26px;text-align:right;font-size:13px;font-weight:700;border:1.5px solid {{ g.base }};border-radius:7px;outline:none;box-shadow:0 0 0 3px {{ g.line }};padding:0 8px;background:#fff;font-variant-numeric:tabular-nums"></input></div></sc-if>
+              <sc-if value="{{ r.notEditing }}" hint-placeholder-val="{{ true }}"><div data-id="{{ r.id }}" data-f="k" onClick="{{ startEdit }}" style="text-align:right;padding:3px 8px;border-radius:7px;cursor:{{ cur }};font-weight:700;background:{{ r.bgc }}" style-hover="background:rgba(32,30,29,.06)">{{ r.val }}</div></sc-if>
+            </div>
+            <div style="text-align:right;font-weight:600;color:{{ r.adjColor }}">{{ r.adj }}</div>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 170px 110px;column-gap:10px;align-items:center;height:38px;padding:0 18px;border-top:1px solid rgba(32,30,29,.07);font-weight:700;margin-top:4px">
+          <div>Total</div><div style="text-align:right;padding-right:8px">{{ g.tcalc }}</div><div style="text-align:right;padding-right:8px">{{ g.tval }}</div><div style="text-align:right;color:{{ g.tadjColor }}">{{ g.tadj }}</div>
+        </div>
+      </div>
+      </sc-for>
+    </div>
+    <div style="position:sticky;top:16px;background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:20px 22px;display:flex;flex-direction:column;gap:14px;background-image:linear-gradient(160deg,oklch(0.97 0.025 300),#fff 55%)">
+      <div><div style="font-size:11.5px;font-weight:600;color:rgba(32,30,29,.62)">Base reportée au 1er janvier 2027</div><div style="font-size:32px;font-weight:800;letter-spacing:-.03em;color:oklch(0.36 0.12 300)">{{ closeTotal }}</div></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ closeGroups }}" as="g" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:{{ g.base }}"></span><span style="flex:1;font-weight:500">{{ g.t }}</span><b>{{ g.tval }}</b></div></sc-for>
+      </div>
+      <div style="padding:9px 12px;border-radius:11px;background:oklch(0.96 0.04 90);color:oklch(0.35 0.07 80);font-weight:600">{{ closeAdjText }}</div>
+      <sc-if value="{{ closed }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:11px;background:oklch(0.95 0.05 150);color:oklch(0.35 0.09 150);font-weight:700"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"></path></svg>Année 2026 clôturée. Les soldes sont la base de 2027.</div></sc-if>
+      <div onClick="{{ toggleClose }}" style="{{ closeBtn }}">{{ closeBtnLabel }}</div>
+      <div style="font-size:11.5px;color:rgba(32,30,29,.55)">La clôture verrouille 2026 et initialise les soldes de départ de janvier 2027. Elle peut être rouverte.</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ============ SCREEN 3 : PREVISIONNEL ============ -->
+  <sc-if value="{{ isPrev }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;gap:16px;align-items:stretch">
+    <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:10px 18px;min-width:210px;background-image:linear-gradient(135deg,oklch(0.97 0.025 300),#fff 70%)"><div style="font-size:11.5px;font-weight:600;color:rgba(32,30,29,.62)">Total annuel prévu</div><div style="font-size:26px;font-weight:800;letter-spacing:-.025em;color:oklch(0.36 0.12 300)">{{ pTotal }}</div></div>
+    <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:14px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:10px 18px;min-width:190px"><div style="font-size:11.5px;font-weight:600;color:rgba(32,30,29,.62)">Moyenne mensuelle</div><div style="font-size:26px;font-weight:800;letter-spacing:-.025em">{{ pAvg }}</div></div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;max-width:620px;color:rgba(32,30,29,.7);font-weight:600">
+      <sc-for list="{{ legend }}" as="l" hint-placeholder-count="6"><span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:{{ l.base }}"></span>{{ l.n }}</span></sc-for>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px">
+    <sc-for list="{{ months }}" as="m" hint-placeholder-count="12">
+    <div style="{{ m.box }}">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="font-size:14.5px;font-weight:700">{{ m.name }}</span>
+        <sc-if value="{{ m.current }}" hint-placeholder-val="{{ false }}"><span style="padding:1px 8px;border-radius:99px;background:oklch(0.9 0.06 300);color:oklch(0.32 0.12 300);font-size:10.5px;font-weight:700">En cours</span></sc-if>
+        <sc-if value="{{ m.alert }}" hint-placeholder-val="{{ false }}"><span title="{{ m.alertText }}" style="display:flex;align-items:center;gap:3px;padding:1px 7px 1px 5px;border-radius:99px;background:oklch(0.94 0.07 55);color:oklch(0.4 0.12 45);font-size:10.5px;font-weight:700"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>Alerte</span></sc-if>
+        <div style="flex:1"></div>
+        <span style="font-size:16px;font-weight:800;letter-spacing:-.02em">{{ m.total }}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex:1;margin-top:2px">
+        <sc-for list="{{ m.items }}" as="it" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:8px;height:28px;padding:0 4px;border-radius:8px" style-hover="background:rgba(32,30,29,.03)">
+            <span title="{{ it.envName }}" style="flex:none;width:10px;height:10px;border-radius:50%;background:{{ it.base }}"></span>
+            <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ it.t }}</span>
+            <div style="width:84px;position:relative;flex:none">
+              <sc-if value="{{ it.editing }}" hint-placeholder-val="{{ false }}"><div><input data-id="{{ it.id }}" data-f="a" data-edit="1" data-v="{{ it.raw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:22px;text-align:right;font-size:12.5px;border:1.5px solid {{ it.base }};border-radius:6px;outline:none;box-shadow:0 0 0 3px {{ it.line }};padding:0 5px;background:#fff;font-variant-numeric:tabular-nums"></input></div></sc-if>
+              <sc-if value="{{ it.notEditing }}" hint-placeholder-val="{{ true }}"><div data-id="{{ it.id }}" data-f="a" onClick="{{ startEdit }}" style="text-align:right;padding:2px 6px;border-radius:6px;cursor:text;font-weight:600" style-hover="background:rgba(32,30,29,.06)">{{ it.a }}</div></sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div data-m="{{ m.i }}" onClick="{{ addPrev }}" style="display:flex;align-items:center;gap:5px;cursor:pointer;color:rgba(32,30,29,.6);font-weight:600;font-size:11.5px;margin-top:2px"><span style="width:20px;height:20px;border-radius:7px;background:rgba(32,30,29,.05);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>Ajouter</div>
+    </div>
+    </sc-for>
+  </div>
+  </sc-if>
+</div>
+
+<!-- DRAWER -->
+<sc-if value="{{ drawer }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeEnv }}" style="position:absolute;inset:0;background:rgba(32,30,29,.18);z-index:80"></div>
+<div style="position:absolute;top:0;right:0;bottom:0;width:440px;background:#fff;z-index:90;box-shadow:-16px 0 40px rgba(32,30,29,.14);display:flex;flex-direction:column;overflow:auto">
+  <div style="padding:20px 24px 16px;background:{{ drawer.bg }};border-bottom:1px solid {{ drawer.lineC }}">
+    <div style="display:flex;align-items:center;gap:9px"><span style="width:12px;height:12px;border-radius:50%;background:{{ drawer.base }}"></span><span style="font-size:19px;font-weight:800">{{ drawer.n }}</span><div style="flex:1"></div><div onClick="{{ closeEnv }}" style="width:30px;height:30px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></div></div>
+    <div style="font-size:11.5px;font-weight:600;color:{{ drawer.ink }};margin-top:10px">Solde cumulé · {{ monthLabel }}</div>
+    <div style="font-size:36px;font-weight:800;letter-spacing:-.03em">{{ drawer.solde }}</div>
+  </div>
+  <div style="padding:18px 24px 8px;font-weight:700;font-size:14px">Répartition du solde</div>
+  <div style="padding:0 24px;display:flex;flex-direction:column;gap:12px">
+    <div style="height:12px;border-radius:99px;overflow:hidden;display:flex;background:{{ drawer.soft }}"><div style="width:{{ drawer.pc }}%;background:oklch(0.82 0.12 85)"></div><div style="flex:1;background:{{ drawer.base }}"></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="border-radius:12px;background:oklch(0.97 0.04 85);border:1px solid oklch(0.88 0.08 85);padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:oklch(0.38 0.07 80)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle></svg>En espèces</div>
+        <sc-if value="{{ drawer.editCash }}" hint-placeholder-val="{{ false }}"><div style="position:relative"><input data-id="{{ drawer.cashId }}" data-f="cash" data-edit="1" data-v="{{ drawer.cashRaw }}" onKeyDown="{{ editKey }}" onBlur="{{ editBlur }}" style="width:100%;box-sizing:border-box;height:28px;font-size:16px;font-weight:700;border:1.5px solid oklch(0.72 0.13 85);border-radius:7px;outline:none;box-shadow:0 0 0 3px oklch(0.9 0.08 85);padding:0 6px;background:#fff;margin-top:3px;font-variant-numeric:tabular-nums"></input></div></sc-if>
+        <sc-if value="{{ drawer.notEditCash }}" hint-placeholder-val="{{ true }}"><div data-id="{{ drawer.cashId }}" data-f="cash" onClick="{{ startEdit }}" style="font-size:20px;font-weight:800;letter-spacing:-.02em;margin-top:2px;cursor:text;display:inline-block;border-bottom:1.5px dashed oklch(0.72 0.13 85)">{{ drawer.cash }}</div></sc-if>
+      </div>
+      <div style="border-radius:12px;background:{{ drawer.bg }};border:1px solid {{ drawer.lineC }};padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:{{ drawer.ink }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Virtuel (compte)</div>
+        <div style="font-size:20px;font-weight:800;letter-spacing:-.02em;margin-top:2px">{{ drawer.virt }}</div>
+        <div style="font-size:10.5px;color:rgba(32,30,29,.55)">solde moins espèces</div>
+      </div>
+    </div>
+  </div>
+  <div style="padding:18px 24px 8px;font-weight:700;font-size:14px">Historique mensuel</div>
+  <div style="padding:0 24px;display:flex;flex-direction:column">
+    <div style="display:grid;grid-template-columns:1fr 80px 80px 84px;padding:4px 0;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em"><span>Mois</span><span style="text-align:right">Alloué</span><span style="text-align:right">Dépensé</span><span style="text-align:right">Solde</span></div>
+    <sc-for list="{{ drawer.hist }}" as="h" hint-placeholder-count="6">
+      <div style="display:grid;grid-template-columns:1fr 80px 80px 84px;height:32px;align-items:center;border-top:1px solid rgba(32,30,29,.06)"><span style="font-weight:500">{{ h.m }}</span><span style="text-align:right">{{ h.a }}</span><span style="text-align:right">{{ h.d }}</span><b style="text-align:right">{{ h.s }}</b></div>
+    </sc-for>
+  </div>
+  <div style="padding:20px 24px 8px;font-weight:700;font-size:14px">Transactions liées</div>
+  <div style="padding:0 24px 24px;display:flex;flex-direction:column">
+    <sc-for list="{{ drawer.tx }}" as="t" hint-placeholder-count="4">
+      <div style="display:grid;grid-template-columns:56px 1fr 84px;height:36px;align-items:center;border-top:1px solid rgba(32,30,29,.06)"><span style="color:rgba(32,30,29,.55);font-size:11.5px">{{ t.d }}</span><span style="font-weight:500">{{ t.t }}</span><b style="text-align:right;color:{{ t.c }}">{{ t.a }}</b></div>
+    </sc-for>
+  </div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: 'budget', su: { step: 0, start: 'Janvier 2027', done: false, cnt: 0, rows: { rev: [], cre: [], dep: [], epa: [], env: [], inv: [] } }, tab: 'saisie', form: { t: '', a: '', type: 'var', target: 'v-ali', src: 'vir' },
+    rel: { 'e-la': 9800, 'e-ld': 4150, 'e-ly': 640, 'e-vm': 1120, 'e-vc': null, 'i-av': 4820, 'i-pea': 5318.2, 'i-tr': null, 'i-pc': 1949, 'i-pg': 1000 },
+    tx: [[1,'Carrefour',128.4,'var','v-ali','vir'],[7,'Marché',54,'var','v-ali','esp'],[14,'Biocoop',130,'var','v-ali','vir'],[5,'Cinéma',29.9,'var','v-loi','vir'],[12,'Bowling',55,'var','v-loi','esp'],[18,'Concert',80,'var','v-loi','vir'],[4,'Boulangerie',12.5,'var','v-sn','esp'],[11,'Distributeur',10,'var','v-sn','esp'],[6,'Déjeuner équipe',38,'var','v-de','vir'],[13,'Déjeuner équipe',40,'var','v-de','vir'],[8,'Station Total',71.2,'var','v-ca','vir'],[1,'Swile',60,'var','v-sw','vir'],[4,'Coiffeur',28,'env','perso','esp'],[2,'Librairie',20,'env','perso','vir'],[6,'Fleurs',35,'env','love','vir'],[5,'Lavage',12,'env','voiture','esp'],[9,'Péage',50,'env','voiture','vir'],[10,'Matériaux salle de bain',220,'epa','e-ld','vir'],[15,'Billets avion',80,'epa','e-ly','vir']].map((a, i) => ({ id: 't' + i, d: a[0], t: a[1], a: a[2], type: a[3], target: a[4], src: a[5] })),
+    cash: { perso: 120, sante: 40, love: 85, voiture: 0, impots: 0, projets: 75 }, cl: { 'k-vc': 300 }, closed: false, mi: 2, menu: false, init: { 0: true, 1: true, 2: true }, hover: 'c-pj', editing: { id: 'v-loi', f: 'r' }, env: null, cnt: 0,
+    done: { bou: true, ce: true, lyd: true },
+    alloc: { perso: 120, sante: 60, love: 100, voiture: 150, impots: 436, projets: 0 },
+    rows: [
+      ['rev','','r-sal','Salaire',6500,6500],['rev','','r-pre','Prêt Manioune',800,800],['rev','','r-rem','Remboursement',350,349.93],['rev','','r-pri','Prime',300,null],['rev','','r-aut','Autres',50,50],
+      ['cre','','c-108','CRN …108',612,612],['cre','','c-109','CRN …109',485,485],['cre','','c-110','CRN …110',330,330],['cre','','c-ap','Assurance de prêt',58,58],['cre','','c-ah','Ass. habitation',24,24],['cre','','c-pj','Ass. protection juridique',11,11],
+      ['fix','','f-cj','Compte joint',400,400],['fix','','f-nf','Netflix',18,17.99],['fix','','f-tan','TAN',38,38],['fix','','f-sp','Spliit',60,60],['fix','','f-sa','Salle de sport',35,35],['fix','','f-fb','Frais bancaires',9,9],
+      ['var','','v-ali','Alimentation',450,312.4],['var','','v-loi','Loisirs',150,164.9],['var','','v-sn','Snacks',40,22.5],['var','','v-de','Déjeuners',120,78],['var','','v-ca','Carburant',90,71.2],['var','','v-sw','Swile',60,60],
+      ['epa','Épargne long terme','e-la','Livret A',300,300],['epa','Épargne long terme','e-ld','LDDS Travaux',150,150],['epa','Épargne moyen terme','e-ly','Lydia Holidays',100,100],['epa','Épargne moyen terme','e-vm','Vacances Mada',120,120],['epa','Épargne moyen terme','e-vc','Vacances copines',80,null],
+      ['inv','','i-av','Assurance Vie',100,100],['inv','','i-pea','PEA',150,150],['inv','','i-tr','Trade Republic',100,null],['inv','','i-pc','PERCOL',64,64],['inv','','i-pg','PEG',30,30]
+    ].map(a => ({ blk: a[0], sec: a[1], id: a[2], name: a[3], b: a[4], r: a[5] })),
+    prev: [
+      [0,'Cadeaux anniversaire',80,'love'],[0,'Abonnement Prime',49,'perso'],[1,'Saint-Valentin',90,'love'],[2,'Dentiste',60,'sante'],[2,'Optique',150,'sante'],[3,'Assurance annuelle auto',420,'voiture'],[4,'Vêtements été',120,'perso'],[5,'Contrôle technique',90,'voiture'],[6,'Cadeau de mariage',100,'love'],[7,'Pneus hiver',240,'voiture'],[8,'Solde impôts',600,'impots'],[9,'Entretien voiture',100,'voiture'],[9,'Taxe foncière',900,'impots'],[10,'Ostéopathe',70,'sante'],[11,'Dentiste',60,'sante'],[11,'Cadeaux de Noël',150,'love']
+    ].map((a, i) => ({ id: 'p' + i, m: a[0], t: a[1], a: a[2], e: a[3] }))
+  };
+
+  ENV = [
+    { id: 'perso', n: 'Perso', h: 300, solde: 342, dep: 48, hist: [180,210,150,230,270,200,250,300,260,310,320,342], ha: [120,120,120,120,120,120], hd: [70,55,90,62,110,48], tx: [['04 déc.','Coiffeur',-28],['02 déc.','Librairie',-20],['28 nov.','Cinéma',-14],['21 nov.','Vêtements',-48]] },
+    { id: 'sante', n: 'Santé', h: 170, solde: 40, dep: 0, hist: [120,180,120,150,210,140,90,150,100,70,80,40], ha: [60,60,60,60,60,60], hd: [110,0,60,20,50,100], tx: [['18 nov.','Pharmacie',-24],['09 nov.','Ostéopathe',-70],['15 oct.','Mutuelle (franchise)',-6]] },
+    { id: 'love', n: 'Love ones', h: 350, solde: 185, dep: 35, hist: [60,150,60,150,100,140,200,100,150,95,150,185], ha: [100,100,100,100,100,100], hd: [10,0,150,50,45,35], tx: [['06 déc.','Fleurs',-35],['24 nov.','Anniversaire Maman',-45],['10 oct.','Restaurant',-50]] },
+    { id: 'voiture', n: 'Voiture', h: 240, solde: 520, dep: 62, hist: [300,350,400,450,330,380,430,300,360,420,470,520], ha: [150,150,150,150,150,150], hd: [100,100,100,280,90,100], tx: [['05 déc.','Lavage',-12],['29 nov.','Parking',-50],['12 oct.','Vignette',-100]] },
+    { id: 'impots', n: 'Impôts', h: 75, solde: 1240, dep: 0, hist: [180,420,640,860,1080,1300,1520,1740,540,780,1000,1240], ha: [436,436,436,436,436,436], hd: [0,0,0,0,600,0], tx: [['15 sept.','Solde impôts',-600],['15 mai','Acompte',0]] },
+    { id: 'projets', n: 'Projets', h: 130, solde: 275, dep: 0, hist: [50,100,150,200,250,300,350,230,280,330,380,275], ha: [50,50,50,50,50,0], hd: [0,0,0,170,0,105], tx: [['11 déc.','Étagère',-105],['19 août','Perceuse',-170]] }
+  ];
+
+  MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  ML = ['Octobre 2026','Novembre 2026','Décembre 2026','Janvier 2027','Février 2027'];
+  FAM = { rev: 150, dep: 38, epa: 300, inv: 250, obj: 190 };
+
+  f = (n, sign) => {
+    n = Math.round(n * 100) / 100;
+    const s = Math.abs(n).toLocaleString('fr-FR', { minimumFractionDigits: Math.round(Math.abs(n) * 100) % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace(/[\u202f\u00a0]/g, '\u00a0') + '\u00a0€';
+    return n < 0 ? '\u2212' + s : (sign && n > 0 ? '+' + s : s);
+  };
+  tone(h) { return { bg: `oklch(0.968 0.028 ${h})`, line: `oklch(0.87 0.065 ${h})`, base: `oklch(0.72 0.13 ${h})`, ink: `oklch(0.36 0.09 ${h})`, soft: `oklch(0.93 0.05 ${h})` }; }
+  hash(s) { let x = 0; for (const c of s) x = (x * 31 + c.charCodeAt(0)) % 997; return x; }
+  sum(a, k) { return Math.round(a.reduce((t, r) => t + (r[k] || 0), 0) * 100) / 100; }
+  parse(v) { const x = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isNaN(x) ? null : x; }
+
+  commit(id, fld, val) {
+    const x = this.parse(val); if (x === null) return;
+    if (fld === 'rel') return this.setState(s => ({ rel: { ...s.rel, [id.slice(4)]: x } }));
+    if (fld === 'cash') { const k = id.slice(5), sd = this.ENV.find(e => e.id === k).solde; return this.setState(s => ({ cash: { ...s.cash, [k]: Math.max(0, Math.min(x, sd)) } })); }
+    if (fld === 'k') return this.setState(s => ({ cl: { ...s.cl, [id]: x } }));
+    if (fld === 'al') return this.setState(s => ({ alloc: { ...s.alloc, [id]: x } }));
+    if (id[0] === 'p') return this.setState(s => ({ prev: s.prev.map(p => p.id === id ? { ...p, a: x } : p) }));
+    this.setState(s => ({ rows: s.rows.map(r => r.id === id ? { ...r, [fld]: x } : r) }));
+  }
+  SUCFG = [
+    { id: 'start', label: 'Période', h: 90, icon: 'M8 2v4M16 2v4M3 6h18v15H3zM3 10h18' },
+    { id: 'rev', label: 'Revenus', h: 150, tk: 'a', icon: 'M12 19V5M5 12l7-7 7 7', help: 'Les entrées d’argent attendues chaque mois.', emptyT: 'Aucun revenu pour le moment', emptyD: 'Ajoute ton salaire et les autres entrées récurrentes. Les montants se modifient chaque mois ensuite.', add: 'Ajouter un revenu',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'a', l: 'Montant mensuel', t: 'money', tot: 1 }], sug: [['Salaire'], ['Prêt Manioune'], ['Remboursement'], ['Prime'], ['Autres']] },
+    { id: 'cre', label: 'Crédits et dettes', h: 38, tk: 'a', icon: 'M2 7h20v10H2zM2 11h20', help: 'Mensualités en cours et capital restant dû.', emptyT: 'Aucun crédit ni dette', emptyD: 'Ajoute chaque mensualité (crédits, assurances de prêt ou d’habitation). Passe cette étape si tu n’en as pas.', add: 'Ajouter un crédit',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'a', l: 'Mensualité', t: 'money', tot: 1 }, { k: 'b', l: 'Capital restant dû', t: 'money', tot: 1 }], sug: [['CRN …108'], ['CRN …109'], ['CRN …110'], ['Assurance de prêt'], ['Ass. habitation'], ['Ass. protection juridique']] },
+    { id: 'dep', label: 'Dépenses', h: 38, tk: 'a', icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', help: 'Budget mensuel de chaque dépense, fixe ou variable.', emptyT: 'Aucune dépense', emptyD: 'Les dépenses fixes sont identiques chaque mois. Les variables ont une enveloppe de budget dont on suit le restant.', add: 'Ajouter une dépense',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'k', l: 'Type', t: 'chip', opts: ['Fixe', 'Variable'] }, { k: 'a', l: 'Budget mensuel', t: 'money', tot: 1 }], sug: [['Compte joint', 'Fixe'], ['Netflix', 'Fixe'], ['TAN', 'Fixe'], ['Spliit', 'Fixe'], ['Salle de sport', 'Fixe'], ['Frais bancaires', 'Fixe'], ['Alimentation', 'Variable'], ['Loisirs', 'Variable'], ['Snacks', 'Variable'], ['Déjeuners', 'Variable'], ['Carburant', 'Variable'], ['Swile', 'Variable']] },
+    { id: 'epa', label: 'Épargnes', h: 300, tk: 'b', icon: 'M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M3 10l9-6 9 6', help: 'Comptes d’épargne avec leur solde au premier jour et le versement mensuel prévu.', emptyT: 'Aucun compte d’épargne', emptyD: 'Long terme (LT) pour le fond de secours et les travaux, moyen terme (MT) pour les projets et vacances.', add: 'Ajouter un compte',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'k', l: 'Horizon', t: 'chip', opts: ['LT', 'MT'] }, { k: 'b', l: 'Solde au départ', t: 'money', tot: 1 }, { k: 'a', l: 'Versement mensuel', t: 'money', tot: 1 }], sug: [['Livret A', 'LT'], ['LDDS Travaux', 'LT'], ['Lydia Holidays', 'MT'], ['Vacances Mada', 'MT'], ['Vacances copines', 'MT']] },
+    { id: 'env', label: 'Enveloppes', h: 280, tk: 'b', icon: 'M4 6h16v12H4zM4 7l8 6 8-6', help: 'Enveloppes semi virtuelles : une part en espèces, le reste sur le compte.', emptyT: 'Aucune enveloppe', emptyD: 'Chaque enveloppe démarre avec un solde, dont une part en espèces, et reçoit une allocation chaque mois.', add: 'Ajouter une enveloppe',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'b', l: 'Solde au départ', t: 'money', tot: 1 }, { k: 'e', l: 'dont espèces', t: 'money', tot: 1 }, { k: 'a', l: 'Alloué par mois', t: 'money', tot: 1 }], sug: [['Perso'], ['Santé'], ['Love ones'], ['Voiture'], ['Impôts'], ['Projets']] },
+    { id: 'inv', label: 'Investissements', h: 250, tk: 'b', icon: 'M22 7l-8.5 8.5-5-5L2 17M16 7h6v6', help: 'Valeur de chaque placement au premier jour et versement mensuel.', emptyT: 'Aucun investissement', emptyD: 'Ajoute tes placements pour suivre leur évolution chaque mois.', add: 'Ajouter un placement',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'b', l: 'Solde au départ', t: 'money', tot: 1 }, { k: 'a', l: 'Versement mensuel', t: 'money', tot: 1 }], sug: [['Assurance Vie'], ['PEA'], ['Trade Republic'], ['PERCOL'], ['PEG']] },
+    { id: 'fin', label: 'Récapitulatif', h: 90 }
+  ];
+  componentDidMount() { this._fd = 1; this.seed(); }
+  seed() { document.querySelectorAll('input[data-edit]').forEach(i => { if (!i.dataset.s) { i.dataset.s = 1; i.value = i.dataset.v; } }); }
+  componentDidUpdate() { this.seed(); const i = document.querySelector('input[data-edit]'); if (i && document.activeElement !== i && !this._fd) { this._fd = 1; i.focus(); i.select(); } if (!i) this._fd = 0; }
+
+  renderVals() {
+    const s = this.state, f = this.f, R = s.rows;
+    const uninit = s.screen !== 'prevAnn' && !s.init[s.mi] && (s.screen === 'budget');
+    const ed = s.editing;
+    const mkRow = (r, T) => {
+      const isRev = r.blk === 'rev' || r.blk === 'epa' || r.blk === 'inv';
+      const has = r.r !== null && r.r !== undefined;
+      const e = has ? (isRev ? r.r - r.b : r.b - r.r) : null;
+      const ec = e === null ? 'rgba(32,30,29,.4)' : e >= 0 ? 'oklch(0.5 0.12 150)' : 'oklch(0.54 0.18 25)';
+      const eb = ed && ed.id === r.id && ed.f === 'b', er = ed && ed.id === r.id && ed.f === 'r';
+      const h = this.hash(r.id);
+      return { id: r.id, name: r.name, b: f(r.b), r: has ? f(r.r) : '—', rColor: has ? '#201e1d' : 'rgba(32,30,29,.4)', e: e === null ? '—' : (e === 0 ? '0\u00a0€' : f(e, true)), ec,
+        bRaw: String(r.b).replace('.', ','), rRaw: has ? String(r.r).replace('.', ',') : '',
+        editB: eb, notEditB: !eb, editR: er, notEditR: !er,
+        pop: s.hover === r.id && !(ed && ed.id === r.id), cumul: f(Math.round(r.b * (6 + h % 5))), prev: f(h % 90),
+        showBar: r.blk === 'var', bw: has && r.b ? Math.min(100, r.r / r.b * 100) : 0, barColor: has && r.r > r.b ? 'oklch(0.66 0.17 25)' : T.base };
+    };
+    const META = {
+      rev: ['Revenus', 'M12 5v14M5 12l7 7 7-7', this.FAM.rev], cre: ['Crédits / Dettes', 'M2 5h20v14H2zM2 10h20', this.FAM.dep], fix: ['Dépenses fixes', 'M3 11l9-8 9 8v10H3zM9 21v-6h6v6', this.FAM.dep],
+      var: ['Dépenses variables', 'M5 8h14l-1.5 11h-11zM9 8l3-5 3 5', this.FAM.dep], epa: ['Épargnes', 'M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M3 10l9-6 9 6', this.FAM.epa], inv: ['Investissements', 'M22 7l-8.5 8.5-5-5L2 17M16 7h6v6', this.FAM.inv]
+    };
+    const block = k => {
+      const rs = R.filter(r => r.blk === k), T = this.tone(META[k][2]);
+      const secs = []; rs.forEach(r => { let x = secs.find(q => q.label === r.sec); if (!x) { x = { label: r.sec, rows: [] }; secs.push(x); } x.rows.push(mkRow(r, T)); });
+      const tb = this.sum(rs, 'b'), tr = this.sum(rs, 'r'), up = k === 'rev' || k === 'epa' || k === 'inv', te = up ? tr - tb : tb - tr;
+      const o = { key: k, title: META[k][0], icon: META[k][1], ...T, sections: secs, tb: f(tb), tr: f(tr), te: f(te, true), tec: te >= 0 ? 'oklch(0.5 0.12 150)' : 'oklch(0.54 0.18 25)', strip: false };
+      if (k === 'var') { const rest = tb - tr; o.strip = true; o.stripLabel = 'Restant'; o.stripVal = f(rest); o.stripColor = rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)'; }
+      if (k === 'inv') { o.strip = true; o.stripLabel = 'Total global'; o.stripVal = f(15219); o.stripColor = 'oklch(0.4 0.1 250)'; }
+      return o;
+    };
+    const bs = k => this.sum(R.filter(r => r.blk === k), 'b'), rs_ = k => this.sum(R.filter(r => r.blk === k), 'r');
+    const allocSum = Object.values(s.alloc).reduce((a, b) => a + b, 0);
+    const Rv = bs('rev'), D = bs('cre') + bs('fix') + bs('var') + allocSum, E = bs('epa') + bs('inv'), reste = Rv - D - E;
+    const taux = Rv ? (Rv - D) / Rv * 100 : 0;
+    const verse = this.sum(R.filter(r => r.blk === 'epa' || r.blk === 'inv'), 'r');
+    const envDepT = this.sum(s.tx.filter(t => t.type === 'env'), 'a'), sortieT = this.sum(s.tx.filter(t => t.type === 'epa'), 'a');
+    const reelle = verse - envDepT - sortieT;
+    const kpis = [
+      { label: 'Revenus', val: f(Rv), dot: this.tone(150).base }, { label: 'Dépenses', val: f(D), dot: this.tone(38).base },
+      { label: 'Épargne budgétisée', val: f(E), dot: this.tone(300).base, sub: 'Réelle : ' + f(reelle), subColor: 'oklch(0.42 0.12 300)' }, { label: 'Taux d’épargne', val: taux.toFixed(1).replace('.', ',') + ' %', dot: this.tone(190).base }];
+    const ec = (a, up) => { const e = up ? a.r - a.b : a.b - a.r; return [f(e, true), e >= 0 ? 'oklch(0.5 0.12 150)' : 'oklch(0.54 0.18 25)']; };
+    const recapDefs = [['Revenus', 150, bs('rev'), rs_('rev'), 1], ['Crédits / dettes', 38, bs('cre'), rs_('cre')], ['Dépenses fixes', 38, bs('fix'), rs_('fix')], ['Dépenses variables', 38, bs('var'), rs_('var')], ['Enveloppes', 300, allocSum, allocSum], ['Épargnes', 300, bs('epa'), rs_('epa'), 1], ['Investissements', 250, bs('inv'), rs_('inv'), 1]];
+    const recap = recapDefs.map(d => { const [e, c] = ec({ b: d[2], r: d[3] }, d[4]); return { n: d[0], dot: this.tone(d[1]).base, b: f(d[2]), r: f(d[3]), e, ec: c }; });
+    const goalDefs = [['Fond de secours', 13950, 22950, f(13950) + ' / ' + f(22950), 'En progression', 190], ['Investir 20K', 15219, 20000, f(15219) + ' / ' + f(20000), 'En bonne voie', 150], ['Taux d’épargne > 60 %', taux, 60, taux.toFixed(1).replace('.', ',') + ' % / 60 %', taux >= 60 ? 'Atteint' : 'À rattraper', 85]];
+    const goals = goalDefs.map(g => { const p = Math.min(100, g[1] / g[2] * 100); return { n: g[0], v: g[3], p: p.toFixed(1).replace('.', ',') + ' %', w: p, status: g[4], sbg: this.tone(g[5]).soft, sink: this.tone(g[5]).ink, bar: g[5] === 85 ? 'oklch(0.82 0.13 90)' : this.tone(190).base }; });
+    const vs = [['bou', 'Boursorama', 360], ['ce', 'Caisse d’épargne', 400], ['lyd', 'Lydia', 100], ['ram', 'Ramify', 100], ['icm', 'Interne CM', 0], ['bd', 'Bourse Direct', 0], ['trr', 'Trade Republic', 0], ['esp', 'Espèces', 0], ['cm', 'Crédit Mutuel', 0]];
+    const live = vs.filter(v => v[2] > 0), nd = live.filter(v => s.done[v[0]]).length, tt = this.tone(190);
+    const virs = vs.map(v => { const z = v[2] === 0, d = !!s.done[v[0]]; return { id: v[0], n: v[1], a: f(v[2]), live: !z, zero: z,
+      st: `display:flex;align-items:center;gap:9px;padding:3px 14px;height:24px;cursor:${z ? 'default' : 'pointer'}`,
+      box: `flex:none;width:18px;height:18px;border-radius:6px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:1.5px solid ${d ? tt.base : 'rgba(32,30,29,.28)'};background:${d ? tt.base : '#fff'}`,
+      tick: `opacity:${d ? 1 : 0}`, nst: `flex:1;font-weight:500;${d ? 'text-decoration:line-through;color:rgba(32,30,29,.42)' : (z ? 'color:rgba(32,30,29,.4)' : '')}`, ast: `font-weight:600;${d ? 'color:rgba(32,30,29,.42)' : (z ? 'color:rgba(32,30,29,.4)' : '')}` }; });
+    // enveloppes
+    const prevByEnv = id => this.sum(s.prev.filter(p => p.m === 11 && p.e === id), 'a');
+    const envView = this.ENV.map(e => { const T = this.tone(e.h), pv = prevByEnv(e.id), al = s.alloc[e.id], man = pv - e.solde; return { ...e, dep: this.sum(s.tx.filter(t => t.type === 'env' && t.target === e.id), 'a'), ...T, T, pv, al, man, warn: man > 0, cash: s.cash[e.id], virt: e.solde - s.cash[e.id] }; });
+    const vio = this.tone(300);
+    const envCompact = envView.filter(e => e.id !== 'projets').map(e => ({ n: e.n, solde: f(e.solde), alloc: f(e.al), bg: vio.bg, line: e.warn ? 'oklch(0.8 0.12 55)' : vio.line, ink: vio.ink, warn: e.warn }));
+    const sa = envView.find(e => e.id === 'sante');
+    const envAlert = `Dentiste ${f(60)} prévu, il manque ~${f(Math.max(0, 60 - sa.solde))}`;
+    const spark = (arr) => { const w = 168, h = 52, mn = Math.min(...arr), mx = Math.max(...arr), sp = mx - mn || 1; const p = arr.map((v, i) => [i * w / 11, 4 + (h - 8) * (1 - (v - mn) / sp)]); const l = p.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' '); return { line: l, area: l + ` L${w} ${h} L0 ${h} Z`, cx: p[11][0], cy: p[11][1] }; };
+    const envCards = envView.map(e => ({ id: e.id, n: e.n, base: e.base, bg: e.bg, lineC: e.line, ink: e.ink, soft: e.soft, solde: f(e.solde), cashT: f(e.cash), virtT: f(e.virt), pc: e.solde ? e.cash / e.solde * 100 : 0, alloc: f(e.al), allocRaw: String(e.al).replace('.', ','), dep: f(e.dep), prevu: f(e.pv), warn: e.warn, manque: f(Math.max(0, e.man)), editing: !!(ed && ed.id === e.id && ed.f === 'al'), notEditing: !(ed && ed.id === e.id && ed.f === 'al'), ...spark(e.hist) }));
+    let drawer = null;
+    if (s.env) { const e = envView.find(x => x.id === s.env); const ms = ['Juil.','Août','Sept.','Oct.','Nov.','Déc.'];
+      drawer = { n: e.n, base: e.base, bg: e.bg, lineC: e.line, ink: e.ink, solde: f(e.solde), soft: e.soft, cash: f(e.cash), virt: f(e.virt), pc: e.solde ? e.cash / e.solde * 100 : 0, cashId: 'cash-' + e.id, cashRaw: String(e.cash).replace('.', ','), editCash: !!(ed && ed.id === 'cash-' + e.id), notEditCash: !(ed && ed.id === 'cash-' + e.id), hist: ms.map((m, i) => ({ m, a: f(i === 5 ? e.al : e.ha[i]), d: f(i === 5 ? e.dep : e.hd[i]), s: f(e.hist[6 + i]) })), tx: [...s.tx.filter(t => t.type === 'env' && t.target === e.id).sort((a, b) => b.d - a.d).map(t => [String(t.d).padStart(2, '0') + ' déc.', t.t, -t.a]), ...e.tx.filter(t => !/déc/.test(t[0]))].map(t => ({ d: t[0], t: t[1], a: f(t[2]), c: t[2] < 0 ? '#201e1d' : 'oklch(0.5 0.12 150)' })) }; }
+    // prévisionnel
+    const pTot = this.sum(s.prev, 'a');
+    const alerts = { 2: 'Santé : il manquera ~80 €', 8: 'Impôts : il manquera ~60 €', 11: envAlert };
+    const months = this.MONTHS.map((n, i) => { const its = s.prev.filter(p => p.m === i); const cur = i === 9;
+      return { i, name: n[0].toUpperCase() + n.slice(1), total: f(this.sum(its, 'a')), current: cur, alert: !!alerts[i], alertText: alerts[i] || '',
+        box: `background:#fff;border:${cur ? '1.5px solid oklch(0.72 0.13 300)' : '1px solid rgba(32,30,29,.07)'};border-radius:14px;box-shadow:${cur ? '0 0 0 4px oklch(0.95 0.035 300)' : '0 1px 2px rgba(32,30,29,.05)'};padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px;min-height:150px`,
+        items: its.map(p => { const E_ = this.ENV.find(x => x.id === p.e), T = this.tone(E_.h), ee = ed && ed.id === p.id; return { id: p.id, t: p.t, a: f(p.a), raw: String(p.a).replace('.', ','), base: T.base, line: T.line, envName: E_.n, editing: !!ee, notEditing: !ee }; }) }; });
+    const nav = [
+      ['budget', 'Budget', 'M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4', 0],
+      ['dep', 'Dépenses', 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', 0],
+      ['env', 'Enveloppes', 'M4 6h16v12H4zM4 7l8 6 8-6', 0],
+      ['prevAnn', 'Prévisionnel', 'M8 2v4M16 2v4M3 6h18v15H3zM3 10h18', 0],
+      ['setup', 'Démarrage', 'M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8', 0],
+      ['close', 'Clôture', 'M8 2v4M16 2v4M3 6h18v15H3zM3 10h18M9 16l2 2 4-4', 0],
+
+      ['x2', 'Objectifs', 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z', 1],
+      ['x3', 'Placements', 'M22 7l-8.5 8.5-5-5L2 17M16 7h6v6', 1]
+    ].map(n => { const act = s.screen === n[0]; return { id: n[0], label: n[1], icon: n[2], title: n[4] || (n[3] ? n[1] + ' · bientôt disponible' : n[1]),
+      box: `width:62px;padding:8px 0 7px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:${n[3] ? 'not-allowed' : 'pointer'};background:${act ? 'oklch(0.95 0.04 300)' : 'transparent'};color:${act ? 'oklch(0.36 0.12 300)' : (n[3] ? 'rgba(32,30,29,.28)' : 'rgba(32,30,29,.62)')};${n[3] ? 'margin-top:' + (n[0] === 'x2' ? 14 : 0) + 'px' : ''}` }; });
+    const monthList = this.ML.map((m, i) => ({ i, label: m, tag: s.init[i] ? '' : 'à créer', st: `display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-radius:8px;cursor:pointer;font-weight:${i === s.mi ? 700 : 500};background:${i === s.mi ? 'oklch(0.95 0.04 300)' : 'transparent'}` }));
+    const CLO = [
+      { t: 'Comptes et épargnes', h: 300, icon: 'M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M3 10l9-6 9 6', rows: [['la','Livret A',9800],['ld','LDDS Travaux',4150],['ly','Lydia Holidays',640],['vm','Vacances Mada',1120],['vc','Vacances copines',310]] },
+      { t: 'Enveloppes', h: 280, icon: 'M4 6h16v12H4zM4 7l8 6 8-6', rows: this.ENV.map(e => [e.id, e.n, e.solde]) },
+      { t: 'Investissements', h: 250, icon: 'M22 7l-8.5 8.5-5-5L2 17M16 7h6v6', rows: [['av','Assurance Vie',4820],['pea','PEA',5310],['tr','Trade Republic',2140],['pc','PERCOL',1949],['pg','PEG',1000]] }
+    ];
+    let nAdj = 0, cTot = 0;
+    const adjCol = a => a === 0 ? 'rgba(32,30,29,.4)' : 'oklch(0.45 0.1 70)';
+    const closeGroups = CLO.map(g => { const T = this.tone(g.h); let tc = 0, tv = 0;
+      const rows = g.rows.map(r => { const id = 'k-' + r[0], v = s.cl[id] !== undefined ? s.cl[id] : r[2], a = v - r[2], ee = ed && ed.id === id; tc += r[2]; tv += v; if (a) nAdj++;
+        return { id, n: r[1], calc: f(r[2]), val: f(v), raw: String(v).replace('.', ','), adj: a ? f(a, true) : '—', adjColor: adjCol(a), bgc: a ? 'oklch(0.96 0.04 90)' : 'transparent', editing: !!ee, notEditing: !ee }; });
+      cTot += tv; const ta = tv - tc;
+      return { t: g.t, icon: g.icon, ...T, rows, tcalc: f(tc), tval: f(tv), tadj: ta ? f(ta, true) : '—', tadjColor: adjCol(ta) }; });
+    const fm = s.form, ENVS = this.ENV;
+    const tgName = (ty, tg) => ty === 'env' ? ENVS.find(x => x.id === tg).n : R.find(r => r.id === tg).name;
+    const tHue = t => t.type === 'var' ? 38 : t.type === 'env' ? ENVS.find(x => x.id === t.target).h : 300;
+    const typeLbl = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne' };
+    const txs = [...s.tx].sort((a, b) => b.d - a.d).map(t => ({ id: t.id, d: String(t.d).padStart(2, '0') + ' déc.', t: t.t, tg: tgName(t.type, t.target), ty: typeLbl[t.type], a: f(t.a), dot: this.tone(tHue(t)).base, src: t.src === 'esp' ? 'Espèces' : 'Virtuel', sbg: t.src === 'esp' ? 'oklch(0.95 0.06 85)' : 'oklch(0.95 0.03 250)', sink: t.src === 'esp' ? 'oklch(0.38 0.07 80)' : 'oklch(0.38 0.08 250)' }));
+    const chip = on => `padding:6px 12px;border-radius:99px;cursor:pointer;font-weight:600;font-size:12px;border:1.5px solid ${on ? '#201e1d' : 'rgba(32,30,29,.14)'};background:${on ? '#201e1d' : '#fff'};color:${on ? '#fff' : '#201e1d'}`;
+    const typeOpts = [['var', 'Dépense variable'], ['env', 'Enveloppe'], ['epa', 'Sortie épargne']].map(o => ({ id: o[0], label: o[1], st: chip(fm.type === o[0]) }));
+    const tl = fm.type === 'var' ? R.filter(r => r.blk === 'var').map(r => [r.id, r.name]) : fm.type === 'env' ? ENVS.map(e => [e.id, e.n]) : R.filter(r => r.blk === 'epa').map(r => [r.id, r.name]);
+    const targetOpts = tl.map(o => ({ id: o[0], label: o[1], st: chip(fm.target === o[0]) }));
+    const srcOpts = [['vir', 'Virtuel'], ['esp', 'Espèces']].map(o => ({ id: o[0], label: o[1], st: chip(fm.src === o[0]) }));
+    const fa = this.parse(fm.a) || 0; let impact = [];
+    if (fm.type === 'var') { const r = R.find(x => x.id === fm.target), c = r.r || 0; impact = [{ l: r.name + ' · réel', v: f(c) + ' → ' + f(c + fa) }, { l: 'Restant des variables', v: f(bs('var') - rs_('var')) + ' → ' + f(bs('var') - rs_('var') - fa) }]; }
+    else if (fm.type === 'env') { const e = envView.find(x => x.id === fm.target); impact = [{ l: e.n + ' · dépensé', v: f(e.dep) + ' → ' + f(e.dep + fa) }, { l: 'Épargne réelle', v: f(reelle) + ' → ' + f(reelle - fa) }]; }
+    else { const r = R.find(x => x.id === fm.target); impact = [{ l: r.name + ' · sorties', v: f(this.sum(s.tx.filter(t => t.type === 'epa' && t.target === r.id), 'a')) + ' → ' + f(this.sum(s.tx.filter(t => t.type === 'epa' && t.target === r.id), 'a') + fa) }, { l: 'Épargne réelle', v: f(reelle) + ' → ' + f(reelle - fa) }]; }
+    const fcell = (l, v, o = {}) => ({ l, v, fs: o.fs || 18, vc: o.vc || '#201e1d', lc: 'rgba(32,30,29,.6)', st: `flex:1;padding:2px 14px;${o.last ? '' : 'border-right:1px solid rgba(32,30,29,.08);'}${o.bg ? 'background:' + o.bg + ';border-radius:12px;' : ''}` });
+    const flow = [fcell('Épargne budgétisée', f(E)), fcell('Versements réels', f(verse)), fcell('− Dépenses des enveloppes', f(envDepT)), fcell('− Sorties des comptes d’épargne', f(sortieT)), fcell('Épargne réelle', f(reelle), { fs: 22, vc: 'oklch(0.36 0.12 300)', bg: 'oklch(0.965 0.03 300)', last: true })];
+    const tabs = [['saisie', 'Saisie des dépenses'], ['soldes', 'Soldes des comptes']].map(t => ({ id: t[0], label: t[1], st: `padding:6px 16px;border-radius:99px;cursor:pointer;font-weight:700;background:${s.tab === t[0] ? '#201e1d' : 'transparent'};color:${s.tab === t[0] ? '#fff' : 'rgba(32,30,29,.65)'}` }));
+    const ACC = [['e-la','Livret A',9500,[8700,8900,9100,9200,9500,9800]],['e-ld','LDDS Travaux',4220,[3800,3950,4100,4250,4220,4150]],['e-ly','Lydia Holidays',620,[300,350,450,520,620,640]],['e-vm','Vacances Mada',1000,[400,520,640,760,1000,1120]],['e-vc','Vacances copines',310,[100,150,200,250,310,310]],['i-av','Assurance Vie',4720,[4300,4400,4550,4600,4720,4820]],['i-pea','PEA',5160,[4700,4780,4900,5020,5160,5310]],['i-tr','Trade Republic',2140,[1700,1800,1900,2000,2140,2140]],['i-pc','PERCOL',1885,[1700,1750,1800,1850,1885,1949]],['i-pg','PEG',970,[900,920,940,950,970,1000]]];
+    let nOk = 0;
+    const mkAcc = a => { const row = R.find(r => r.id === a[0]), v = row.r || 0, so = this.sum(s.tx.filter(t => t.type === 'epa' && t.target === a[0]), 'a'), att = a[2] + v - so, rl = s.rel[a[0]], has = rl !== null && rl !== undefined, ecx = has ? Math.round((rl - att) * 100) / 100 : null, ok = has && Math.abs(ecx) < 0.005; if (ok) nOk++;
+      const ar = a[3].slice(0, 5).concat([att]), mn = Math.min(...ar), mx = Math.max(...ar), sp = mx - mn || 1, p = ar.map((y, i) => [i * 84 / 5, 3 + 20 * (1 - (y - mn) / sp)]), eid = 'rel-' + a[0], ee = ed && ed.id === eid;
+      const st = !has ? ['À saisir', 'rgba(32,30,29,.06)', 'rgba(32,30,29,.6)'] : ok ? ['Validé', 'oklch(0.95 0.05 150)', 'oklch(0.35 0.09 150)'] : ['À vérifier', 'oklch(0.95 0.06 85)', 'oklch(0.38 0.07 80)'];
+      return { n: a[1], deb: f(a[2]), vers: v ? f(v) : '—', sort: so ? f(-so) : '—', att: f(att), rel: has ? f(rl) : 'Saisir…', raw: has ? String(rl).replace('.', ',') : '', eid, editing: !!ee, notEditing: !ee, bgc: has && !ok ? 'oklch(0.96 0.04 90)' : 'transparent', ecart: has ? (ok ? '—' : f(ecx, true)) : '—', ec: has && !ok ? 'oklch(0.45 0.1 70)' : 'rgba(32,30,29,.4)', status: st[0], sbg: st[1], sink: st[2],
+        line: p.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' '), cx: p[5][0], cy: p[5][1] }; };
+    const accGroups = [['Épargnes', 300, ACC.slice(0, 5)], ['Investissements', 250, ACC.slice(5)]].map(g => ({ t: g[0], ...this.tone(g[1]), rows: g[2].map(mkAcc) }));
+    const SU = this.SUCFG, su = s.su, sp = v => this.parse(v) || 0, sumK = (id, k) => su.rows[id].reduce((t, r) => t + sp(r[k]), 0);
+    const cfg = SU[su.step], T0 = this.tone(cfg.h);
+    const suSteps = SU.map((c, i) => { const n = c.id === 'fin' ? 0 : (c.id === 'start' ? 1 : su.rows[c.id].length), done = c.id === 'start' ? su.step > 0 : c.id === 'fin' ? su.done : n > 0, cur = i === su.step, T = this.tone(c.h);
+      const sub = c.id === 'start' ? su.start : c.id === 'fin' ? (su.done ? 'Budget créé' : 'À valider') : n ? n + (n > 1 ? ' lignes · ' : ' ligne · ') + f(sumK(c.id, c.tk)) : 'Vide';
+      return { i, label: c.label, num: i + 1, done, todo: !done, sub, subc: n || c.id === 'start' || (c.id === 'fin' && su.done) ? 'rgba(32,30,29,.6)' : 'rgba(32,30,29,.4)',
+        box: `display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;background:${cur ? T.bg : 'transparent'};box-shadow:${cur ? 'inset 0 0 0 1.5px ' + T.line : 'none'}`,
+        dot: `width:24px;height:24px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:${done ? T.base : '#fff'};color:${done ? '#fff' : 'rgba(32,30,29,.5)'};border:1.5px solid ${done ? T.base : 'rgba(32,30,29,.18)'}` }; });
+    const MN = ['Janvier 2027', 'Février 2027', 'Mars 2027', 'Avril 2027', 'Mai 2027', 'Juin 2027'];
+    const suMonths = MN.map(v => ({ v, st: `padding:9px 18px;border-radius:99px;cursor:pointer;font-weight:700;border:1.5px solid ${su.start === v ? '#201e1d' : 'rgba(32,30,29,.14)'};background:${su.start === v ? '#201e1d' : '#fff'};color:${su.start === v ? '#fff' : '#201e1d'}` }));
+    const suIntro = [['Lignes du budget', 'Revenus, crédits, dépenses fixes et variables avec leurs montants mensuels.', 150], ['Soldes de départ', 'Épargnes, enveloppes et investissements tels qu’ils sont au premier jour.', 300], ['Reste à placer', 'Calculé à la fin, avant de créer le budget du premier mois.', 90]].map(a => ({ t: a[0], d: a[1], bg: this.tone(a[2]).bg, ink: this.tone(a[2]).ink }));
+    const isList = cfg.id !== 'start' && cfg.id !== 'fin', nr = isList ? su.rows[cfg.id].length : 0;
+    const inCols = isList ? cfg.cols : [];
+    const moneyW = k => k === 'a' || k === 'b' || k === 'e' ? 150 : 0;
+    const gridSt = isList ? `display:grid;grid-template-columns:${inCols.map(c => c.t === 'text' ? 'minmax(0,1fr)' : c.t === 'chip' ? '130px' : '150px').join(' ')} 30px;column-gap:12px;align-items:center;padding:0 22px` : '';
+    const alR = c => c.t === 'money' ? 'text-align:right;padding-right:10px' : '';
+    const suRows = isList ? su.rows[cfg.id].map(r => ({ id: r.id, cells: inCols.map(c => { const bad = cfg.id === 'env' && c.k === 'e' && sp(r.e) > sp(r.b);
+      return { k: c.k, isText: c.t === 'text', isMoney: c.t === 'money', isChip: c.t === 'chip', val: r[c.k] || '', opts: c.t === 'chip' ? c.opts.map(v => ({ v, st: `padding:4px 12px;border-radius:99px;cursor:pointer;font-weight:700;font-size:12px;background:${r[c.k] === v ? T0.bg : '#fff'};color:${r[c.k] === v ? T0.ink : 'rgba(32,30,29,.5)'};border:1.5px solid ${r[c.k] === v ? T0.base : 'rgba(32,30,29,.12)'}` })) : [],
+        st: `width:100%;box-sizing:border-box;height:30px;text-align:right;padding:0 26px 0 8px;font-size:13px;font-weight:700;border:1.5px solid ${bad ? 'oklch(0.7 0.15 25)' : 'rgba(32,30,29,.1)'};border-radius:8px;background:${bad ? 'oklch(0.97 0.03 25)' : '#fff'};outline:none;font-variant-numeric:tabular-nums` }; }) })) : [];
+    const mc = inCols.filter(c => c.t === 'money');
+    const envBad = cfg.id === 'env' && su.rows.env.some(r => sp(r.e) > sp(r.b));
+    const sFin = (() => { const rv = sumK('rev', 'a'), cr = sumK('cre', 'a'), dp = sumK('dep', 'a'), vs = sumK('epa', 'a') + sumK('inv', 'a'), al = sumK('env', 'a'), reste = rv - cr - dp - vs - al, sb = sumK('epa', 'b'), eb = sumK('env', 'b'), ib = sumK('inv', 'b');
+      const it = (l, v, o = {}) => ({ l, v, fw: o.b ? 700 : 500, c: o.c || '#201e1d', bt: o.b ? '1px solid rgba(32,30,29,.1)' : 'none' });
+      return [{ t: 'Chaque mois', T: this.tone(150), items: [it('Revenus', f(rv)), it('Crédits et dettes', f(-cr)), it('Dépenses fixes et variables', f(-dp)), it('Épargnes et investissements', f(-vs)), it('Enveloppes allouées', f(-al)), it('Reste à placer', f(reste), { b: 1, c: reste < 0 ? 'oklch(0.54 0.18 25)' : 'oklch(0.45 0.12 150)' })] },
+        { t: 'Soldes au 1er ' + su.start.split(' ')[0].toLowerCase(), T: this.tone(300), items: [it('Épargnes (' + su.rows.epa.length + ')', f(sb)), it('Enveloppes (' + su.rows.env.length + ')', f(eb)), it('Investissements (' + su.rows.inv.length + ')', f(ib)), it('Total de départ', f(sb + eb + ib), { b: 1 })] }]; })();
+    const empties = SU.filter(c => c.id !== 'start' && c.id !== 'fin' && !su.rows[c.id].length).map(c => c.label);
+    const suV = { isStart: cfg.id === 'start', isList, isFin: cfg.id === 'fin', done: su.done, T: T0, icon: cfg.icon, label: cfg.label, help: cfg.help, gridSt, heads: inCols.map(c => ({ l: c.l, st: alR(c) })), rows: suRows, empty: isList && !nr, hasRows: isList && nr > 0,
+      emptyT: cfg.emptyT, emptyD: cfg.emptyD, add: cfg.add, totals: mc.filter(c => c.tot).map(c => ({ v: 'Total ' + f(sumK(cfg.id, c.k)), st: 'text-align:right;padding-right:10px;font-weight:700' })), fin: sFin,
+      prevSt: `height:40px;padding:0 20px;display:flex;align-items:center;border-radius:999px;background:#fff;border:1.5px solid rgba(32,30,29,.16);font-weight:700;cursor:pointer;opacity:${su.step ? 1 : .4}`,
+      nextSt: `height:40px;padding:0 22px;display:flex;align-items:center;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer;opacity:${cfg.id === 'fin' && su.done ? .4 : 1}`,
+      nextLabel: cfg.id === 'fin' ? 'Créer le budget de ' + su.start : 'Continuer',
+      warn: envBad ? 'La part en espèces dépasse le solde sur une enveloppe.' : cfg.id === 'fin' && empties.length ? 'Étapes vides : ' + empties.join(', ') + '.' : '' };
+    const suMk = id => ({ id: 'u' + (su.cnt + 1) });
+    const titles = { setup: 'Initialisation', budget: 'Budget mensuel', dep: 'Dépenses et soldes', env: 'Enveloppes', prevAnn: 'Prévisionnel annuel', close: 'Clôture de l’année' };
+    return {
+      nav, title: titles[s.screen], isBudget: s.screen === 'budget', isEnv: s.screen === 'env', isPrev: s.screen === 'prevAnn', showMonth: s.screen !== 'prevAnn' && s.screen !== 'close' && s.screen !== 'setup', showYear: s.screen === 'prevAnn' || s.screen === 'close', isClose: s.screen === 'close', isDep: s.screen === 'dep', tabSaisie: s.tab === 'saisie', tabSoldes: s.tab === 'soldes', tabs, form: fm, typeOpts, targetOpts, srcOpts, impact, flow, txs, txTotal: f(this.sum(s.tx, 'a')), accGroups, validCount: nOk + ' / ' + ACC.length,
+      targetLabel: fm.type === 'var' ? 'Ligne de dépense variable' : fm.type === 'env' ? 'Enveloppe' : 'Compte d’épargne débité',
+      setTab: e => this.setState({ tab: e.currentTarget.dataset.t, editing: null }),
+      onForm: e => { const k = e.target.dataset.k, v = e.target.value; this.setState(x => ({ form: { ...x.form, [k]: v } })); },
+      setForm: e => { const k = e.currentTarget.dataset.k, v = e.currentTarget.dataset.v; this.setState(x => { const nf = { ...x.form, [k]: v }; if (k === 'type') nf.target = v === 'var' ? 'v-ali' : v === 'env' ? 'perso' : 'e-la'; return { form: nf }; }); },
+      addTx: () => { if (!fa) return; const id = 't' + (s.cnt + 1), tg = fm.target; this.setState(x => ({ cnt: x.cnt + 1, tx: [...x.tx, { id, d: 19, t: fm.t.trim() || tgName(fm.type, tg), a: fa, type: fm.type, target: tg, src: fm.src }], rows: fm.type === 'var' ? x.rows.map(r => r.id === tg ? { ...r, r: Math.round(((r.r || 0) + fa) * 100) / 100 } : r) : x.rows, form: { ...x.form, t: '', a: '' } })); },
+      delTx: e => { const id = e.currentTarget.dataset.id, t = s.tx.find(q => q.id === id); this.setState(x => ({ tx: x.tx.filter(q => q.id !== id), rows: t.type === 'var' ? x.rows.map(r => r.id === t.target ? { ...r, r: Math.round(((r.r || 0) - t.a) * 100) / 100 } : r) : x.rows })); }, closeGroups, closed: s.closed, cur: s.closed ? 'default' : 'text',
+      closeTotal: f(cTot), closeAdjText: nAdj ? nAdj + (nAdj > 1 ? ' soldes ajustés' : ' solde ajusté') + ' par rapport au calcul' : 'Aucun ajustement',
+      closeBtnLabel: s.closed ? 'Rouvrir l’année 2026' : 'Clôturer l’année 2026',
+      closeBtn: s.closed ? 'height:40px;display:flex;align-items:center;justify-content:center;border-radius:999px;border:1.5px solid rgba(32,30,29,.2);background:#fff;font-weight:700;cursor:pointer' : 'height:42px;display:flex;align-items:center;justify-content:center;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer',
+      toggleClose: () => this.setState(x => ({ closed: !x.closed, editing: null })),
+      monthLabel: this.ML[s.mi], menuOpen: s.menu, monthList, uninit, rowH: 24,
+      gridWrap: uninit ? 'opacity:.4;pointer-events:none;filter:grayscale(.4)' : '',
+      s: { reste: f(reste), kpis }, col1: [block('rev'), block('cre')], col2: [block('fix'), block('var')], col3: [block('epa'), block('inv')], recap, goals, virs, vCount: nd + ' / ' + live.length,
+      envCompact, envAlert, envCards, drawer, legend: envView.map(e => ({ n: e.n, base: e.base })), months, pTotal: f(pTot), pAvg: f(pTot / 12),
+      isSetup: s.screen === 'setup', su: suV, suSteps, suMonths, suIntro,
+      suGo: e => this.setState(x => ({ su: { ...x.su, step: +e.currentTarget.dataset.i } })),
+      suPrev: () => this.setState(x => ({ su: { ...x.su, step: Math.max(0, x.su.step - 1) } })),
+      suNext: () => { if (cfg.id === 'fin') this.setState(x => ({ su: { ...x.su, done: true } })); else this.setState(x => ({ su: { ...x.su, step: x.su.step + 1 } })); },
+      suStart: e => { const v = e.currentTarget.dataset.v; this.setState(x => ({ su: { ...x.su, start: v } })); },
+      suInput: e => { const { r, c } = e.target.dataset, v = e.target.value; const id = cfg.id; this.setState(x => ({ su: { ...x.su, rows: { ...x.su.rows, [id]: x.su.rows[id].map(q => q.id === r ? { ...q, [c]: v } : q) } } })); },
+      suChip: e => { const { r, c, v } = e.currentTarget.dataset, id = cfg.id; this.setState(x => ({ su: { ...x.su, rows: { ...x.su.rows, [id]: x.su.rows[id].map(q => q.id === r ? { ...q, [c]: v } : q) } } })); },
+      suDel: e => { const r = e.currentTarget.dataset.r, id = cfg.id; this.setState(x => ({ su: { ...x.su, rows: { ...x.su.rows, [id]: x.su.rows[id].filter(q => q.id !== r) } } })); },
+      suAdd: () => { const id = cfg.id, nid = 'u' + (su.cnt + 1), nrw = { id: nid, n: '' }; cfg.cols.forEach(c => { if (c.t === 'chip') nrw[c.k] = c.opts[0]; }); this.setState(x => ({ su: { ...x.su, cnt: x.su.cnt + 1, rows: { ...x.su.rows, [id]: [...x.su.rows[id], nrw] } } })); },
+      suSug: () => { const id = cfg.id; this.setState(x => { let c = x.su.cnt; const add = cfg.sug.map(a => { const nrw = { id: 'u' + (++c), n: a[0] }; if (a[1]) nrw[cfg.cols.find(q => q.t === 'chip').k] = a[1]; return nrw; }); return { su: { ...x.su, cnt: c, rows: { ...x.su.rows, [id]: [...x.su.rows[id], ...add] } } }; }); },
+      suClear: () => this.setState({ su: { step: 0, start: 'Janvier 2027', done: false, cnt: 0, rows: { rev: [], cre: [], dep: [], epa: [], env: [], inv: [] } } }),
+      suExample: () => { let c = 0; const mk = (arr, keys) => arr.map(a => { const o = { id: 'u' + (++c) }; keys.forEach((k, i) => { o[k] = String(a[i]); }); return o; });
+        const R2 = { rev: mk([['Salaire', 6500], ['Prêt Manioune', 800], ['Remboursement', 350]], ['n', 'a']), cre: mk([['CRN …108', 612, 18400], ['CRN …109', 485, 14200], ['Assurance de prêt', 58, '']], ['n', 'a', 'b']), dep: mk([['Compte joint', 'Fixe', 400], ['Netflix', 'Fixe', 17.99], ['Alimentation', 'Variable', 380], ['Loisirs', 'Variable', 120]], ['n', 'k', 'a']),
+          epa: mk([['Livret A', 'LT', 9800, 400], ['LDDS Travaux', 'LT', 4150, 100], ['Lydia Holidays', 'MT', 640, 100]], ['n', 'k', 'b', 'a']), env: mk([['Perso', 'PLACEHOLDER']].length ? this.ENV.map(e => [e.n, e.solde, Math.min(this.state.cash[e.id], e.solde), 100]) : [], ['n', 'b', 'e', 'a']), inv: mk([['Assurance Vie', 4820, 100], ['PEA', 5310, 150]], ['n', 'b', 'a']) };
+        this.setState({ su: { step: 1, start: 'Janvier 2027', done: false, cnt: c, rows: R2 } }); },
+      suOpen: () => this.setState({ screen: 'budget' }),
+      goScreen: e => { const id = e.currentTarget.dataset.s; if (id[0] !== 'x') this.setState({ screen: id, env: null, editing: null, menu: false }); },
+      toggleMenu: () => this.setState(x => ({ menu: !x.menu })), pickMonth: e => this.setState({ mi: +e.currentTarget.dataset.i, menu: false }),
+      prevMonth: () => this.setState(x => ({ mi: Math.max(0, x.mi - 1) })), nextMonth: () => this.setState(x => ({ mi: Math.min(4, x.mi + 1) })),
+      applyModel: () => this.setState(x => ({ init: { ...x.init, [x.mi]: true } })),
+      ctx: { open: !!s.ctx, id: s.ctx ? s.ctx.id : '', x: s.ctx ? s.ctx.x : 0, y: s.ctx ? s.ctx.y : 0, name: s.ctx ? ((R.find(r => r.id === s.ctx.id) || {}).name || '') : '' },
+      openCtx: e => { e.preventDefault(); const id = e.currentTarget.dataset.id; this.setState({ ctx: { id, x: Math.min(e.clientX, window.innerWidth - 230), y: Math.min(e.clientY, window.innerHeight - 90) }, hover: null }); },
+      closeCtx: e => { if (e && e.preventDefault) e.preventDefault(); this.setState({ ctx: null }); },
+      delRow: e => { const id = e.currentTarget.dataset.id; this.setState(x => ({ rows: x.rows.filter(r => r.id !== id), ctx: null, hover: null, editing: null })); },
+      enter: e => this.setState({ hover: e.currentTarget.dataset.id }), leave: () => this.setState({ hover: null }),
+      startEdit: e => { if (s.closed && e.currentTarget.dataset.f === 'k') return; this._fd = 0; this.setState({ editing: { id: e.currentTarget.dataset.id, f: e.currentTarget.dataset.f } }); },
+      startEditEnv: e => { this._fd = 0; this.setState({ editing: { id: e.currentTarget.dataset.id, f: 'al' } }); },
+      stop: e => e.stopPropagation(),
+      editKey: e => { const t = e.target; if (e.key === 'Enter') { this.commit(t.dataset.id, t.dataset.f, t.value); this.setState({ editing: null }); } else if (e.key === 'Escape') { this._esc = 1; this.setState({ editing: null }); } },
+      editBlur: e => { const t = e.target; if (this._esc) { this._esc = 0; return; } if (this.state.editing) { this.commit(t.dataset.id, t.dataset.f, t.value); this.setState({ editing: null }); } },
+      addRow: e => { const k = e.currentTarget.dataset.b, id = 'n' + (s.cnt + 1); const last = [...R].reverse().find(r => r.blk === k); this._fd = 0;
+        const idx = R.lastIndexOf(last); const nr = { blk: k, sec: last ? last.sec : '', id, name: 'Nouvelle ligne', b: 0, r: null }; const rows = [...R.slice(0, idx + 1), nr, ...R.slice(idx + 1)];
+        this.setState({ rows, cnt: s.cnt + 1, editing: { id, f: 'b' } }); },
+      addPrev: e => { const m = +e.currentTarget.dataset.m, id = 'pn' + (s.cnt + 1); this._fd = 0; this.setState({ prev: [...s.prev, { id: 'p' + id, m, t: 'Nouvelle dépense', a: 0, e: 'perso' }], cnt: s.cnt + 1, editing: { id: 'p' + id, f: 'a' } }); },
+      toggleV: e => { const id = e.currentTarget.dataset.id; if (vs.find(v => v[0] === id)[2] > 0) this.setState(x => ({ done: { ...x.done, [id]: !x.done[id] } })); },
+      openEnv: e => this.setState({ env: e.currentTarget.dataset.id }), closeEnv: () => this.setState({ env: null })
+    };
+  }
+}
+</script>
+</body>
+</html>
