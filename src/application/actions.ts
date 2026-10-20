@@ -1,4 +1,6 @@
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
+import { lineNeedsActual } from '../domain/budget';
+import { isMonthLocked } from '../domain/ledger';
 import type { BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
@@ -114,6 +116,39 @@ export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Parti
 
 export function deleteLine(d: BudgetData, m: MonthKey, key: string) {
   d.months[m].lines = d.months[m].lines.filter(l => l.key !== key);
+}
+
+/** An actual copied from the budget by `validateMonth`, kept to be able to undo it. */
+export interface ValidatedLine {
+  key: string;
+  value: number;
+}
+
+/**
+ * Considers the actual equal to the budget for every line without an actual
+ * (see `lineNeedsActual`). Never overwrites an entered actual. Does nothing
+ * for a month that is not initialized or is locked. Returns the lines filled.
+ */
+export function validateMonth(d: BudgetData, m: MonthKey): ValidatedLine[] {
+  const md = d.months[m];
+  if (!md?.initialized || isMonthLocked(d, m)) return [];
+  const filled: ValidatedLine[] = [];
+  for (const l of md.lines) {
+    if (!lineNeedsActual(l)) continue;
+    l.actual = l.budget;
+    filled.push({ key: l.key, value: l.budget });
+  }
+  return filled;
+}
+
+/** Undoes `validateMonth`: only the lines whose actual is still the copied value go back to empty. */
+export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedLine[]) {
+  const md = d.months[m];
+  if (!md?.initialized || isMonthLocked(d, m)) return;
+  for (const { key, value } of filled) {
+    const l = md.lines.find(x => x.key === key);
+    if (l && l.actual === value) l.actual = null;
+  }
 }
 
 /** Records a transaction; a variable expense also raises its line's actual. */
