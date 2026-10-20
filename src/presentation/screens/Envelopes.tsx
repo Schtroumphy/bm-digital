@@ -24,6 +24,18 @@ export function EnvelopesTotal({ month }: { month: MonthKey }) {
   );
 }
 
+/** Header total of the Envelopes tab: the sum of every envelope's balance this month. */
+export function EnvelopesBalanceTotal({ month }: { month: MonthKey }) {
+  const { data, ledger } = useStore();
+  const total = round2(data.envelopes.reduce((a, e) => a + (ledger.envMonth(e.id, month)?.balance ?? 0), 0));
+  return (
+    <div className="header-total">
+      <span className="kpi-label">Total</span>
+      <b>{money(total)}</b>
+    </div>
+  );
+}
+
 export function EnvelopesScreen({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const { openMenu, setEditing } = useUi();
