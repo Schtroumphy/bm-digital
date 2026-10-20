@@ -1,3 +1,6 @@
 node_modules
 dist
 .DS_Store
+
+# Explications pédagogiques générées par l'agent implementer (non versionnées)
+docs/explanations/
