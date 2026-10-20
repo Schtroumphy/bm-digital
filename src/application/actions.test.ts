@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, SAVINGS_SECTIONS, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
+import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, SAVINGS_SECTIONS, setEnvelopeAllocation, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
 import { addSuggested, emptyDraft, exampleDraft, parseDraft, setupSummary, updateRow, type IdFactory } from './setup';
 import { linesWithoutActual, monthSummary } from '../domain/budget';
 import { emptyData } from '../domain/empty';
@@ -246,6 +246,105 @@ describe('ajout d’une épargne avec horizon', () => {
     expect(line(d, M, 'r').section).toBe(d.months[M].lines.filter(l => l.block === 'rev' && l.key !== 'r').at(-1)!.section);
     addLine(d, M, 'epa', 'new', SAVINGS_SECTIONS.LT);
     expect(d.template).toEqual(tpl);
+  });
+});
+
+describe('allocation depuis l’écran Budget', () => {
+  const M = '2026-12';
+  const ENV = seedData().envelopes[0].id;
+  const alloc = (d: ReturnType<typeof seedData>, m = M) => d.months[m].alloc[ENV];
+  const balance = (d: ReturnType<typeof seedData>) => new Ledger(d).envMonth(ENV, M)!.balance;
+  const remaining = (d: ReturnType<typeof seedData>) => monthSummary(d, new Ledger(d), M).remaining;
+
+  it('CA1: la valeur remplace l’allocation (150 → 200, pas 350) et le solde suit', () => {
+    const d = seedData();
+    d.months[M].alloc[ENV] = 150;
+    const b0 = balance(d);
+    expect(setEnvelopeAllocation(d, M, ENV, 200)).toBe(true);
+    expect(alloc(d)).toBe(200);
+    expect(balance(d)).toBe(b0 + 50);
+  });
+
+  it('CA2: le reste à placer diminue de 50 quand l’allocation passe de 150 à 200', () => {
+    const d = seedData();
+    d.months[M].alloc[ENV] = 150;
+    const r0 = remaining(d);
+    setEnvelopeAllocation(d, M, ENV, 200);
+    expect(remaining(d)).toBe(r0 - 50);
+  });
+
+  it('CA3: une baisse (150 → 100) baisse le solde et relève le reste à placer', () => {
+    const d = seedData();
+    d.months[M].alloc[ENV] = 150;
+    const b0 = balance(d);
+    const r0 = remaining(d);
+    setEnvelopeAllocation(d, M, ENV, 100);
+    expect(alloc(d)).toBe(100);
+    expect(balance(d)).toBe(b0 - 50);
+    expect(remaining(d)).toBe(r0 + 50);
+  });
+
+  it('CA5: 0 est valide et met le mois et le modèle à 0', () => {
+    const d = seedData();
+    expect(setEnvelopeAllocation(d, M, ENV, 0)).toBe(true);
+    expect(alloc(d)).toBe(0);
+    expect(d.template.envAlloc[ENV]).toBe(0);
+  });
+
+  it('CA6: un montant négatif ou invalide est refusé, rien ne change', () => {
+    const d = seedData();
+    const before = structuredClone(d);
+    expect(setEnvelopeAllocation(d, M, ENV, -20)).toBe(false);
+    expect(setEnvelopeAllocation(d, M, ENV, NaN)).toBe(false);
+    expect(d).toEqual(before);
+  });
+
+  it('CA7: le dépassement est enregistré (reste à placer négatif)', () => {
+    const d = seedData();
+    d.months[M].alloc[ENV] = 0;
+    const r0 = remaining(d);
+    expect(setEnvelopeAllocation(d, M, ENV, r0 + 30)).toBe(true);
+    expect(remaining(d)).toBe(-30);
+  });
+
+  it('CA9: le modèle prend la valeur saisie, et « Appliquer le modèle » la reprend', () => {
+    const d = seedData();
+    setEnvelopeAllocation(d, M, ENV, 233);
+    expect(d.template.envAlloc[ENV]).toBe(233);
+    delete d.months['2027-01'];
+    applyTemplate(d, '2027-01');
+    expect(alloc(d, '2027-01')).toBe(233);
+  });
+
+  it('CA10: les autres mois initialisés ne changent pas', () => {
+    const d = seedData();
+    const other = Object.keys(d.months).find(k => k !== M && d.months[k].initialized)!;
+    const before = alloc(d, other);
+    setEnvelopeAllocation(d, M, ENV, before + 77);
+    expect(alloc(d, other)).toBe(before);
+  });
+
+  it('CA11/CA12: mois verrouillé ou non initialisé : rien ne change', () => {
+    const d = seedData();
+    d.closes[2026] = { closed: true, overrides: {} };
+    const locked = structuredClone(d);
+    expect(setEnvelopeAllocation(d, M, ENV, 50)).toBe(false);
+    expect(d).toEqual(locked);
+    const e = seedData();
+    e.months['2027-05'] = { initialized: false, lines: [], alloc: {}, transfersDone: {} };
+    const before = structuredClone(e);
+    expect(setEnvelopeAllocation(e, '2027-05', ENV, 50)).toBe(false);
+    expect(setEnvelopeAllocation(seedData(), M, 'inconnue', 50)).toBe(false);
+    expect(e).toEqual(before);
+  });
+
+  it('CA16: une valeur identique à l’allocation aligne quand même le modèle', () => {
+    const d = seedData();
+    d.months[M].alloc[ENV] = 150;
+    d.template.envAlloc[ENV] = 120;
+    expect(setEnvelopeAllocation(d, M, ENV, 150)).toBe(true);
+    expect(alloc(d)).toBe(150);
+    expect(d.template.envAlloc[ENV]).toBe(150);
   });
 });
 

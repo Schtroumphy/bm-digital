@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccountPicker } from '../components/AccountPicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
@@ -6,11 +6,12 @@ import { Toast } from '../components/Toast';
 import { TransferRoute } from '../components/TransferRoute';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount } from '../../application/bankAccounts';
-import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
+import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { blockTotals, budgetLines, envelopeAlerts, lineGap, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
-import { addMonths, money, monthLabel, parseMonth, percent } from '../../domain/format';
+import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthLocked, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
+import { EnvelopesTotal } from './Envelopes';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
@@ -50,6 +51,7 @@ export function BudgetActions({ month }: { month: MonthKey }) {
 
   return (
     <>
+      <EnvelopesTotal month={month} />
       <div style={{ position: 'relative' }}>
         <div className="btn-quiet" onClick={() => setOpen(o => !o)}>
           <Icon name="copy" size={15} />
@@ -190,7 +192,7 @@ export function BudgetScreen({ month }: { month: MonthKey }) {
             <BlockCard block="inv" month={month} locked={locked || uninit} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
           </div>
           <div className="budget-col">
-            <EnvelopesCompact month={month} />
+            <EnvelopesCompact month={month} locked={locked || uninit} />
             <TransfersCard month={month} locked={locked || uninit} />
           </div>
         </div>
@@ -430,9 +432,59 @@ function GoalsCard({ month }: { month: MonthKey }) {
   );
 }
 
-function EnvelopesCompact({ month }: { month: MonthKey }) {
+/** Allocation field of an envelope tile, prefilled with the current value: Entrée or leaving the field replaces it (0 is valid), Échap cancels, a negative amount stays open with an error. */
+function AllocEditor({ value, onSet, onClose }: { value: number; onSet: (amount: number) => void; onClose: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const cancelled = useRef(false);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  const submit = () => {
+    if (cancelled.current) return;
+    const text = ref.current?.value ?? '';
+    const v = text.trim() ? parseAmount(text) : null;
+    if (v !== null && v < 0) {
+      setError('Montant positif ou nul requis');
+      ref.current?.focus();
+      return;
+    }
+    if (v !== null) onSet(v);
+    onClose();
+  };
+  return (
+    <div className="env-tile-add" onClick={e => e.stopPropagation()}>
+      <div className="env-tile-add-row">
+        <span>alloué</span>
+        <input
+          ref={ref}
+          className="cell-input is-alloc"
+          inputMode="decimal"
+          defaultValue={rawNumber(value)}
+          onChange={() => setError(null)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') submit();
+            else if (e.key === 'Escape') {
+              cancelled.current = true;
+              onClose();
+            }
+          }}
+          onBlur={submit}
+        />
+      </div>
+      {error && <div className="env-tile-error">{error}</div>}
+    </div>
+  );
+}
+
+function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean }) {
   const { data, ledger, update } = useStore();
-  const { setEditing } = useUi();
+  const { editing, setEditing } = useUi();
+  const [warned, setWarned] = useState(false);
+  useEffect(() => setWarned(false), [month]);
+  const remaining = monthSummary(data, ledger, month).remaining;
+  const canEdit = !locked && data.envelopes.length > 0;
   const { year, month: m0 } = parseMonth(month);
   const alerts = envelopeAlerts(data, ledger, year, m0);
   const alloc = monthAlloc(data, month);
@@ -460,11 +512,18 @@ function EnvelopesCompact({ month }: { month: MonthKey }) {
         )}
       </div>
       {alerts.length > 0 && <div className="alert-box">{alertText}</div>}
+      {warned && remaining < 0 && <div className="alert-box">Dépasse le reste à placer de {money(-remaining)}</div>}
+      {data.envelopes.length === 0 && <div className="env-empty">Aucune enveloppe. Créez-en une pour y allouer des sous.</div>}
       <div className="env-compact">
         {data.envelopes.map(e => {
           const warn = alerts.some(a => a.envelopeId === e.id);
           return (
-            <div key={e.id} className="env-tile" style={{ background: vio.bg, borderColor: warn ? 'oklch(0.8 0.12 55)' : vio.line }}>
+            <div
+              key={e.id}
+              className={`env-tile${canEdit ? ' is-editable' : ''}`}
+              style={{ background: vio.bg, borderColor: warn ? 'oklch(0.8 0.12 55)' : vio.line }}
+              onClick={canEdit ? () => setEditing(`ea:${e.id}`) : undefined}
+            >
               <div className="env-tile-head">
                 <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void (d.envelopes.find(x => x.id === e.id)!.name = name))} className="env-tile-name" inputClassName="cell-input is-text">
                   {e.name}
@@ -472,9 +531,20 @@ function EnvelopesCompact({ month }: { month: MonthKey }) {
                 {warn && <span className="warn-dot" />}
               </div>
               <div className="env-tile-solde">{money(ledger.envMonth(e.id, month)?.balance ?? 0)}</div>
-              <div className="env-tile-alloc">
-                alloué <b>{money(alloc[e.id] ?? 0)}</b>
-              </div>
+              {canEdit && editing === `ea:${e.id}` ? (
+                <AllocEditor
+                  value={alloc[e.id] ?? 0}
+                  onSet={amount => {
+                    update(d => void setEnvelopeAllocation(d, month, e.id, amount));
+                    setWarned(true);
+                  }}
+                  onClose={() => setEditing(null)}
+                />
+              ) : (
+                <div className="env-tile-alloc">
+                  alloué <b>{money(alloc[e.id] ?? 0)}</b>
+                </div>
+              )}
             </div>
           );
         })}
