@@ -542,6 +542,8 @@ input, button { font-family: inherit; }
 .acc-trigger { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 99px; padding: 2px 4px; min-width: 0; }
 .acc-trigger:hover:not(.is-disabled) { background: rgba(32, 30, 29, 0.06); }
 .acc-trigger.is-disabled { cursor: default; }
+.acc-trigger.is-quiet .dot { opacity: 0; }
+.acc-trigger.is-quiet:hover:not(.is-disabled) .dot { opacity: 0.35; }
 .acc-menu { top: 22px; left: 0; width: 190px; }
 .acc-item { display: flex; align-items: center; gap: 8px; }
 .pay-menu { width: 230px; }
