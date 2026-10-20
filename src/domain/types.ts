@@ -96,8 +96,11 @@ export interface Settings {
 
 export interface BudgetData {
   version: 1;
-  /** First month managed in the app; earlier months only exist as imported history. */
-  firstMonth: MonthKey;
+  /**
+   * First month managed in the app; earlier months only exist as imported history.
+   * `null` until the « Démarrage » assistant has created the first month.
+   */
+  firstMonth: MonthKey | null;
   template: Template;
   months: Record<MonthKey, MonthData>;
   envelopes: Envelope[];

@@ -1,5 +1,6 @@
-import { addMonths, round2 } from '../domain/format';
-import type { BlockKey, BudgetData, Line, MonthKey, Transaction } from '../domain/types';
+import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
+import type { BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
+import type { SetupDraft, SetupRow } from './setup';
 
 /** Recomputes a variable line's actual from the month's transactions, when it has any. */
 function varActualFromTx(d: BudgetData, m: MonthKey, key: string): number | null {
@@ -33,6 +34,68 @@ export function saveAsTemplate(d: BudgetData, m: MonthKey) {
   const md = d.months[m];
   if (!md?.initialized) return;
   d.template = { lines: md.lines.map(({ actual: _actual, ...l }) => l), envAlloc: { ...md.alloc } };
+}
+
+/** Months the assistant can start from: one year before to one year after today, never before an existing first month. */
+export function setupMonths(d: BudgetData, today = currentMonthKey()): MonthKey[] {
+  const out: MonthKey[] = [];
+  for (let k = addMonths(today, -12); compareMonths(k, addMonths(today, 12)) <= 0; k = addMonths(k, 1)) {
+    if (d.firstMonth === null || compareMonths(k, d.firstMonth) >= 0) out.push(k);
+  }
+  return out;
+}
+
+export const isSetupMonthAllowed = (d: BudgetData, m: MonthKey, today = currentMonthKey()) => setupMonths(d, today).includes(m);
+
+/** True when creating the month would overwrite lines already there (the UI asks for confirmation first). */
+export const willReplaceMonth = (d: BudgetData, m: MonthKey) => !!d.months[m]?.initialized;
+
+/** OKLCH hues given to envelopes, in order. */
+const ENVELOPE_HUES = [300, 170, 350, 240, 75, 130, 190, 25];
+
+/**
+ * Creates the first month from the assistant's draft: the month's lines, the
+ * budget model (`template`), the envelopes and the starting balances.
+ *
+ * Starting balances are the balances on the 1st day of the month, i.e. the
+ * ones at the end of the previous month. We therefore store them as a
+ * statement (accounts) and an imported-history entry (envelopes) of the
+ * previous month, which the Ledger already reads as opening balances
+ * (see docs/adr/0001-soldes-de-depart-via-le-mois-precedent.md).
+ *
+ * Returns false, and changes nothing, when the month is not allowed.
+ */
+export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = currentMonthKey()): boolean {
+  const m = draft.month;
+  if (!isSetupMonthAllowed(d, m, today)) return false;
+  const rows = draft.rows;
+
+  const line = (block: BlockKey, r: SetupRow, section = ''): Line => ({ key: r.id, block, section, name: r.name.trim() || 'Sans nom', budget: r.amount, actual: null });
+  const lines: Line[] = [
+    ...rows.rev.map(r => line('rev', r)),
+    ...rows.cre.map(r => line('cre', r)),
+    ...rows.dep.filter(r => r.kind === 'fix').map(r => line('fix', r)),
+    ...rows.dep.filter(r => r.kind !== 'fix').map(r => line('var', r)),
+    ...rows.epa.map(r => line('epa', r, r.kind === 'MT' ? 'Épargne moyen terme' : 'Épargne long terme')),
+    ...rows.inv.map(r => line('inv', r)),
+  ];
+  const envelopes: Envelope[] = rows.env.map((r, i) => ({
+    id: r.id,
+    name: r.name.trim() || 'Sans nom',
+    hue: ENVELOPE_HUES[i % ENVELOPE_HUES.length],
+    cash: Math.min(r.cash, r.balance),
+  }));
+  const envAlloc = Object.fromEntries(rows.env.map(r => [r.id, r.amount]));
+
+  d.template = { lines: lines.map(({ actual: _actual, ...l }) => l), envAlloc };
+  d.envelopes = envelopes;
+  initMonth(d, m, lines, envAlloc);
+
+  const before = addMonths(m, -1);
+  d.statements[before] = Object.fromEntries([...rows.epa, ...rows.inv].map(r => [r.id, r.balance]));
+  d.envHistory[before] = Object.fromEntries(rows.env.map((r): [string, EnvHistory] => [r.id, { alloc: 0, spent: 0, balance: r.balance }]));
+  if (d.firstMonth === null) d.firstMonth = m;
+  return true;
 }
 
 export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string) {

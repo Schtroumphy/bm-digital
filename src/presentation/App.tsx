@@ -8,14 +8,17 @@ import { ClosingScreen } from './screens/Closing';
 import { EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
 import { PlanningScreen } from './screens/Planning';
+import { SetupActions, SetupScreen } from './screens/Setup';
+import { useSetupDraft } from './state/setupDraft';
 
-export type Screen = 'budget' | 'dep' | 'env' | 'prevAnn' | 'close';
+export type Screen = 'budget' | 'dep' | 'env' | 'prevAnn' | 'setup' | 'close';
 
 const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'budget', label: 'Budget', icon: 'budget' },
   { id: 'dep', label: 'Dépenses', icon: 'list' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
+  { id: 'setup', label: 'Démarrage', icon: 'flag' },
   { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
   { id: 'goals', label: 'Objectifs', icon: 'target', soon: true },
   { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
@@ -26,6 +29,7 @@ const TITLES: Record<Screen, string> = {
   dep: 'Dépenses et soldes',
   env: 'Enveloppes',
   prevAnn: 'Prévisionnel annuel',
+  setup: 'Initialisation',
   close: 'Clôture de l’année',
 };
 
@@ -48,13 +52,17 @@ const saveMonth = (m: string) => {
 export function App() {
   const { data, ledger } = useStore();
   const { setEditing, menu, closeMenu } = useUi();
-  const [screen, setScreen] = useState<Screen>('budget');
-  const [month, setMonthState] = useState(() => {
-    const saved = readSavedMonth();
-    if (saved && ledger.months.includes(saved)) return saved;
-    const ready = ledger.months.filter(m => data.months[m]?.initialized);
-    return ready[ready.length - 1] ?? ledger.months[0];
-  });
+  // Until the first month exists, the only usable screen is the assistant.
+  const [screenState, setScreen] = useState<Screen>(() => (data.firstMonth === null ? 'setup' : 'budget'));
+  const screen: Screen = data.firstMonth === null ? 'setup' : screenState;
+  const [draft, setDraft] = useSetupDraft();
+  const [monthState, setMonthState] = useState(readSavedMonth() ?? '');
+  const months = ledger.months;
+  const month = (() => {
+    if (months.includes(monthState)) return monthState;
+    const ready = months.filter(m => data.months[m]?.initialized);
+    return ready[ready.length - 1] ?? months[0] ?? currentMonthKey();
+  })();
   const setMonth = (m: string) => {
     setMonthState(m);
     saveMonth(m);
@@ -62,15 +70,14 @@ export function App() {
   const [year, setYear] = useState(() => parseMonth(currentMonthKey()).year);
   const [monthMenu, setMonthMenu] = useState(false);
 
-  const months = ledger.months;
   const idx = months.indexOf(month);
   const go = (s: Screen) => {
     setScreen(s);
     setEditing(null);
     setMonthMenu(false);
   };
-  const firstYear = parseMonth(data.firstMonth).year;
-  const lastYear = parseMonth(months[months.length - 1]).year;
+  const firstYear = data.firstMonth === null ? year : parseMonth(data.firstMonth).year;
+  const lastYear = months.length ? parseMonth(months[months.length - 1]).year : year;
 
   return (
     <div className="app">
@@ -102,7 +109,7 @@ export function App() {
                 <Icon name="chevronRight" />
               </button>
             </div>
-          ) : (
+          ) : screen === 'setup' ? null : (
             <div className="picker">
               <button className="picker-arrow" disabled={idx <= 0} onClick={() => setMonth(months[idx - 1])} aria-label="Mois précédent">
                 <Icon name="chevronLeft" />
@@ -138,12 +145,23 @@ export function App() {
           )}
           <div style={{ flex: 1 }} />
           {screen === 'budget' && <BudgetActions month={month} />}
+          {screen === 'setup' && <SetupActions setDraft={setDraft} />}
         </header>
 
         {screen === 'budget' && <BudgetScreen month={month} />}
         {screen === 'dep' && <ExpensesScreen month={month} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
+        {screen === 'setup' && (
+          <SetupScreen
+            draft={draft}
+            setDraft={setDraft}
+            onOpenBudget={() => {
+              setMonth(draft.month);
+              go('budget');
+            }}
+          />
+        )}
         {screen === 'close' && <ClosingScreen year={year} />}
       </main>
 

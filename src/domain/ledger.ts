@@ -26,6 +26,7 @@ export interface Account {
 
 /** Months listed in the month picker: from the first app month to two months past the latest one in use. */
 export function monthRange(d: BudgetData, today = currentMonthKey()): MonthKey[] {
+  if (d.firstMonth === null) return [];
   let last = today;
   for (const [k, m] of Object.entries(d.months)) if (m.initialized && compareMonths(k, last) > 0) last = k;
   const end = addMonths(compareMonths(last, d.firstMonth) < 0 ? d.firstMonth : last, 2);
@@ -75,19 +76,21 @@ export class Ledger {
 
   constructor(private d: BudgetData, today = currentMonthKey()) {
     this.months = monthRange(d, today);
+    const first = d.firstMonth;
+    if (first === null) return; // nothing to compute before the first month exists
     const envBal: Record<string, number> = {};
     const accBal: Record<string, number> = {};
     const accs = accounts(d);
 
     for (const m of Object.keys(d.envHistory).sort()) {
-      if (compareMonths(m, d.firstMonth) >= 0) continue;
+      if (compareMonths(m, first) >= 0) continue;
       for (const [id, h] of Object.entries(d.envHistory[m])) {
         this.env.set(`${m}|${id}`, { start: round2(h.balance + h.spent - h.alloc), alloc: h.alloc, spent: h.spent, balance: h.balance });
         envBal[id] = h.balance;
       }
     }
     for (const m of Object.keys(d.statements).sort()) {
-      if (compareMonths(m, d.firstMonth) >= 0) continue;
+      if (compareMonths(m, first) >= 0) continue;
       for (const [key, v] of Object.entries(d.statements[m])) {
         this.acc.set(`${m}|${key}`, { start: v, paid: 0, out: 0, expected: v, statement: v, balance: v });
         accBal[key] = v;
@@ -103,7 +106,9 @@ export class Ledger {
         const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
         const a = alloc[e.id] ?? 0;
         const spent = sumTx(d, m, 'env', e.id);
-        const r = { start, alloc: a, spent, balance: round2(start + a - spent) };
+        // An envelope opening balance set by the assistant for a later month acts like an account statement.
+        const opening = d.envHistory[m]?.[e.id];
+        const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - spent) };
         this.env.set(`${m}|${e.id}`, r);
         envBal[e.id] = r.balance;
       }
