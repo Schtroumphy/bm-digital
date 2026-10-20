@@ -4,7 +4,7 @@ import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
 import { useStore } from './state/store';
 import { useUi } from './state/ui';
 import { AccountsActions, AccountsScreen } from './screens/Accounts';
-import { BudgetScreen, BudgetActions } from './screens/Budget';
+import { BudgetScreen, BudgetActions, MonthCloseControl } from './screens/Budget';
 import { ClosingScreen } from './screens/Closing';
 import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
@@ -67,15 +67,19 @@ export function App() {
     return ready[ready.length - 1] ?? months[0] ?? currentMonthKey();
   })();
   const setMonth = (m: string) => {
+    setCloseAttempt(false);
     setMonthState(m);
     saveMonth(m);
   };
   const [year, setYear] = useState(() => parseMonth(currentMonthKey()).year);
   const [monthMenu, setMonthMenu] = useState(false);
+  // « Clôturer le mois » was clicked and refused: the Budget screen explains why until the user dismisses it.
+  const [closeAttempt, setCloseAttempt] = useState(false);
 
   const idx = months.indexOf(month);
   const go = (s: Screen) => {
     setScreen(s);
+    setCloseAttempt(false);
     setEditing(null);
     setMonthMenu(false);
   };
@@ -146,6 +150,7 @@ export function App() {
               )}
             </div>
           )}
+          {screen === 'budget' && <MonthCloseControl month={month} onRefused={() => setCloseAttempt(true)} onDone={() => setCloseAttempt(false)} />}
           <div style={{ flex: 1 }} />
           {screen === 'budget' && <BudgetActions month={month} />}
           {screen === 'comptes' && <AccountsActions month={month} />}
@@ -153,7 +158,7 @@ export function App() {
           {screen === 'setup' && <SetupActions setDraft={setDraft} />}
         </header>
 
-        {screen === 'budget' && <BudgetScreen month={month} />}
+        {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} />}
         {screen === 'dep' && <ExpensesScreen month={month} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
