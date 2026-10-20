@@ -20,7 +20,7 @@ Le projet suit la **clean architecture**, les principes **SOLID** et **KISS**.
 ```
 src/
   main.tsx          racine de composition : choisit le repository et l'injecte
-  domain/           entités (types) et règles pures : ledger, budget, format, empty, seed (tests)
+  domain/           entités (types) et règles pures : ledger, budget, bank, migrate, format, empty, seed (tests)
   application/      cas d'usage (actions, setup de l'assistant) et ports (BudgetRepository)
   infrastructure/   implémentations des ports : localRepository (Supabase à venir)
   presentation/     App, screens, components, state (store, ui), ds, app.css
@@ -73,7 +73,10 @@ flowchart LR
 - Six blocs de budget : `rev`, `cre`, `fix`, `var`, `epa`, `inv`. Une `Line` a une `key` stable d'un mois à l'autre.
 - `Ledger` calcule mois par mois :
   - les soldes d'enveloppes : début + allocation − dépensé ;
-  - les soldes de comptes : début + versé − retraits, ou le relevé saisi s'il existe.
+  - les soldes de comptes d'épargne et de placement : début + versé − retraits, ou le relevé saisi s'il existe ;
+  - les soldes des comptes bancaires (`bankMonth`) : solde de départ + revenus réels + sorties d'épargne + virements « faits » reçus − dépenses (`var`, `env`) − réel des lignes `fix`, `cre`, `epa`, `inv` − virements « faits » envoyés.
+- **Comptes bancaires** (`BudgetData.accounts`) : toujours un compte principal et « Espèces ». Une opération sans `accountId` est sur le compte principal ; changer de principal fige d'abord ces opérations sur l'ancien. Un compte « hors budget » (`inBudget: false`) est exclu des chiffres du budget mais reste calculé dans son solde. Les virements ne bougent un solde que s'ils ont un compte bancaire pour destination.
+- **Migration** : `migrateBankAccounts` (domain) ajoute les comptes aux données qui n'en ont pas, au chargement, de façon idempotente.
 - Les cas d'usage (`application/actions.ts`) sont des fonctions qui modifient une copie des données.
 - **Clôture d'année** : elle verrouille les mois de l'année. Janvier suivant repart des soldes du 31 décembre, ajustables via `YearClose.overrides`.
 
@@ -98,7 +101,7 @@ sequenceDiagram
 
 - `StoreProvider` ne rend rien tant que le chargement n'est pas terminé.
 - Sans données, il utilise `initialData()`, injecté par `main.tsx` : `emptyData` (budget vide, `firstMonth: null`). `seedData` (chiffres de décembre 2026) ne sert plus qu'aux tests.
-- Tant que `firstMonth` est `null`, l'application n'affiche que l'écran « Démarrage » (assistant en 8 étapes). `createFirstMonth` (`application/actions.ts`) crée le premier mois à partir du brouillon ; les soldes de départ sont stockés comme soldes de fin du mois précédent (ADR 0001).
+- Tant que `firstMonth` est `null`, l'application n'affiche que l'écran « Démarrage » (assistant en 9 étapes). `createFirstMonth` (`application/actions.ts`) crée le premier mois à partir du brouillon ; les soldes de départ des épargnes et enveloppes sont stockés comme soldes de fin du mois précédent (ADR 0001), ceux des comptes bancaires sur le compte lui-même (`openingBalance`).
 - Le brouillon de l'assistant vit dans `localStorage` (clé `budget-perso:setup-draft`), hors de `BudgetData` (ADR 0002).
 - La sauvegarde se déclenche à chaque changement de `data`, sans debounce, sur l'agrégat entier.
 - `presentation/state/ui.tsx` gère les menus contextuels et popovers, séparément des données.
