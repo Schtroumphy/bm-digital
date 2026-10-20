@@ -17,6 +17,8 @@ interface PickerProps {
   disabled?: boolean;
   /** Tooltip on the dot, instead of the account's name. */
   hint?: string;
+  /** Account left out of the menu (the line's other account, spec 0007). */
+  exclude?: string;
   onPick: (accountId: string) => void;
 }
 
@@ -24,7 +26,7 @@ interface PickerProps {
  * The account dot of a line or transaction. Clicking it opens a menu of the
  * active accounts (an archived account only shows up as the current one).
  */
-export function AccountPicker({ data, accountId, showName, disabled, hint, onPick }: PickerProps) {
+export function AccountPicker({ data, accountId, showName, disabled, hint, exclude, onPick }: PickerProps) {
   const [open, setOpen] = useState(false);
   const current = bankAccount(data, accountId);
   const currentId = accountIdOf(data, accountId);
@@ -40,7 +42,7 @@ export function AccountPicker({ data, accountId, showName, disabled, hint, onPic
         <>
           <div className="backdrop" onClick={() => setOpen(false)} />
           <div className="popmenu acc-menu">
-            {activeBankAccounts(data).map(a => (
+            {activeBankAccounts(data).filter(a => a.id !== exclude).map(a => (
               <div
                 key={a.id}
                 className={`popmenu-item${a.id === currentId ? ' is-active' : ''}`}

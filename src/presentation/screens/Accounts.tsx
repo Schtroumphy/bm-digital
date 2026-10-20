@@ -19,7 +19,7 @@ import {
 import { BANK_HUES } from '../../domain/bank';
 import { IN_BUDGET_HINT } from '../components/hints';
 import { money, monthLabel } from '../../domain/format';
-import { isMonthLocked } from '../../domain/ledger';
+import { isMonthLocked, monthLines } from '../../domain/ledger';
 import type { BankAccount, MonthKey } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
@@ -50,10 +50,13 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const { setEditing } = useUi();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  // Account whose month-by-month history is open (spec 0007, RG15).
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
   const locked = isMonthLocked(data, month);
   const active = data.accounts.filter(a => !a.archived);
   const archived = data.accounts.filter(a => a.archived);
   const lastMonth = ledger.months[ledger.months.length - 1];
+  const savingsLines = monthLines(data, month).filter(l => (l.block === 'epa' || l.block === 'inv') && l.linkedAccountId);
 
   const archive = (a: BankAccount) => {
     const balance = ledger.bankMonth(a.id, lastMonth)?.balance ?? 0;
@@ -64,13 +67,20 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const row = (a: BankAccount) => {
     const r = ledger.bankMonth(a.id, month);
     const blocker = archiveBlocker(data, a.id);
+    const receives = savingsLines.filter(l => l.linkedAccountId === a.id).map(l => l.name);
     return (
       <div key={a.id} className={`accounts-grid accounts-row${a.archived ? ' is-archived' : ''}`}>
-        <div className="accounts-name">
-          <AccountDot account={a} />
-          <EditableText id={`an:${a.id}`} value={a.name} onCommit={name => update(d => void renameBankAccount(d, a.id, name))} className="ellipsis" inputClassName="cell-input is-text" disabled={locked}>
-            {a.name}
-          </EditableText>
+        <div>
+          <div className="accounts-name">
+            <AccountDot account={a} />
+            <EditableText id={`an:${a.id}`} value={a.name} onCommit={name => update(d => void renameBankAccount(d, a.id, name))} className="ellipsis" inputClassName="cell-input is-text" disabled={locked}>
+              {a.name}
+            </EditableText>
+          </div>
+          <div className="mention">
+            {receives.length > 0 && <span>Reçoit : {receives.join(', ')} · </span>}
+            <span className="link" onClick={() => setHistoryFor(historyFor === a.id ? null : a.id)}>{historyFor === a.id ? 'Masquer l’historique' : 'Historique'}</span>
+          </div>
         </div>
         <div>
           <div className="rel">
@@ -190,6 +200,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         {active.map(row)}
         <div style={{ height: 8 }} />
       </div>
+      {historyFor && <AccountHistory accountId={historyFor} />}
       {archived.length > 0 && (
         <div className="panel-lg">
           <div className="accounts-fold" onClick={() => setShowArchived(o => !o)}>
@@ -200,5 +211,42 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         </div>
       )}
     </>
+  );
+}
+
+/** Month-by-month history of a bank account: opening, money in and out, balance (spec 0007, RG15). Latest month first. */
+function AccountHistory({ accountId }: { accountId: string }) {
+  const { data, ledger } = useStore();
+  const account = data.accounts.find(a => a.id === accountId);
+  if (!account) return null;
+  const rows = ledger.months.flatMap(m => {
+    const r = ledger.bankMonth(accountId, m);
+    return r ? [{ m, r }] : [];
+  }).reverse();
+  return (
+    <div className="panel-lg" style={toneVars(account.hue)}>
+      <div className="accounts-name" style={{ padding: '14px 22px 6px' }}>
+        <AccountDot account={account} />
+        <b>{account.name}</b>
+        <span className="muted">Historique mensuel</span>
+      </div>
+      <div className="history-grid accounts-cols">
+        <span>Mois</span>
+        <span className="num">Début</span>
+        <span className="num">Entrées</span>
+        <span className="num">Sorties</span>
+        <span className="num">Solde</span>
+      </div>
+      {rows.map(({ m, r }) => (
+        <div key={m} className="history-grid history-row">
+          <span>{monthLabel(m)}</span>
+          <span className="num muted">{money(r.start)}</span>
+          <span className="num muted">{money(r.in, true)}</span>
+          <span className="num muted">{money(-r.out)}</span>
+          <b className="num">{money(r.balance)}</b>
+        </div>
+      ))}
+      <div style={{ height: 8 }} />
+    </div>
   );
 }
