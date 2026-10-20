@@ -43,6 +43,7 @@ Exclus :
 - RG11. Mois verrouillé (année clôturée) : le mode et le compte attribué ne sont pas modifiables sur ce mois.
 - RG12. Migration : toute box existante sans mode devient Virtuel avec le compte principal (pas de compte attribué écrit). Aucune transaction n'est modifiée. La migration reste silencieuse, idempotente, sans changement de `version` (1) (cf. ADR 0003).
 - RG13. Le compte « Espèces » n'est pas proposé comme compte attribué : il n'est utilisable que via le mode Espèces.
+- RG14. Changer de compte principal fige sur l'ancien principal toutes les lignes sans compte attribué, lignes `var` comprises (modèle et mois), comme les autres lignes et les transactions (RG20 de la spec 0005). Une box sans compte attribué ne suit donc pas le nouveau principal : l'historique des mois passés reste inchangé.
 
 ## Parcours utilisateur
 
@@ -95,7 +96,7 @@ Le bloc « Compte attribué » est grisé quand le mode est Espèces (valeur con
 
 ## Critères d'acceptation
 
-Tests automatisés (Vitest, domaine et application) : CA1 à CA8. Le reste est vérifié à la relecture de l'UI.
+Tests automatisés (Vitest, domaine et application) : CA1 à CA8 et CA14. Le reste est vérifié à la relecture de l'UI.
 
 - CA1. Given une box en mode Espèces, When je résous son compte, Then c'est le compte « Espèces ». Test automatisé.
 - CA2. Given une box en Virtuel avec un compte attribué Boursorama, When je résous son compte, Then c'est Boursorama. Test automatisé.
@@ -110,6 +111,7 @@ Tests automatisés (Vitest, domaine et application) : CA1 à CA8. Le reste est v
 - CA11. Given une ligne variable avec un mode, When j'utilise « Appliquer le modèle » ou « Dupliquer », Then le mois créé garde le mode et le compte attribué.
 - CA12. Given l'assistant, When j'ouvre l'étape Dépenses, Then les lignes variables ont une colonne « Compte » avec l'option Espèces.
 - CA13. Given un mois d'une année clôturée, When je regarde la pastille d'une box, Then elle n'est pas modifiable.
+- CA14. Given une ligne variable sans compte attribué, When je change de compte principal, Then la ligne est figée sur l'ancien principal. Test automatisé.
 
 ## Questions ouvertes
 

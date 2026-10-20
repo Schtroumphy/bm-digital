@@ -219,10 +219,10 @@ describe('changer le mode d’une box', () => {
     expect(setEnvelopePayment(d, M, 'absente', { payMode: 'especes' })).toBe(false);
   });
 
-  it('changer de compte principal n’attache pas les lignes variables à l’ancien principal', () => {
+  it('changer de compte principal fige aussi les lignes variables sans compte sur l’ancien principal', () => {
     const d = started();
     setMainBankAccount(d, 'bourso');
-    expect(box(d, 'courses').accountId).toBeUndefined();
+    expect(box(d, 'courses').accountId).toBe(MAIN_ACCOUNT_ID);
     expect(box(d, 'rev').accountId).toBe(MAIN_ACCOUNT_ID);
   });
 });

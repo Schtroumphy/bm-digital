@@ -47,12 +47,8 @@ export function setMainBankAccount(d: BudgetData, id: string): boolean {
   if (!next || next.archived) return false;
   const old = mainAccount(d);
   if (old.id === id) return true;
-  // Variable lines are left alone: their account is the one assigned to the box, and none means « the main account » (spec 0006).
-  const pin = (l: { block: string; accountId?: string }) => {
-    if (l.block !== 'var') l.accountId ??= old.id;
-  };
-  d.template.lines.forEach(pin);
-  for (const md of Object.values(d.months)) md.lines.forEach(pin);
+  for (const l of d.template.lines) l.accountId ??= old.id;
+  for (const md of Object.values(d.months)) for (const l of md.lines) l.accountId ??= old.id;
   for (const t of d.transactions) t.accountId ??= old.id;
   for (const a of d.accounts) a.isDefault = a.id === id;
   return true;
