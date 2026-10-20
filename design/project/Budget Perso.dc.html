@@ -53,6 +53,10 @@
     </div>
     </sc-if>
     <div style="flex:1"></div>
+    <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ suClear }}" style="display:flex;align-items:center;padding:0 12px;height:32px;border-radius:999px;color:rgba(32,30,29,.62);cursor:pointer;font-weight:600" style-hover="background:rgba(32,30,29,.05)">Tout vider</div>
+      <div onClick="{{ suExample }}" style="display:flex;align-items:center;gap:7px;padding:0 14px;height:34px;border-radius:999px;background:#fff;border:1px solid rgba(32,30,29,.12);font-weight:700;cursor:pointer" style-hover="background:oklch(0.96 0.03 300)">Remplir avec un exemple</div>
+    </sc-if>
     <sc-if value="{{ isBudget }}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;align-items:center;gap:6px;padding:0 10px;height:32px;border-radius:999px;color:rgba(32,30,29,.62);cursor:pointer;font-weight:600" style-hover="background:rgba(32,30,29,.05)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V6a2 2 0 0 1 2-2h10"></path></svg>Dupliquer / appliquer le modèle</div>
       <div style="display:flex;align-items:center;gap:7px;padding:0 14px;height:34px;border-radius:999px;background:#fff;border:1px solid rgba(32,30,29,.12);font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(32,30,29,.05)" style-hover="background:oklch(0.96 0.03 300)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>Exporter CSV</div>
@@ -321,6 +325,97 @@
   </div>
   </sc-if>
 
+  <!-- ============ SCREEN : INITIALISATION ============ -->
+  <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ false }}">
+  <div style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:22px;align-items:start">
+    <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05);padding:14px 10px;display:flex;flex-direction:column;gap:2px">
+      <div style="padding:2px 10px 10px;font-size:11px;font-weight:700;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.05em">Mise en route</div>
+      <sc-for list="{{ suSteps }}" as="st" hint-placeholder-count="8">
+        <div data-i="{{ st.i }}" onClick="{{ suGo }}" style="{{ st.box }}">
+          <div style="{{ st.dot }}"><sc-if value="{{ st.done }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if><sc-if value="{{ st.todo }}" hint-placeholder-val="{{ true }}"><span>{{ st.num }}</span></sc-if></div>
+          <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px">{{ st.label }}</div><div style="font-size:11px;color:{{ st.subc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.sub }}</div></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <sc-if value="{{ su.isStart }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+        <div style="padding:14px 22px;background:oklch(0.965 0.04 90);border-radius:15px 15px 0 0;border-bottom:1px solid oklch(0.9 0.07 90)"><div style="font-size:16px;font-weight:700;color:oklch(0.32 0.07 80)">Bienvenue. Configurons ton budget.</div><div style="color:oklch(0.38 0.06 80);margin-top:2px">Aucune donnée pour le moment. Les étapes suivantes créent tes lignes et tes soldes de départ.</div></div>
+        <div style="padding:22px;display:flex;flex-direction:column;gap:16px">
+          <div><div style="font-weight:700;font-size:14px">Premier mois du budget</div><div style="color:rgba(32,30,29,.6);margin-top:2px">Les soldes que tu saisis sont ceux du 1er jour de ce mois.</div></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ suMonths }}" as="m" hint-placeholder-count="6"><div data-v="{{ m.v }}" onClick="{{ suStart }}" style="{{ m.st }}">{{ m.v }}</div></sc-for></div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:6px">
+            <sc-for list="{{ suIntro }}" as="it" hint-placeholder-count="3"><div style="padding:14px 16px;border-radius:14px;background:{{ it.bg }}"><div style="font-weight:700;color:{{ it.ink }}">{{ it.t }}</div><div style="color:rgba(32,30,29,.65);margin-top:3px">{{ it.d }}</div></div></sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ su.isList }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 22px;background:{{ su.T.bg }};border-radius:15px 15px 0 0;border-bottom:1px solid {{ su.T.line }}">
+          <div style="width:30px;height:30px;border-radius:10px;background:#fff;color:{{ su.T.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ su.icon }}"></path></svg></div>
+          <div style="flex:1"><div style="font-size:16px;font-weight:700;color:{{ su.T.ink }}">{{ su.label }}</div><div style="color:rgba(32,30,29,.65)">{{ su.help }}</div></div>
+        </div>
+        <div style="{{ su.gridSt }};padding-top:12px;padding-bottom:4px;font-size:10.5px;font-weight:600;color:rgba(32,30,29,.5);text-transform:uppercase;letter-spacing:.04em">
+          <sc-for list="{{ su.heads }}" as="h" hint-placeholder-count="3"><span style="{{ h.st }}">{{ h.l }}</span></sc-for><span></span>
+        </div>
+        <sc-for list="{{ su.rows }}" as="r" hint-placeholder-count="3">
+          <div style="{{ su.gridSt }};height:42px;border-top:1px solid rgba(32,30,29,.05)" style-hover="background:rgba(32,30,29,.02)">
+            <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="3">
+              <div>
+                <sc-if value="{{ c.isText }}" hint-placeholder-val="{{ false }}"><input data-r="{{ r.id }}" data-c="{{ c.k }}" value="{{ c.val }}" onChange="{{ suInput }}" placeholder="Nom de la ligne" style="width:100%;box-sizing:border-box;height:30px;border:1.5px solid transparent;border-radius:8px;padding:0 8px;font-size:13px;font-weight:600;background:transparent;outline:none" style-focus="border-color:{{ su.T.base }};background:#fff;box-shadow:0 0 0 3px {{ su.T.line }}"></input></sc-if>
+                <sc-if value="{{ c.isMoney }}" hint-placeholder-val="{{ false }}"><div style="position:relative"><input data-r="{{ r.id }}" data-c="{{ c.k }}" value="{{ c.val }}" onChange="{{ suInput }}" placeholder="0" style="{{ c.st }}" style-focus="border-color:{{ su.T.base }};background:#fff;box-shadow:0 0 0 3px {{ su.T.line }}"></input><span style="position:absolute;right:10px;top:6px;color:rgba(32,30,29,.4);font-size:12px">€</span></div></sc-if>
+                <sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:4px"><sc-for list="{{ c.opts }}" as="o" hint-placeholder-count="2"><div data-r="{{ r.id }}" data-c="{{ c.k }}" data-v="{{ o.v }}" onClick="{{ suChip }}" style="{{ o.st }}">{{ o.v }}</div></sc-for></div></sc-if>
+              </div>
+            </sc-for>
+            <span data-r="{{ r.id }}" onClick="{{ suDel }}" title="Supprimer" style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:rgba(32,30,29,.4)" style-hover="background:rgba(32,30,29,.07)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ su.empty }}" hint-placeholder-val="{{ true }}">
+        <div style="margin:6px 22px 22px;padding:30px 20px;border:1.5px dashed {{ su.T.line }};border-radius:14px;background:{{ su.T.bg }};display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:50%;background:#fff;color:{{ su.T.ink }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ su.icon }}"></path></svg></div>
+          <div style="font-weight:700;font-size:14px;color:{{ su.T.ink }}">{{ su.emptyT }}</div>
+          <div style="color:rgba(32,30,29,.62);max-width:420px">{{ su.emptyD }}</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <div onClick="{{ suSug }}" style="height:34px;padding:0 16px;display:flex;align-items:center;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer">Ajouter les lignes suggérées</div>
+            <div onClick="{{ suAdd }}" style="height:34px;padding:0 16px;display:flex;align-items:center;border-radius:999px;background:#fff;border:1.5px solid rgba(32,30,29,.16);font-weight:700;cursor:pointer">Ligne vide</div>
+          </div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ su.hasRows }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ su.gridSt }};height:44px;border-top:1px solid rgba(32,30,29,.07)">
+          <div data-x="1" onClick="{{ suAdd }}" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:{{ su.T.ink }};width:max-content"><span style="width:22px;height:22px;border-radius:50%;background:{{ su.T.bg }};border:1px solid {{ su.T.line }};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg></span>{{ su.add }}</div>
+          <sc-for list="{{ su.totals }}" as="t" hint-placeholder-count="2"><div style="{{ t.st }}">{{ t.v }}</div></sc-for><span></span>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ su.isFin }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
+        <sc-for list="{{ su.fin }}" as="g" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid rgba(32,30,29,.07);border-radius:16px;box-shadow:0 1px 2px rgba(32,30,29,.05)">
+          <div style="padding:12px 20px;background:{{ g.T.bg }};border-radius:15px 15px 0 0;border-bottom:1px solid {{ g.T.line }};font-weight:700;font-size:14.5px;color:{{ g.T.ink }}">{{ g.t }}</div>
+          <div style="padding:8px 20px 14px;display:flex;flex-direction:column">
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:8px;height:32px;border-top:{{ it.bt }}"><span style="flex:1;font-weight:{{ it.fw }}">{{ it.l }}</span><span style="font-weight:{{ it.fw }};color:{{ it.c }}">{{ it.v }}</span></div></sc-for>
+          </div>
+        </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ su.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:14px;background:oklch(0.95 0.05 150);color:oklch(0.35 0.09 150);font-weight:700"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg><span style="flex:1">Budget créé. Les lignes et les soldes de départ sont enregistrés.</span><span onClick="{{ suOpen }}" style="cursor:pointer;text-decoration:underline">Ouvrir le budget mensuel</span></div></sc-if>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:10px">
+        <div onClick="{{ suPrev }}" style="{{ su.prevSt }}">Précédent</div>
+        <div style="flex:1;color:rgba(32,30,29,.55)">{{ su.warn }}</div>
+        <div onClick="{{ suNext }}" style="{{ su.nextSt }}">{{ su.nextLabel }}</div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
   <sc-if value="{{ ctx.open }}" hint-placeholder-val="{{ false }}">
   <div onClick="{{ closeCtx }}" onContextMenu="{{ closeCtx }}" style="position:fixed;inset:0;z-index:90"></div>
   <div style="position:fixed;left:{{ ctx.x }}px;top:{{ ctx.y }}px;z-index:91;min-width:210px;background:#fff;border:1px solid rgba(32,30,29,.1);border-radius:12px;box-shadow:0 8px 28px rgba(32,30,29,.16);padding:5px">
@@ -531,7 +626,7 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 class Component extends DCLogic {
-  state = { screen: 'budget', tab: 'saisie', form: { t: '', a: '', type: 'var', target: 'v-ali', src: 'vir' },
+  state = { screen: 'budget', su: { step: 0, start: 'Janvier 2027', done: false, cnt: 0, rows: { rev: [], cre: [], dep: [], epa: [], env: [], inv: [] } }, tab: 'saisie', form: { t: '', a: '', type: 'var', target: 'v-ali', src: 'vir' },
     rel: { 'e-la': 9800, 'e-ld': 4150, 'e-ly': 640, 'e-vm': 1120, 'e-vc': null, 'i-av': 4820, 'i-pea': 5318.2, 'i-tr': null, 'i-pc': 1949, 'i-pg': 1000 },
     tx: [[1,'Carrefour',128.4,'var','v-ali','vir'],[7,'Marché',54,'var','v-ali','esp'],[14,'Biocoop',130,'var','v-ali','vir'],[5,'Cinéma',29.9,'var','v-loi','vir'],[12,'Bowling',55,'var','v-loi','esp'],[18,'Concert',80,'var','v-loi','vir'],[4,'Boulangerie',12.5,'var','v-sn','esp'],[11,'Distributeur',10,'var','v-sn','esp'],[6,'Déjeuner équipe',38,'var','v-de','vir'],[13,'Déjeuner équipe',40,'var','v-de','vir'],[8,'Station Total',71.2,'var','v-ca','vir'],[1,'Swile',60,'var','v-sw','vir'],[4,'Coiffeur',28,'env','perso','esp'],[2,'Librairie',20,'env','perso','vir'],[6,'Fleurs',35,'env','love','vir'],[5,'Lavage',12,'env','voiture','esp'],[9,'Péage',50,'env','voiture','vir'],[10,'Matériaux salle de bain',220,'epa','e-ld','vir'],[15,'Billets avion',80,'epa','e-ly','vir']].map((a, i) => ({ id: 't' + i, d: a[0], t: a[1], a: a[2], type: a[3], target: a[4], src: a[5] })),
     cash: { perso: 120, sante: 40, love: 85, voiture: 0, impots: 0, projets: 75 }, cl: { 'k-vc': 300 }, closed: false, mi: 2, menu: false, init: { 0: true, 1: true, 2: true }, hover: 'c-pj', editing: { id: 'v-loi', f: 'r' }, env: null, cnt: 0,
@@ -582,6 +677,22 @@ class Component extends DCLogic {
     if (id[0] === 'p') return this.setState(s => ({ prev: s.prev.map(p => p.id === id ? { ...p, a: x } : p) }));
     this.setState(s => ({ rows: s.rows.map(r => r.id === id ? { ...r, [fld]: x } : r) }));
   }
+  SUCFG = [
+    { id: 'start', label: 'Période', h: 90, icon: 'M8 2v4M16 2v4M3 6h18v15H3zM3 10h18' },
+    { id: 'rev', label: 'Revenus', h: 150, tk: 'a', icon: 'M12 19V5M5 12l7-7 7 7', help: 'Les entrées d’argent attendues chaque mois.', emptyT: 'Aucun revenu pour le moment', emptyD: 'Ajoute ton salaire et les autres entrées récurrentes. Les montants se modifient chaque mois ensuite.', add: 'Ajouter un revenu',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'a', l: 'Montant mensuel', t: 'money', tot: 1 }], sug: [['Salaire'], ['Prêt Manioune'], ['Remboursement'], ['Prime'], ['Autres']] },
+    { id: 'cre', label: 'Crédits et dettes', h: 38, tk: 'a', icon: 'M2 7h20v10H2zM2 11h20', help: 'Mensualités en cours et capital restant dû.', emptyT: 'Aucun crédit ni dette', emptyD: 'Ajoute chaque mensualité (crédits, assurances de prêt ou d’habitation). Passe cette étape si tu n’en as pas.', add: 'Ajouter un crédit',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'a', l: 'Mensualité', t: 'money', tot: 1 }, { k: 'b', l: 'Capital restant dû', t: 'money', tot: 1 }], sug: [['CRN …108'], ['CRN …109'], ['CRN …110'], ['Assurance de prêt'], ['Ass. habitation'], ['Ass. protection juridique']] },
+    { id: 'dep', label: 'Dépenses', h: 38, tk: 'a', icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', help: 'Budget mensuel de chaque dépense, fixe ou variable.', emptyT: 'Aucune dépense', emptyD: 'Les dépenses fixes sont identiques chaque mois. Les variables ont une enveloppe de budget dont on suit le restant.', add: 'Ajouter une dépense',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'k', l: 'Type', t: 'chip', opts: ['Fixe', 'Variable'] }, { k: 'a', l: 'Budget mensuel', t: 'money', tot: 1 }], sug: [['Compte joint', 'Fixe'], ['Netflix', 'Fixe'], ['TAN', 'Fixe'], ['Spliit', 'Fixe'], ['Salle de sport', 'Fixe'], ['Frais bancaires', 'Fixe'], ['Alimentation', 'Variable'], ['Loisirs', 'Variable'], ['Snacks', 'Variable'], ['Déjeuners', 'Variable'], ['Carburant', 'Variable'], ['Swile', 'Variable']] },
+    { id: 'epa', label: 'Épargnes', h: 300, tk: 'b', icon: 'M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M3 10l9-6 9 6', help: 'Comptes d’épargne avec leur solde au premier jour et le versement mensuel prévu.', emptyT: 'Aucun compte d’épargne', emptyD: 'Long terme (LT) pour le fond de secours et les travaux, moyen terme (MT) pour les projets et vacances.', add: 'Ajouter un compte',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'k', l: 'Horizon', t: 'chip', opts: ['LT', 'MT'] }, { k: 'b', l: 'Solde au départ', t: 'money', tot: 1 }, { k: 'a', l: 'Versement mensuel', t: 'money', tot: 1 }], sug: [['Livret A', 'LT'], ['LDDS Travaux', 'LT'], ['Lydia Holidays', 'MT'], ['Vacances Mada', 'MT'], ['Vacances copines', 'MT']] },
+    { id: 'env', label: 'Enveloppes', h: 280, tk: 'b', icon: 'M4 6h16v12H4zM4 7l8 6 8-6', help: 'Enveloppes semi virtuelles : une part en espèces, le reste sur le compte.', emptyT: 'Aucune enveloppe', emptyD: 'Chaque enveloppe démarre avec un solde, dont une part en espèces, et reçoit une allocation chaque mois.', add: 'Ajouter une enveloppe',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'b', l: 'Solde au départ', t: 'money', tot: 1 }, { k: 'e', l: 'dont espèces', t: 'money', tot: 1 }, { k: 'a', l: 'Alloué par mois', t: 'money', tot: 1 }], sug: [['Perso'], ['Santé'], ['Love ones'], ['Voiture'], ['Impôts'], ['Projets']] },
+    { id: 'inv', label: 'Investissements', h: 250, tk: 'b', icon: 'M22 7l-8.5 8.5-5-5L2 17M16 7h6v6', help: 'Valeur de chaque placement au premier jour et versement mensuel.', emptyT: 'Aucun investissement', emptyD: 'Ajoute tes placements pour suivre leur évolution chaque mois.', add: 'Ajouter un placement',
+      cols: [{ k: 'n', l: 'Nom', t: 'text' }, { k: 'b', l: 'Solde au départ', t: 'money', tot: 1 }, { k: 'a', l: 'Versement mensuel', t: 'money', tot: 1 }], sug: [['Assurance Vie'], ['PEA'], ['Trade Republic'], ['PERCOL'], ['PEG']] },
+    { id: 'fin', label: 'Récapitulatif', h: 90 }
+  ];
   componentDidMount() { this._fd = 1; this.seed(); }
   seed() { document.querySelectorAll('input[data-edit]').forEach(i => { if (!i.dataset.s) { i.dataset.s = 1; i.value = i.dataset.v; } }); }
   componentDidUpdate() { this.seed(); const i = document.querySelector('input[data-edit]'); if (i && document.activeElement !== i && !this._fd) { this._fd = 1; i.focus(); i.select(); } if (!i) this._fd = 0; }
@@ -661,6 +772,7 @@ class Component extends DCLogic {
       ['dep', 'Dépenses', 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', 0],
       ['env', 'Enveloppes', 'M4 6h16v12H4zM4 7l8 6 8-6', 0],
       ['prevAnn', 'Prévisionnel', 'M8 2v4M16 2v4M3 6h18v15H3zM3 10h18', 0],
+      ['setup', 'Démarrage', 'M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8', 0],
       ['close', 'Clôture', 'M8 2v4M16 2v4M3 6h18v15H3zM3 10h18M9 16l2 2 4-4', 0],
 
       ['x2', 'Objectifs', 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z', 1],
@@ -705,9 +817,41 @@ class Component extends DCLogic {
       return { n: a[1], deb: f(a[2]), vers: v ? f(v) : '—', sort: so ? f(-so) : '—', att: f(att), rel: has ? f(rl) : 'Saisir…', raw: has ? String(rl).replace('.', ',') : '', eid, editing: !!ee, notEditing: !ee, bgc: has && !ok ? 'oklch(0.96 0.04 90)' : 'transparent', ecart: has ? (ok ? '—' : f(ecx, true)) : '—', ec: has && !ok ? 'oklch(0.45 0.1 70)' : 'rgba(32,30,29,.4)', status: st[0], sbg: st[1], sink: st[2],
         line: p.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' '), cx: p[5][0], cy: p[5][1] }; };
     const accGroups = [['Épargnes', 300, ACC.slice(0, 5)], ['Investissements', 250, ACC.slice(5)]].map(g => ({ t: g[0], ...this.tone(g[1]), rows: g[2].map(mkAcc) }));
-    const titles = { budget: 'Budget mensuel', dep: 'Dépenses et soldes', env: 'Enveloppes', prevAnn: 'Prévisionnel annuel', close: 'Clôture de l’année' };
+    const SU = this.SUCFG, su = s.su, sp = v => this.parse(v) || 0, sumK = (id, k) => su.rows[id].reduce((t, r) => t + sp(r[k]), 0);
+    const cfg = SU[su.step], T0 = this.tone(cfg.h);
+    const suSteps = SU.map((c, i) => { const n = c.id === 'fin' ? 0 : (c.id === 'start' ? 1 : su.rows[c.id].length), done = c.id === 'start' ? su.step > 0 : c.id === 'fin' ? su.done : n > 0, cur = i === su.step, T = this.tone(c.h);
+      const sub = c.id === 'start' ? su.start : c.id === 'fin' ? (su.done ? 'Budget créé' : 'À valider') : n ? n + (n > 1 ? ' lignes · ' : ' ligne · ') + f(sumK(c.id, c.tk)) : 'Vide';
+      return { i, label: c.label, num: i + 1, done, todo: !done, sub, subc: n || c.id === 'start' || (c.id === 'fin' && su.done) ? 'rgba(32,30,29,.6)' : 'rgba(32,30,29,.4)',
+        box: `display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;background:${cur ? T.bg : 'transparent'};box-shadow:${cur ? 'inset 0 0 0 1.5px ' + T.line : 'none'}`,
+        dot: `width:24px;height:24px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:${done ? T.base : '#fff'};color:${done ? '#fff' : 'rgba(32,30,29,.5)'};border:1.5px solid ${done ? T.base : 'rgba(32,30,29,.18)'}` }; });
+    const MN = ['Janvier 2027', 'Février 2027', 'Mars 2027', 'Avril 2027', 'Mai 2027', 'Juin 2027'];
+    const suMonths = MN.map(v => ({ v, st: `padding:9px 18px;border-radius:99px;cursor:pointer;font-weight:700;border:1.5px solid ${su.start === v ? '#201e1d' : 'rgba(32,30,29,.14)'};background:${su.start === v ? '#201e1d' : '#fff'};color:${su.start === v ? '#fff' : '#201e1d'}` }));
+    const suIntro = [['Lignes du budget', 'Revenus, crédits, dépenses fixes et variables avec leurs montants mensuels.', 150], ['Soldes de départ', 'Épargnes, enveloppes et investissements tels qu’ils sont au premier jour.', 300], ['Reste à placer', 'Calculé à la fin, avant de créer le budget du premier mois.', 90]].map(a => ({ t: a[0], d: a[1], bg: this.tone(a[2]).bg, ink: this.tone(a[2]).ink }));
+    const isList = cfg.id !== 'start' && cfg.id !== 'fin', nr = isList ? su.rows[cfg.id].length : 0;
+    const inCols = isList ? cfg.cols : [];
+    const moneyW = k => k === 'a' || k === 'b' || k === 'e' ? 150 : 0;
+    const gridSt = isList ? `display:grid;grid-template-columns:${inCols.map(c => c.t === 'text' ? 'minmax(0,1fr)' : c.t === 'chip' ? '130px' : '150px').join(' ')} 30px;column-gap:12px;align-items:center;padding:0 22px` : '';
+    const alR = c => c.t === 'money' ? 'text-align:right;padding-right:10px' : '';
+    const suRows = isList ? su.rows[cfg.id].map(r => ({ id: r.id, cells: inCols.map(c => { const bad = cfg.id === 'env' && c.k === 'e' && sp(r.e) > sp(r.b);
+      return { k: c.k, isText: c.t === 'text', isMoney: c.t === 'money', isChip: c.t === 'chip', val: r[c.k] || '', opts: c.t === 'chip' ? c.opts.map(v => ({ v, st: `padding:4px 12px;border-radius:99px;cursor:pointer;font-weight:700;font-size:12px;background:${r[c.k] === v ? T0.bg : '#fff'};color:${r[c.k] === v ? T0.ink : 'rgba(32,30,29,.5)'};border:1.5px solid ${r[c.k] === v ? T0.base : 'rgba(32,30,29,.12)'}` })) : [],
+        st: `width:100%;box-sizing:border-box;height:30px;text-align:right;padding:0 26px 0 8px;font-size:13px;font-weight:700;border:1.5px solid ${bad ? 'oklch(0.7 0.15 25)' : 'rgba(32,30,29,.1)'};border-radius:8px;background:${bad ? 'oklch(0.97 0.03 25)' : '#fff'};outline:none;font-variant-numeric:tabular-nums` }; }) })) : [];
+    const mc = inCols.filter(c => c.t === 'money');
+    const envBad = cfg.id === 'env' && su.rows.env.some(r => sp(r.e) > sp(r.b));
+    const sFin = (() => { const rv = sumK('rev', 'a'), cr = sumK('cre', 'a'), dp = sumK('dep', 'a'), vs = sumK('epa', 'a') + sumK('inv', 'a'), al = sumK('env', 'a'), reste = rv - cr - dp - vs - al, sb = sumK('epa', 'b'), eb = sumK('env', 'b'), ib = sumK('inv', 'b');
+      const it = (l, v, o = {}) => ({ l, v, fw: o.b ? 700 : 500, c: o.c || '#201e1d', bt: o.b ? '1px solid rgba(32,30,29,.1)' : 'none' });
+      return [{ t: 'Chaque mois', T: this.tone(150), items: [it('Revenus', f(rv)), it('Crédits et dettes', f(-cr)), it('Dépenses fixes et variables', f(-dp)), it('Épargnes et investissements', f(-vs)), it('Enveloppes allouées', f(-al)), it('Reste à placer', f(reste), { b: 1, c: reste < 0 ? 'oklch(0.54 0.18 25)' : 'oklch(0.45 0.12 150)' })] },
+        { t: 'Soldes au 1er ' + su.start.split(' ')[0].toLowerCase(), T: this.tone(300), items: [it('Épargnes (' + su.rows.epa.length + ')', f(sb)), it('Enveloppes (' + su.rows.env.length + ')', f(eb)), it('Investissements (' + su.rows.inv.length + ')', f(ib)), it('Total de départ', f(sb + eb + ib), { b: 1 })] }]; })();
+    const empties = SU.filter(c => c.id !== 'start' && c.id !== 'fin' && !su.rows[c.id].length).map(c => c.label);
+    const suV = { isStart: cfg.id === 'start', isList, isFin: cfg.id === 'fin', done: su.done, T: T0, icon: cfg.icon, label: cfg.label, help: cfg.help, gridSt, heads: inCols.map(c => ({ l: c.l, st: alR(c) })), rows: suRows, empty: isList && !nr, hasRows: isList && nr > 0,
+      emptyT: cfg.emptyT, emptyD: cfg.emptyD, add: cfg.add, totals: mc.filter(c => c.tot).map(c => ({ v: 'Total ' + f(sumK(cfg.id, c.k)), st: 'text-align:right;padding-right:10px;font-weight:700' })), fin: sFin,
+      prevSt: `height:40px;padding:0 20px;display:flex;align-items:center;border-radius:999px;background:#fff;border:1.5px solid rgba(32,30,29,.16);font-weight:700;cursor:pointer;opacity:${su.step ? 1 : .4}`,
+      nextSt: `height:40px;padding:0 22px;display:flex;align-items:center;border-radius:999px;background:#201e1d;color:#fff;font-weight:700;cursor:pointer;opacity:${cfg.id === 'fin' && su.done ? .4 : 1}`,
+      nextLabel: cfg.id === 'fin' ? 'Créer le budget de ' + su.start : 'Continuer',
+      warn: envBad ? 'La part en espèces dépasse le solde sur une enveloppe.' : cfg.id === 'fin' && empties.length ? 'Étapes vides : ' + empties.join(', ') + '.' : '' };
+    const suMk = id => ({ id: 'u' + (su.cnt + 1) });
+    const titles = { setup: 'Initialisation', budget: 'Budget mensuel', dep: 'Dépenses et soldes', env: 'Enveloppes', prevAnn: 'Prévisionnel annuel', close: 'Clôture de l’année' };
     return {
-      nav, title: titles[s.screen], isBudget: s.screen === 'budget', isEnv: s.screen === 'env', isPrev: s.screen === 'prevAnn', showMonth: s.screen !== 'prevAnn' && s.screen !== 'close', showYear: s.screen === 'prevAnn' || s.screen === 'close', isClose: s.screen === 'close', isDep: s.screen === 'dep', tabSaisie: s.tab === 'saisie', tabSoldes: s.tab === 'soldes', tabs, form: fm, typeOpts, targetOpts, srcOpts, impact, flow, txs, txTotal: f(this.sum(s.tx, 'a')), accGroups, validCount: nOk + ' / ' + ACC.length,
+      nav, title: titles[s.screen], isBudget: s.screen === 'budget', isEnv: s.screen === 'env', isPrev: s.screen === 'prevAnn', showMonth: s.screen !== 'prevAnn' && s.screen !== 'close' && s.screen !== 'setup', showYear: s.screen === 'prevAnn' || s.screen === 'close', isClose: s.screen === 'close', isDep: s.screen === 'dep', tabSaisie: s.tab === 'saisie', tabSoldes: s.tab === 'soldes', tabs, form: fm, typeOpts, targetOpts, srcOpts, impact, flow, txs, txTotal: f(this.sum(s.tx, 'a')), accGroups, validCount: nOk + ' / ' + ACC.length,
       targetLabel: fm.type === 'var' ? 'Ligne de dépense variable' : fm.type === 'env' ? 'Enveloppe' : 'Compte d’épargne débité',
       setTab: e => this.setState({ tab: e.currentTarget.dataset.t, editing: null }),
       onForm: e => { const k = e.target.dataset.k, v = e.target.value; this.setState(x => ({ form: { ...x.form, [k]: v } })); },
@@ -722,6 +866,22 @@ class Component extends DCLogic {
       gridWrap: uninit ? 'opacity:.4;pointer-events:none;filter:grayscale(.4)' : '',
       s: { reste: f(reste), kpis }, col1: [block('rev'), block('cre')], col2: [block('fix'), block('var')], col3: [block('epa'), block('inv')], recap, goals, virs, vCount: nd + ' / ' + live.length,
       envCompact, envAlert, envCards, drawer, legend: envView.map(e => ({ n: e.n, base: e.base })), months, pTotal: f(pTot), pAvg: f(pTot / 12),
+      isSetup: s.screen === 'setup', su: suV, suSteps, suMonths, suIntro,
+      suGo: e => this.setState(x => ({ su: { ...x.su, step: +e.currentTarget.dataset.i } })),
+      suPrev: () => this.setState(x => ({ su: { ...x.su, step: Math.max(0, x.su.step - 1) } })),
+      suNext: () => { if (cfg.id === 'fin') this.setState(x => ({ su: { ...x.su, done: true } })); else this.setState(x => ({ su: { ...x.su, step: x.su.step + 1 } })); },
+      suStart: e => { const v = e.currentTarget.dataset.v; this.setState(x => ({ su: { ...x.su, start: v } })); },
+      suInput: e => { const { r, c } = e.target.dataset, v = e.target.value; const id = cfg.id; this.setState(x => ({ su: { ...x.su, rows: { ...x.su.rows, [id]: x.su.rows[id].map(q => q.id === r ? { ...q, [c]: v } : q) } } })); },
+      suChip: e => { const { r, c, v } = e.currentTarget.dataset, id = cfg.id; this.setState(x => ({ su: { ...x.su, rows: { ...x.su.rows, [id]: x.su.rows[id].map(q => q.id === r ? { ...q, [c]: v } : q) } } })); },
+      suDel: e => { const r = e.currentTarget.dataset.r, id = cfg.id; this.setState(x => ({ su: { ...x.su, rows: { ...x.su.rows, [id]: x.su.rows[id].filter(q => q.id !== r) } } })); },
+      suAdd: () => { const id = cfg.id, nid = 'u' + (su.cnt + 1), nrw = { id: nid, n: '' }; cfg.cols.forEach(c => { if (c.t === 'chip') nrw[c.k] = c.opts[0]; }); this.setState(x => ({ su: { ...x.su, cnt: x.su.cnt + 1, rows: { ...x.su.rows, [id]: [...x.su.rows[id], nrw] } } })); },
+      suSug: () => { const id = cfg.id; this.setState(x => { let c = x.su.cnt; const add = cfg.sug.map(a => { const nrw = { id: 'u' + (++c), n: a[0] }; if (a[1]) nrw[cfg.cols.find(q => q.t === 'chip').k] = a[1]; return nrw; }); return { su: { ...x.su, cnt: c, rows: { ...x.su.rows, [id]: [...x.su.rows[id], ...add] } } }; }); },
+      suClear: () => this.setState({ su: { step: 0, start: 'Janvier 2027', done: false, cnt: 0, rows: { rev: [], cre: [], dep: [], epa: [], env: [], inv: [] } } }),
+      suExample: () => { let c = 0; const mk = (arr, keys) => arr.map(a => { const o = { id: 'u' + (++c) }; keys.forEach((k, i) => { o[k] = String(a[i]); }); return o; });
+        const R2 = { rev: mk([['Salaire', 6500], ['Prêt Manioune', 800], ['Remboursement', 350]], ['n', 'a']), cre: mk([['CRN …108', 612, 18400], ['CRN …109', 485, 14200], ['Assurance de prêt', 58, '']], ['n', 'a', 'b']), dep: mk([['Compte joint', 'Fixe', 400], ['Netflix', 'Fixe', 17.99], ['Alimentation', 'Variable', 380], ['Loisirs', 'Variable', 120]], ['n', 'k', 'a']),
+          epa: mk([['Livret A', 'LT', 9800, 400], ['LDDS Travaux', 'LT', 4150, 100], ['Lydia Holidays', 'MT', 640, 100]], ['n', 'k', 'b', 'a']), env: mk([['Perso', 'PLACEHOLDER']].length ? this.ENV.map(e => [e.n, e.solde, Math.min(this.state.cash[e.id], e.solde), 100]) : [], ['n', 'b', 'e', 'a']), inv: mk([['Assurance Vie', 4820, 100], ['PEA', 5310, 150]], ['n', 'b', 'a']) };
+        this.setState({ su: { step: 1, start: 'Janvier 2027', done: false, cnt: c, rows: R2 } }); },
+      suOpen: () => this.setState({ screen: 'budget' }),
       goScreen: e => { const id = e.currentTarget.dataset.s; if (id[0] !== 'x') this.setState({ screen: id, env: null, editing: null, menu: false }); },
       toggleMenu: () => this.setState(x => ({ menu: !x.menu })), pickMonth: e => this.setState({ mi: +e.currentTarget.dataset.i, menu: false }),
       prevMonth: () => this.setState(x => ({ mi: Math.max(0, x.mi - 1) })), nextMonth: () => this.setState(x => ({ mi: Math.min(4, x.mi + 1) })),
