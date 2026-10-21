@@ -23,7 +23,7 @@ import { PointageCard } from './PointageCard';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
-const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: number }> = {
+export const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: number }> = {
   rev: { title: 'Revenus', icon: 'arrowDown', hue: HUE.rev },
   cre: { title: 'Crédits / Dettes', icon: 'card', hue: HUE.dep },
   fix: { title: 'Dépenses fixes', icon: 'home', hue: HUE.dep },

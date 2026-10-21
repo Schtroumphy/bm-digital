@@ -63,7 +63,7 @@ export const closeKey = (kind: 'acc' | 'env' | 'bank', id: string) => `${kind}:$
 /** Lines of an initialized month, or the template preview for a month not created yet. */
 export function monthLines(d: BudgetData, m: MonthKey): Line[] {
   const md = d.months[m];
-  return md?.initialized ? md.lines : d.template.lines.map(l => ({ ...l, actual: null }));
+  return md?.initialized ? md.lines : d.template.lines.map(l => ({ ...l, actual: l.actual ?? null }));
 }
 
 export function monthAlloc(d: BudgetData, m: MonthKey): Record<string, number> {
