@@ -75,7 +75,21 @@ export function availableReal(d: BudgetData, m: MonthKey): number | null {
   return round2(remainingToPlace(d, m) - elsewhere + mainGaps - paidIn);
 }
 
+/**
+ * « Surplus »: the margin of the account, from the real figures. Real income minus everything that leaves
+ * (credits, expenses, savings, investments, envelope allocations). A line without an actual yet counts at its budget,
+ * as when the month is validated. Meant to stay at 0 or above.
+ */
+export function surplus(d: BudgetData, m: MonthKey): number {
+  const lines = budgetLines(d, m);
+  const real = (k: BlockKey) => sum(lines.filter(l => l.block === k).map(l => l.actual ?? l.budget));
+  const allocSum = sum(Object.values(monthAlloc(d, m)));
+  return round2(real('rev') - (real('cre') + real('fix') + real('var') + real('epa') + real('inv') + allocSum));
+}
+
 export interface MonthSummary {
+  /** Margin of the account from the real figures (see `surplus`). */
+  surplus: number;
   income: number;
   expenses: number;
   savings: number;
@@ -112,6 +126,7 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const realSavings = round2(grossSavings - envelopeSpent - savingsOut);
   const bal = (key: string) => ledger.accMonth(key, m)?.balance ?? 0;
   return {
+    surplus: surplus(d, m),
     income,
     expenses,
     savings,

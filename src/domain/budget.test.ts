@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envelopeAlerts, lineHistory, monthSummary } from './budget';
+import { envelopeAlerts, lineHistory, monthSummary, surplus } from './budget';
 import { money, parseAmount } from './format';
 import { Ledger, monthRange } from './ledger';
 import { seedData } from './seed';
@@ -73,5 +73,15 @@ describe('seed data matches the design', () => {
     expect(l.accMonth('e-vc', '2027-01')!.start).toBe(300);
     expect(l.envMonth('perso', '2027-01')!.start).toBe(400);
     expect(l.envMonth('sante', '2027-01')!.start).toBe(40);
+  });
+});
+
+describe('surplus', () => {
+  it('is real income minus real outflows, a line without actual counting at its budget', async () => {
+    const { emptyData } = await import('./empty');
+    const d = emptyData();
+    const line = (key: string, block: 'rev' | 'cre' | 'epa', budget: number, actual: number | null) => ({ key, block, section: '', name: key, budget, actual });
+    d.months['2026-11'] = { initialized: true, alloc: { e1: 10 }, transfersDone: {}, lines: [line('s', 'rev', 100, 90), line('c', 'cre', 80, 75.25), line('v', 'epa', 5, null)] };
+    expect(surplus(d, '2026-11')).toBe(-0.25);
   });
 });

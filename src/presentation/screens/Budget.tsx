@@ -242,6 +242,14 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
               </div>
             )}
           </div>
+          <div className="panel kpi">
+            <div className="kpi-label" title="Revenus réels − sorties réelles (crédits, dépenses, épargnes, placements, enveloppes). Une ligne sans réel compte à son budget.">
+              <span className="dot" style={{ background: s.surplus < 0 ? BAD : tone(HUE.rev).base }} />
+              Surplus
+            </div>
+            <div className="kpi-value" style={{ color: s.surplus < 0 ? BAD : undefined }}>{money(s.surplus)}</div>
+            {s.surplus < 0 && <div className="kpi-sub" style={{ color: BAD }}>Marge négative</div>}
+          </div>
           <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
           <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
           <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.grossSavings)} sub={'Réelle : ' + money(s.realSavings)} />
