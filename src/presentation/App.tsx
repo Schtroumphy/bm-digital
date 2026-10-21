@@ -16,14 +16,14 @@ export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'setup' 
 
 const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'budget', label: 'Budget', icon: 'budget' },
+  { id: 'comptes', label: 'Comptes', icon: 'bank' },
   { id: 'dep', label: 'Dépenses', icon: 'list' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
-  { id: 'comptes', label: 'Comptes', icon: 'bank' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
-  { id: 'setup', label: 'Démarrage', icon: 'flag' },
-  { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
   { id: 'goals', label: 'Objectifs', icon: 'target', soon: true },
   { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
+  { id: 'setup', label: 'Démarrage', icon: 'flag' },
+  { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
 ];
 
 const TITLES: Record<Screen, string> = {
