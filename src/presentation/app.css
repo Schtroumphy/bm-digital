@@ -625,4 +625,7 @@ input, button { font-family: inherit; }
 .toast-action:hover { background: rgba(255, 255, 255, 0.26); }
 
 /* ── modèle de budget ──────────────────────────────────── */
-.line-grid.is-tpl { grid-template-columns: minmax(0, 1fr) 90px; }
+.line-grid.is-tpl { grid-template-columns: minmax(0, 1fr) 70px 70px; }
+.line-grid.is-tpl.is-tpl-env { grid-template-columns: minmax(0, 1fr) 90px; }
+.tpl-kpis { display: flex; gap: 12px; }
+.tpl-kpis .kpi { min-width: 180px; }
