@@ -1190,3 +1190,73 @@ describe('lignes sans montant', () => {
     expect(hasNoAmount({ key: 'a', block: 'fix', section: '', name: 'a', budget: 50, actual: null })).toBe(false);
   });
 });
+
+describe('compte dédié d’une ligne d’épargne et pointage (spec 0007 + 0009)', () => {
+  const T = '2027-01-25';
+  const linked = (extra: Partial<Line> = {}) => ln('livret', 'epa', 200, { linkedAccountId: SWILE, ...extra });
+  const mv = (d: BudgetData, id: string, source: 'actual' | 'checks') => bankMovements(d, id, M, source).map(x => [x.date, x.amount]);
+  const end = (d: BudgetData, id: string) => monthBalance(d, M, id)!.end;
+  const epaTx = (amount: number, day = 5) => ({ id: `w${day}`, month: M, day, label: 'retrait', amount, type: 'epa' as const, target: 'livret' });
+
+  it('(a) pointée avec réel: le dédié reçoit le réel à la date de pointage, le principal est débité du même montant', () => {
+    const d = started([linked({ actual: 150 })]);
+    checkLine(d, M, 'livret', '2027-01-10');
+    expect(mv(d, SWILE, 'checks')).toEqual([['2027-01-10', 150]]);
+    expect(mv(d, MAIN_ACCOUNT_ID, 'checks')).toEqual([['2027-01-10', -150]]);
+    expect([end(d, MAIN_ACCOUNT_ID), end(d, SWILE)]).toEqual([850, 150]);
+  });
+
+  it('(b) pointée sans réel: le budget est crédité sur le dédié et débité sur le principal', () => {
+    const d = started([linked()]);
+    checkLine(d, M, 'livret', '2027-01-10');
+    expect([end(d, MAIN_ACCOUNT_ID), end(d, SWILE)]).toEqual([800, 200]);
+  });
+
+  it('(c) non pointée en mode pointage: rien ne bouge, même avec un réel', () => {
+    const d = started([linked({ actual: 150 })]);
+    d.settings.pointageStart = M;
+    expect(mv(d, SWILE, 'checks')).toEqual([]);
+    expect([end(d, MAIN_ACCOUNT_ID), end(d, SWILE)]).toEqual([1000, 0]);
+  });
+
+  it('(d) dédié hors budget: crédité, le principal n’est débité que par la ligne elle-même, aucune ligne grise', () => {
+    const d = started([linked({ actual: 150 })]);
+    setBankAccountInBudget(d, SWILE, false);
+    checkLine(d, M, 'livret', '2027-01-10');
+    expect([end(d, MAIN_ACCOUNT_ID), end(d, SWILE)]).toEqual([850, 150]);
+    expect(ignoredMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
+  });
+
+  it('(e) transaction epa sur la ligne liée en mode pointage: sort du dédié à son jour, entre sur le compte choisi', () => {
+    const d = started([linked({ actual: 150 })]);
+    checkLine(d, M, 'livret', '2027-01-10');
+    addTransaction(d, epaTx(40));
+    expect(mv(d, SWILE, 'checks')).toEqual([['2027-01-10', 150], ['2027-01-05', -40]]);
+    expect([end(d, MAIN_ACCOUNT_ID), end(d, SWILE)]).toEqual([890, 110]);
+  });
+
+  it('(f) mois au réel: crédit au 1er du mois, retraits à leur jour; Solde estimé = écran Comptes', () => {
+    const d = started([linked({ actual: 150 })]);
+    addTransaction(d, epaTx(40));
+    d.settings.pointageStart = '2027-02';
+    expect(mv(d, SWILE, 'actual')).toEqual([['2027-01-01', 150], ['2027-01-05', -40]]);
+    const ledger = new Ledger(d, M);
+    for (const id of [MAIN_ACCOUNT_ID, SWILE, CASH_ACCOUNT_ID]) expect(end(d, id)).toBe(ledger.bankMonth(id, M)!.balance);
+    expect(end(d, SWILE)).toBe(110);
+  });
+
+  it('pas de double comptage: une ligne liée à la fois avec réel et pointée compte une fois en mode pointage', () => {
+    const d = started([linked({ actual: 150 })]);
+    checkLine(d, M, 'livret', '2027-01-10');
+    expect(accountPointage(d, M, SWILE, T)!.movements.filter(x => x.counted)).toHaveLength(1);
+    expect(end(d, MAIN_ACCOUNT_ID)).toBe(850);
+  });
+
+  it('flowOf ventile par signe: un réel négatif apparaît dans l’autre colonne, le net est identique', () => {
+    const m = (amount: number) => ({ date: '2027-01-01', label: 'x', amount, kind: 'line' as const });
+    expect(flowOf([m(100), m(-30)])).toEqual({ in: 100, out: 30 });
+    const f = flowOf([m(100), m(-30)]);
+    expect(f.in - f.out).toBe(70); // the net balance is the sum of the signed amounts
+  });
+});
+
