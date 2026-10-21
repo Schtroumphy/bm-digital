@@ -1,5 +1,6 @@
 import { defaultBankAccounts, isTransactionInBudget, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
 import { varActualFromTx } from './budget';
+import { oldestCheckedMonth } from './checkoff';
 import { currentMonthKey, round2 } from './format';
 import type { BudgetData, Transaction, Transfer } from './types';
 
@@ -60,4 +61,35 @@ export function realignVariableActuals(d: BudgetData): BudgetData {
     months[m] = { ...md, lines };
   }
   return changed ? { ...d, months } : d;
+}
+
+/**
+ * Spec 0009, RG73: data with checks but no start of the pointage gets one, at the oldest month holding a check.
+ * Statements (`accountBalances`) are kept as they are. Pure and idempotent: the data given is returned untouched
+ * when nothing has to change.
+ */
+export function migratePointageStart(d: BudgetData): BudgetData {
+  if (d.settings.pointageStart !== undefined) return d;
+  const oldest = oldestCheckedMonth(d);
+  return oldest === null ? d : { ...d, settings: { ...d.settings, pointageStart: oldest } };
+}
+
+/**
+ * Spec 0009, RG87: a check no longer holds an amount (the amount counted is computed on reading). Removes the
+ * `amount` of the checks saved by an earlier version, keeping their date. Pure and idempotent: the data given is
+ * returned untouched when no check carries an amount, and it is never mutated.
+ */
+export function migrateCheckAmounts(d: BudgetData): BudgetData {
+  const hasAmount = (md: BudgetData['months'][string]) => Object.values(md.checks ?? {}).some(c => 'amount' in c);
+  if (!Object.values(d.months).some(hasAmount)) return d;
+  const months = { ...d.months };
+  for (const [m, md] of Object.entries(d.months)) {
+    if (!hasAmount(md)) continue;
+    months[m] = { ...md, checks: Object.fromEntries(Object.entries(md.checks ?? {}).map(([k, c]) => {
+      // Only the amount goes: the date and the destination account of an allocation check stay.
+      const { amount: _amount, ...rest } = c as typeof c & { amount?: number };
+      return [k, rest];
+    })) };
+  }
+  return { ...d, months };
 }

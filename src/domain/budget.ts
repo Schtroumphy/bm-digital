@@ -45,6 +45,12 @@ export function blockTotals(lines: Line[], block: BlockKey) {
 /** The month's lines that count in the budget figures: those of an out-of-budget account are left out (RG17). */
 export const budgetLines = (d: BudgetData, m: MonthKey): Line[] => monthLines(d, m).filter(l => isLineInBudget(d, l));
 
+/** « Restant des variables »: budget − actual of the variable lines that count in the budget (a line out of the budget is informative, spec 0009, RG106). */
+export function variableRemaining(d: BudgetData, m: MonthKey): number {
+  const t = blockTotals(budgetLines(d, m), 'var');
+  return round2(t.budget - t.actual);
+}
+
 /** The plan of the month: budgeted income − budgeted expenses (envelope allocations included) − budgeted savings. */
 function remainingToPlace(d: BudgetData, m: MonthKey): number {
   const lines = budgetLines(d, m);

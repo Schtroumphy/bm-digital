@@ -115,6 +115,14 @@ export function seedData(): BudgetData {
   }
   months['2026-12'] = { initialized: true, lines: decLines, alloc: { ...template.envAlloc }, transfersDone: { bou: true, ce: true, lyd: true } };
 
+  // Pointage examples (spec 0009): planned days and modes on a few lines, in the model and in December (Oct/Nov stay without, they would all read « en retard »); a few lines of December checked.
+  const SCHEDULE: Record<string, { dueDay: number; execMode: Line['execMode'] }> = {
+    'r-sal': { dueDay: 28, execMode: 'virement_auto' }, 'c-108': { dueDay: 5, execMode: 'prelevement' }, 'f-nf': { dueDay: 8, execMode: 'prelevement' }, 'f-tan': { dueDay: 10, execMode: 'prelevement' },
+    'f-cj': { dueDay: 2, execMode: 'virement_auto' }, 'e-la': { dueDay: 3, execMode: 'virement_auto' }, 'i-pea': { dueDay: 15, execMode: 'virement_manuel' },
+  };
+  for (const l of [...template.lines, ...months['2026-12'].lines]) Object.assign(l, SCHEDULE[l.key]);
+  months['2026-12'].checks = { 'c-108': { doneOn: '2026-12-05' }, 'f-cj': { doneOn: '2026-12-02' }, 'e-la': { doneOn: '2026-12-03' } };
+
   // Envelope spending of Oct/Nov, so balances land on the Dec figures.
   for (const e of ENVELOPES) {
     const decSpent = DEC_TX.filter(t => t[3] === 'env' && t[4] === e.id).reduce((s, t) => s + t[2], 0);
@@ -148,6 +156,6 @@ export function seedData(): BudgetData {
     ].map(t => ({ ...t, fromAccountId: MAIN_ACCOUNT_ID })),
     planned: PLANNED.map(([month, label, amount, envelopeId], i) => ({ id: `p${i}`, year: 2026, month, label, amount, envelopeId })),
     closes: { 2026: { closed: false, overrides: { 'acc:e-vc': 300 } } },
-    settings: { emergencyAccounts: ['e-la', 'e-ld'], emergencyTarget: 22950, investTarget: 20000, savingsRateTarget: 60 },
+    settings: { pointageStart: '2026-12', emergencyAccounts: ['e-la', 'e-ld'], emergencyTarget: 22950, investTarget: 20000, savingsRateTarget: 60 },
   };
 }

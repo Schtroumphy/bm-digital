@@ -1,4 +1,5 @@
-import { accountIdOf, isTransactionInBudget } from './bank';
+import { bankMovements, flowOf } from './bankMovements';
+import { isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
 import type { BudgetData, Line, MonthKey, Transaction } from './types';
 
@@ -158,25 +159,13 @@ export class Ledger {
   }
 
   /**
-   * Money in and out of a bank account during a month (RG13).
-   * Variable expenses are counted through their transactions only (RG14), and a
-   * transfer moves money only between two bank accounts, once marked « fait » (RG13bis, RG16).
+   * Money in and out of a bank account during a month (RG13), from its movements counted at the actuals
+   * (`bankMovements`): variable expenses through their transactions only (RG14), a transfer moving money
+   * only between two bank accounts once marked « fait » (RG13bis, RG16), checked variable lines on a dedicated
+   * account (spec 0009, RG9) and active adjustments (spec 0009, RG70).
    */
   private bankFlow(id: string, m: MonthKey) {
-    const d = this.d;
-    const mine = (accountId?: string) => accountIdOf(d, accountId) === id;
-    const md = d.months[m];
-    const lines = md?.initialized ? md.lines.filter(l => mine(l.accountId)) : [];
-    const actual = (blocks: string[]) => lines.filter(l => blocks.includes(l.block)).reduce((s, l) => s + (l.actual ?? 0), 0);
-    const txs = d.transactions.filter(t => t.month === m && mine(t.accountId));
-    const txSum = (types: string[]) => txs.filter(t => types.includes(t.type)).reduce((s, t) => s + t.amount, 0);
-    const done = d.transfers.filter(t => md?.transfersDone[t.id] && t.to?.kind === 'bank');
-    const received = done.filter(t => t.to?.kind === 'bank' && t.to.id === id).reduce((s, t) => s + t.amount, 0);
-    const sent = done.filter(t => t.fromAccountId === id).reduce((s, t) => s + t.amount, 0);
-    return {
-      in: round2(actual(['rev']) + txSum(['epa']) + received),
-      out: round2(txSum(['var', 'env']) + actual(['fix', 'cre', 'epa', 'inv']) + sent),
-    };
+    return flowOf(bankMovements(this.d, id, m, 'actual'));
   }
 
   envMonth(id: string, m: MonthKey): EnvMonth | null {

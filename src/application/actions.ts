@@ -11,6 +11,8 @@ function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<stri
     lines: lines.map(l => ({ ...l, actual: l.block === 'var' ? varActualFromTx(d, m, l.key) : null })),
     alloc: { ...alloc },
     transfersDone: d.months[m]?.transfersDone ?? {},
+    // The pointages belong to the lines just replaced and are not copied (spec 0009, RG17); the balances typed by hand stay.
+    ...(d.months[m]?.accountBalances ? { accountBalances: d.months[m].accountBalances } : {}),
   };
 }
 
@@ -200,6 +202,8 @@ export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Parti
 export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return false;
   d.months[m].lines = d.months[m].lines.filter(l => l.key !== key);
+  // The line's pointage goes with it (spec 0009), so it cannot reappear on a new line with the same key.
+  delete d.months[m].checks?.[key];
   return true;
 }
 
@@ -274,10 +278,13 @@ export function setStatement(d: BudgetData, m: MonthKey, key: string, v: number 
   return true;
 }
 
-/** CSV of the month's lines, in the French spreadsheet dialect (semicolons, decimal commas). */
-export function monthCsv(lines: Line[], blockTitles: Record<BlockKey, string>): string {
+/**
+ * CSV of the month's lines, in the French spreadsheet dialect (semicolons, decimal commas). The last column « Hors budget »
+ * (oui / non) comes from `isOutOfBudget`, the same predicate that leaves a line out of the budget totals (spec 0009, RG119).
+ */
+export function monthCsv(lines: Line[], blockTitles: Record<BlockKey, string>, isOutOfBudget: (l: Line) => boolean = () => false): string {
   const n = (v: number | null) => (v === null ? '' : String(v).replace('.', ','));
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const rows = lines.map(l => [q(blockTitles[l.block]), q(l.section), q(l.name), n(l.budget), n(l.actual)].join(';'));
-  return '﻿' + ['Bloc;Section;Nom;Budget;Réel', ...rows].join('\r\n');
+  const rows = lines.map(l => [q(blockTitles[l.block]), q(l.section), q(l.name), n(l.budget), n(l.actual), isOutOfBudget(l) ? 'oui' : 'non'].join(';'));
+  return '﻿' + ['Bloc;Section;Nom;Budget;Réel;Hors budget', ...rows].join('\r\n');
 }

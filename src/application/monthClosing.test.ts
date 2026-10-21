@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addLine, addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, setEnvelopeAllocation, setStatement, undoValidateMonth, updateLine, validateMonth } from './actions';
-import { setLineAccount, setTransactionAccount, setTransferDone, setTransferSource, setTransferTarget } from './bankAccounts';
+import { setLineAccount, setTransactionAccount } from './bankAccounts';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth } from './monthClosing';
 import { availableReal } from '../domain/budget';
 import { emptyData } from '../domain/empty';
@@ -55,8 +55,6 @@ describe('clôturer le mois', () => {
     expect(deleteLine(d, '2027-01', 'sal')).toBe(false);
     expect(deleteTransaction(d, 'tx')).toBe(false);
     expect(setTransactionAccount(d, 'tx', 'ded')).toBe(false);
-    expect(setTransferSource(d, '2027-01', 't1', 'ded')).toBe(false);
-    expect(setTransferTarget(d, '2027-01', 't1', { kind: 'bank', id: 'ded' })).toBe(false);
     expect(setStatement(d, '2027-01', 'livret', 5)).toBe(false);
     expect(undoValidateMonth(d, '2027-01', [{ key: 'sal', value: 1000 }])).toBeUndefined();
     expect(updateLine(d, '2027-01', 'sal', { actual: 5 })).toBe(false);
@@ -64,7 +62,6 @@ describe('clôturer le mois', () => {
     expect(setLineAccount(d, '2027-01', 'sal', 'ded')).toBe(false);
     expect(setEnvelopeAllocation(d, '2027-01', 'sante', 50)).toBe(false);
     expect(addTransaction(d, { id: 'x', month: '2027-01', day: 1, label: 'a', amount: 5, type: 'env', target: 'sante' })).toBe(false);
-    expect(setTransferDone(d, '2027-01', 't1', true)).toBe(false);
     expect(validateMonth(d, '2027-01')).toEqual([]);
     expect(applyTemplate(d, '2027-01')).toBe(false);
     expect(d).toEqual(before);

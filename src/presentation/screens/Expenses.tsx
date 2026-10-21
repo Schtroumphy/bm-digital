@@ -5,8 +5,8 @@ import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
 import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, defaultTransactionAccountId, isAccountInBudget } from '../../domain/bank';
-import { monthSummary } from '../../domain/budget';
+import { activeBankAccounts, defaultTransactionAccountId, isAccountInBudget, isLineInBudget } from '../../domain/bank';
+import { monthSummary, variableRemaining } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
 import type { MonthKey, TxType } from '../../domain/types';
@@ -76,11 +76,12 @@ function EntryTab({ month }: { month: MonthKey }) {
   if (target && form.type === 'var') {
     const l = lines.find(x => x.key === target)!;
     const cur = l.actual ?? 0;
-    const varB = lines.filter(x => x.block === 'var').reduce((a, x) => a + x.budget, 0);
-    const varR = lines.filter(x => x.block === 'var').reduce((a, x) => a + (x.actual ?? 0), 0);
+    // Only the variable lines in the budget count in « Restant des variables »; a line out of the budget leaves it unchanged (spec 0009, RG112).
+    const rest = variableRemaining(data, month);
+    const lineAmount = isLineInBudget(data, l) ? amount : 0;
     impact = [
       [`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`],
-      ['Restant des variables', `${money(varB - varR)} → ${money(varB - varR - amount)}`],
+      ['Restant des variables', `${money(rest)} → ${money(rest - lineAmount)}`],
     ];
   } else if (target && form.type === 'env') {
     const e = data.envelopes.find(x => x.id === target)!;

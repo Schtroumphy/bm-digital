@@ -48,19 +48,35 @@ export const isAccountInBudget = (d: BudgetData, accountId?: string): boolean =>
 /** A transaction counts in the budget figures unless its account is out of the budget (RG17). */
 export const isTransactionInBudget = (d: BudgetData, t: Transaction): boolean => isAccountInBudget(d, t.accountId);
 
-/** A rev/fix/cre line leaves the budget with its account; other lines always count. */
-export const isLineInBudget = (d: BudgetData, l: Line): boolean => !ACCOUNT_BLOCKS.includes(l.block) || isAccountInBudget(d, l.accountId);
+/**
+ * A rev/fix/cre line leaves the budget with its account; a variable line leaves it with the account it is paid from
+ * (its resolved account, spec 0009 RG110: it is then informative, in no budget total). Other lines always count.
+ */
+export const isLineInBudget = (d: BudgetData, l: Line): boolean =>
+  l.block === 'var' ? isAccountInBudget(d, resolveBoxAccountId(d, l)) : !ACCOUNT_BLOCKS.includes(l.block) || isAccountInBudget(d, l.accountId);
 
 /**
  * The account an expense on a box is paid from (spec 0006, RG3, RG4):
  * « Espèces » mode → the cash account; « Virtuel » → the account assigned to the box,
  * or the main account when there is none, or when it is archived or unknown.
  */
-export function resolveBoxAccountId(d: BudgetData, box: PaymentSetting): string {
+export function resolveBoxAccountId(d: BudgetData, box: PaymentSetting, fallbackId: string = mainAccount(d).id): string {
   if (box.payMode === 'especes') return CASH_ACCOUNT_ID;
   const assigned = box.accountId ? d.accounts.find(a => a.id === box.accountId) : undefined;
-  return assigned && !assigned.archived ? assigned.id : mainAccount(d).id;
+  return assigned && !assigned.archived ? assigned.id : fallbackId;
 }
+
+/**
+ * Account that receives the envelopes without an account of their own (spec 0009, RG98): the one set in
+ * `settings.envelopeAccountId` when it exists, is active and is not « Espèces »; otherwise the main account.
+ */
+export function envelopeDefaultAccountId(d: BudgetData): string {
+  const set = d.settings.envelopeAccountId ? d.accounts.find(a => a.id === d.settings.envelopeAccountId) : undefined;
+  return set && !set.archived && set.id !== CASH_ACCOUNT_ID ? set.id : mainAccount(d).id;
+}
+
+/** Account of an envelope (RG98): « Espèces » mode → cash; its own active account wins; else the default account of the envelopes. */
+export const resolveEnvelopeAccountId = (d: BudgetData, env: PaymentSetting): string => resolveBoxAccountId(d, env, envelopeDefaultAccountId(d));
 
 /** The box a transaction was made on: its variable line (or the model's, for a month not created yet) or its envelope. */
 export function transactionBox(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): PaymentSetting | undefined {
@@ -76,5 +92,6 @@ export function transactionBox(d: BudgetData, t: Pick<Transaction, 'type' | 'mon
  */
 export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string {
   const box = transactionBox(d, t);
-  return box ? resolveBoxAccountId(d, box) : mainAccount(d).id;
+  if (!box) return mainAccount(d).id;
+  return t.type === 'env' ? resolveEnvelopeAccountId(d, box) : resolveBoxAccountId(d, box);
 }
