@@ -187,7 +187,9 @@ export function setupSummary(d: SetupDraft): SetupSummary {
   const amount = (id: SetupListId) => sum(d.rows[id], r => r.amount);
   const income = amount('rev');
   const credits = amount('cre');
-  const expenses = amount('dep');
+  // A variable row paid from an account out of the budget is informative: it is left out of the expenses (spec 0009, RG114).
+  const outOfBudget = new Set(d.rows.acc.filter(r => r.inBudget === false).map(r => r.id));
+  const expenses = sum(d.rows.dep.filter(r => !(r.kind !== 'fix' && r.accountId !== undefined && outOfBudget.has(r.accountId))), r => r.amount);
   const saved = round2(amount('epa') + amount('inv'));
   const allocated = amount('env');
   const savingsBalance = sum(d.rows.epa, r => r.balance);

@@ -5,18 +5,21 @@ import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
 import { Toast } from '../components/Toast';
-import { TransferRoute } from '../components/TransferRoute';
+import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
+import { LineCheckBox, LineCheckMeta } from '../components/LineCheck';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
-import { setLineAccount, setLineLinkedAccount, setTransferDone } from '../../application/bankAccounts';
+import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
 import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
-import { accountIdOf, isOnMainAccount } from '../../domain/bank';
+import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
+import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
 import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
 import { EnvelopesTotal } from './Envelopes';
+import { PointageCard } from './PointageCard';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
@@ -40,7 +43,7 @@ export function BudgetActions({ month }: { month: MonthKey }) {
   const confirmReplace = () => !md?.initialized || window.confirm(`Remplacer les lignes de ${monthLabel(month)} ? Les montants réels saisis seront effacés.`);
 
   const exportCsv = () => {
-    const blob = new Blob([monthCsv(monthLines(data, month), BLOCK_TITLES)], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([monthCsv(monthLines(data, month), BLOCK_TITLES, l => !isLineInBudget(data, l))], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `budget-${month}.csv`;
@@ -142,6 +145,7 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
   const { data, ledger, update } = useStore();
   const uninit = !data.months[month]?.initialized;
   const locked = isMonthLocked(data, month);
+  const today = isoDate();
   const s = monthSummary(data, ledger, month);
   const st = data.settings;
   const emergencyPct = st.emergencyTarget ? (s.emergency / st.emergencyTarget) * 100 : 0;
@@ -259,21 +263,21 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
 
         <div className="budget-grid">
           <div className="budget-col">
-            <BlockCard block="rev" month={month} locked={locked || uninit} />
-            <BlockCard block="cre" month={month} locked={locked || uninit} />
+            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} />
+            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} />
             <GoalsCard month={month} />
           </div>
           <div className="budget-col">
-            <BlockCard block="fix" month={month} locked={locked || uninit} />
-            <BlockCard block="var" month={month} locked={locked || uninit} />
+            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} />
+            <BlockCard block="var" month={month} locked={locked || uninit} today={today} />
           </div>
           <div className="budget-col">
-            <BlockCard block="epa" month={month} locked={locked || uninit} />
-            <BlockCard block="inv" month={month} locked={locked || uninit} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} />
+            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
           </div>
           <div className="budget-col">
             <EnvelopesCompact month={month} locked={locked || uninit} />
-            <TransfersCard month={month} locked={locked || uninit} />
+            <PointageCard month={month} locked={locked || uninit} today={today} />
           </div>
         </div>
       </div>
@@ -294,7 +298,7 @@ function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: st
   );
 }
 
-function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: MonthKey; locked: boolean; strip?: { label: string; value: string; color: string } }) {
+function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; month: MonthKey; locked: boolean; today: string; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
@@ -316,12 +320,17 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
   // Lines of an out-of-budget account stay listed but are left out of the totals.
   const totals = blockTotals(budgetLines(data, month), block);
   const sections: { label: string; lines: Line[] }[] = [];
+  // Variable lines paid from an account out of the budget are grouped under a « Hors budget » sub-title, after the others.
+  // Display only: no section is written, the order of the lines in the data is unchanged (spec 0009, RG111).
+  const offBudget = block === 'var' ? lines.filter(l => !isLineInBudget(data, l)) : [];
   for (const l of lines) {
+    if (offBudget.includes(l)) continue;
     const sec = sections.find(x => x.label === l.section);
     if (sec) sec.lines.push(l);
     else sections.push({ label: l.section, lines: [l] });
   }
   const estimatedTotal = isSavings ? estimatedBalanceTotal(data, ledger, month, block) : 0;
+  if (offBudget.length) sections.push({ label: 'Hors budget', lines: offBudget });
   if (block === 'var') {
     const rest = totals.budget - totals.actual;
     strip = { label: 'Restant', value: money(rest), color: rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)' };
@@ -365,7 +374,8 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
             return (
               <div
                 key={l.key}
-                className={`${gridClass} line-row`}
+                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}`}
+                title={lineTooltip(data, month, l, today) || undefined}
                 onMouseEnter={() => setHover(l.key)}
                 onMouseLeave={() => setHover(null)}
                 onContextMenu={
@@ -378,6 +388,7 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                 }
               >
                 <div className="line-name-wrap">
+                  <LineCheckBox month={month} line={l} locked={locked} today={today} />
                   {block === 'var' && <PayModePicker data={data} box={l} disabled={locked} onChange={patch => update(d => setLinePayment(d, month, l.key, patch))} />}
                   {isSavings && (
                     <>
@@ -388,9 +399,10 @@ function BlockCard({ block, month, locked, strip }: { block: BlockKey; month: Mo
                     </>
                   )}
                   {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} hint={block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
-                  <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={l.name} disabled={locked}>
+                  <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={[l.name, lineTooltip(data, month, l, today)].filter(Boolean).join('\n')} disabled={locked}>
                     {l.name}
                   </EditableText>
+                  {block !== 'var' && <LineCheckMeta month={month} line={l} locked={locked} today={today} />}
                 </div>
                 <div className="rel">
                   <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked}>
@@ -630,6 +642,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
             <div
               key={e.id}
               className={`env-tile${canEdit ? ' is-editable' : ''}`}
+              title={envelopeTooltip(data, month, e) || undefined}
               style={{ background: vio.bg, borderColor: warn ? 'oklch(0.8 0.12 55)' : vio.line }}
               onClick={canEdit ? () => setEditing(`ea:${e.id}`) : undefined}
             >
@@ -638,6 +651,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                   {e.name}
                 </EditableText>
                 {warn && <span className="warn-dot" />}
+                <EnvelopeCheckBox month={month} env={e} locked={locked} />
               </div>
               <div className="env-tile-solde">{money(ledger.envMonth(e.id, month)?.balance ?? 0)}</div>
               {canEdit && editing === `ea:${e.id}` ? (
@@ -670,53 +684,6 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
           <Icon name="plus" size={14} stroke={3} />
           Ajouter
         </div>
-      </div>
-    </div>
-  );
-}
-
-function TransfersCard({ month, locked }: { month: MonthKey; locked: boolean }) {
-  const { data, update } = useStore();
-  const done = data.months[month]?.transfersDone ?? {};
-  const live = data.transfers.filter(t => t.amount > 0);
-  const nDone = live.filter(t => done[t.id]).length;
-  return (
-    <div className="panel block" style={toneVars(HUE.obj)}>
-      <div className="block-head">
-        <div className="block-icon">
-          <Icon name="transfer" size={14} />
-        </div>
-        <div className="block-title">Virements à effectuer</div>
-        <div style={{ flex: 1 }} />
-        <div className="block-strip" style={{ color: 'oklch(0.4 0.09 190)' }}>
-          {nDone} / {live.length} faits
-        </div>
-      </div>
-      <div className="transfers">
-        {data.transfers.map(t => {
-          const zero = t.amount === 0;
-          const d = !!done[t.id];
-          const can = !zero && !locked;
-          return (
-            <div
-              key={t.id}
-              className={`transfer${zero ? ' is-zero' : ''}${d ? ' is-done' : ''}`}
-              style={{ cursor: can ? 'pointer' : 'default' }}
-              onClick={can ? () => update(x => void setTransferDone(x, month, t.id, !d)) : undefined}
-            >
-              {zero ? (
-                <span className="check is-empty" />
-              ) : (
-                <span className="check">
-                  <Icon name="check" size={12} stroke={3.5} color="#fff" style={{ opacity: d ? 1 : 0 }} />
-                </span>
-              )}
-              <span className="transfer-name">{t.name}</span>
-              <TransferRoute transfer={t} month={month} disabled={locked} />
-              <span className="transfer-amount">{money(t.amount)}</span>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

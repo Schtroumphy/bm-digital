@@ -16,7 +16,10 @@ import {
   setMainBankAccount,
   unarchiveBankAccount,
 } from '../../application/bankAccounts';
-import { BANK_HUES } from '../../domain/bank';
+import { setPointageStart } from '../../application/checkoff';
+import { setEnvelopeDefaultAccount } from '../../application/payment';
+import { BANK_HUES, CASH_ACCOUNT_ID, envelopeDefaultAccountId } from '../../domain/bank';
+import { canSetPointageStart } from '../../domain/checkoff';
 import { IN_BUDGET_HINT } from '../components/hints';
 import { money, monthLabel } from '../../domain/format';
 import { isMonthLocked, monthLines } from '../../domain/ledger';
@@ -52,6 +55,8 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const [showArchived, setShowArchived] = useState(false);
   // Account whose month-by-month history is open (spec 0007, RG15).
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const start = data.settings.pointageStart;
   const locked = isMonthLocked(data, month);
   const active = data.accounts.filter(a => !a.archived);
   const archived = data.accounts.filter(a => a.archived);
@@ -201,6 +206,39 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         <div style={{ height: 8 }} />
       </div>
       {historyFor && <AccountHistory accountId={historyFor} />}
+      <div className="pointage-start">
+        <span>Pointage depuis :</span>
+        <select
+          className="su-select"
+          value={start ?? ''}
+          onChange={e => {
+            const next = e.target.value === '' ? null : e.target.value;
+            if (!canSetPointageStart(data, next)) return setStartError('Ce changement modifierait un mois clôturé : rouvre-le d’abord.');
+            setStartError(null);
+            update(d => void setPointageStart(d, next));
+          }}
+        >
+          <option value="">Aucun (tout est compté au réel)</option>
+          {[...new Set([...ledger.months, ...(start ? [start] : [])])].sort().map(m => (
+            <option key={m} value={m}>{monthLabel(m)}</option>
+          ))}
+        </select>
+        <span className="accounts-sub">Avant ce mois, le Solde estimé suit le réel ; à partir de ce mois, il suit les pointages.</span>
+        {startError && <span className="env-tile-error">{startError}</span>}
+      </div>
+      <div className="pointage-start">
+        <span>Compte des enveloppes :</span>
+        <select className="su-select" value={envelopeDefaultAccountId(data)} onChange={e => {
+            // The choices are active accounts other than « Espèces »: the action cannot refuse, its result is ignored on purpose.
+            const id = e.target.value;
+            update(d => void setEnvelopeDefaultAccount(d, id));
+          }}>
+          {active.filter(a => a.id !== CASH_ACCOUNT_ID).map(a => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+        <span className="accounts-sub">Les enveloppes sans compte propre utilisent ce compte. Une allocation pointée sort du principal vers lui.</span>
+      </div>
       {archived.length > 0 && (
         <div className="panel-lg">
           <div className="accounts-fold" onClick={() => setShowArchived(o => !o)}>
