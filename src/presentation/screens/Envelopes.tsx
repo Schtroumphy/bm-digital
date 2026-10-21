@@ -4,6 +4,7 @@ import { Icon } from '../components/Icon';
 import { PayModePicker } from '../components/PayModePicker';
 import { setEnvelopePayment } from '../../application/payment';
 import { toneVars } from '../components/tone';
+import { envelopeDefaultAccountId } from '../../domain/bank';
 import { envelopeAlerts } from '../../domain/budget';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
 import { isMonthLocked, monthAlloc } from '../../domain/ledger';
@@ -80,7 +81,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
               <div className="env-card-head">
                 <span className="dot is-12" style={{ background: 'var(--t-base)' }} />
                 <span className="env-card-name">{e.name}</span>
-                <PayModePicker data={data} box={e} disabled={locked} onChange={patch => update(d => setEnvelopePayment(d, month, e.id, patch))} />
+                <PayModePicker data={data} box={e} disabled={locked} fallbackId={envelopeDefaultAccountId(data)} onChange={patch => update(d => setEnvelopePayment(d, month, e.id, patch))} />
                 <div style={{ flex: 1 }} />
                 {alert && (
                   <div className="alert-pill">

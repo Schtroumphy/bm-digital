@@ -49,3 +49,19 @@ export function setEnvelopePayment(d: BudgetData, m: MonthKey, id: string, patch
   apply(env, patch);
   return true;
 }
+
+/**
+ * Sets the account that receives the envelopes without an account of their own (spec 0009, RG98); `null` goes back
+ * to the main account. Refused for an unknown or archived account and for « Espèces » (a mode, not a choice here).
+ * Not retroactive: transactions and checked allocations keep their account. Not tied to a month, so a locked month does not matter.
+ */
+export function setEnvelopeDefaultAccount(d: BudgetData, accountId: string | null): boolean {
+  if (accountId === null) {
+    delete d.settings.envelopeAccountId;
+    return true;
+  }
+  const a = d.accounts.find(x => x.id === accountId);
+  if (!a || a.archived || a.id === CASH_ACCOUNT_ID) return false;
+  d.settings.envelopeAccountId = accountId;
+  return true;
+}

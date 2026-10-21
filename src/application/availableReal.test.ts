@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { setEnvelopeAllocation, undoValidateMonth, validateMonth } from './actions';
-import { setLineAccount, setMainBankAccount, setTransferDone, setBankAccountInBudget, archiveBankAccount } from './bankAccounts';
+import { setLineAccount, setMainBankAccount, setBankAccountInBudget, archiveBankAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, accountIdOf } from '../domain/bank';
 import { availableReal, monthSummary } from '../domain/budget';
 import { emptyData } from '../domain/empty';
@@ -142,7 +142,7 @@ describe('disponible à placer (réel)', () => {
     const d = started([ln('sal', 'rev', 1000, 1000)]);
     d.transfers.push({ id: 't1', name: 'Vers espèces', amount: 50, fromAccountId: MAIN_ACCOUNT_ID, to: { kind: 'bank', id: CASH_ACCOUNT_ID } });
     const before = avail(d);
-    expect(setTransferDone(d, M, 't1', true)).toBe(true);
+    d.months[M].transfersDone.t1 = true; // no screen marks it any more (spec 0009), old data may still hold it
     expect(bank(d, CASH_ACCOUNT_ID)).toBe(50);
     expect(avail(d)).toBe(before);
   });

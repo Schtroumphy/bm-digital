@@ -10,8 +10,6 @@ import {
   setMainBankAccount,
   setTransactionAccount,
   setLineAccount,
-  setTransferSource,
-  setTransferTarget,
   unarchiveBankAccount,
   renameBankAccount,
 } from './bankAccounts';
@@ -297,6 +295,16 @@ describe('assistant : étape Comptes', () => {
     expect(setupSummary(emptyDraft(M)).emptyLists).toHaveLength(6);
   });
 
+  it('RG114: une ligne variable d’un compte hors budget du brouillon est exclue des dépenses; principal et Espèces « oui » comptent', () => {
+    const draft = emptyDraft(M);
+    draft.rows.acc.push({ id: 'swile', name: 'Swile', amount: 0, balance: 0, cash: 0, inBudget: false });
+    const dep = (id: string, amount: number, accountId?: string) => ({ id, name: id, amount, balance: 0, cash: 0, kind: 'var' as const, ...(accountId ? { accountId } : {}) });
+    draft.rows.dep = [dep('principal', 100), dep('cash', 50, CASH_ACCOUNT_ID), dep('swile', 80, 'swile'), { ...dep('loyer', 600), kind: 'fix' as const }];
+    expect(setupSummary(draft).expenses).toBe(750);
+    draft.rows.acc.find(r => r.id === CASH_ACCOUNT_ID)!.inBudget = false;
+    expect(setupSummary(draft).expenses).toBe(700);
+  });
+
   it('crée les comptes du brouillon avec leur solde de départ au mois choisi', () => {
     const d = emptyData();
     const draft = exampleDraft(M, mkId);
@@ -313,23 +321,17 @@ describe('assistant : étape Comptes', () => {
 });
 
 describe('mois verrouillé', () => {
-  it('le compte d’une ligne, d’une transaction ou d’un virement n’est pas modifiable', () => {
+  it('le compte d’une ligne ou d’une transaction n’est pas modifiable', () => {
     const d = started([ln('sal', 'rev', 100)]);
     addBankAccount(d, 'swile');
     addTransaction(d, { id: 't', month: M, day: 3, label: 'x', amount: 5, type: 'env', target: 'e' });
-    d.transfers.push({ id: 'v', name: 'v', amount: 10, fromAccountId: MAIN_ACCOUNT_ID });
     d.closes[2027] = { closed: true, overrides: {} };
     expect(setLineAccount(d, M, 'sal', 'swile')).toBe(false);
     expect(setTransactionAccount(d, 't', 'swile')).toBe(false);
-    expect(setTransferSource(d, M, 'v', 'swile')).toBe(false);
-    expect(setTransferTarget(d, M, 'v', { kind: 'bank', id: 'swile' })).toBe(false);
-    expect(d.transfers[0].to).toBeUndefined();
     expect(d.months[M].lines[0].accountId).toBeUndefined();
     // addTransaction wrote the resolved account (main): the refused change left it there.
     expect(d.transactions[0].accountId).toBe(MAIN_ACCOUNT_ID);
-    expect(d.transfers[0].fromAccountId).toBe(MAIN_ACCOUNT_ID);
     d.closes[2027].closed = false;
     expect(setLineAccount(d, M, 'sal', 'swile')).toBe(true);
-    expect(setTransferTarget(d, M, 'v', { kind: 'bank', id: 'swile' })).toBe(true);
   });
 });

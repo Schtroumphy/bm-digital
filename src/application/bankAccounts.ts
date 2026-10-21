@@ -1,7 +1,7 @@
 import { canLinkAccount, CASH_ACCOUNT_ID, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
 import { currentMonthKey } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
-import type { BudgetData, MonthKey, TransferTarget } from '../domain/types';
+import type { BudgetData, MonthKey } from '../domain/types';
 
 /*
  * Use cases on bank accounts. Each one changes the data it is given and
@@ -137,30 +137,5 @@ export function setTransactionAccount(d: BudgetData, id: string, accountId: stri
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month) || !isSavingsWithdrawalAllowed(d, { ...t, accountId })) return false;
   t.accountId = accountId;
-  return true;
-}
-
-/** Transfers are not tied to a month: `m` is the month being viewed, whose lock protects the change. */
-export function setTransferSource(d: BudgetData, m: MonthKey, id: string, fromAccountId: string): boolean {
-  const t = d.transfers.find(x => x.id === id);
-  if (!t || isMonthLocked(d, m)) return false;
-  t.fromAccountId = fromAccountId;
-  return true;
-}
-
-/** Sets where a transfer goes, or `undefined` to make it informative only (RG12). */
-export function setTransferTarget(d: BudgetData, m: MonthKey, id: string, to: TransferTarget | undefined): boolean {
-  const t = d.transfers.find(x => x.id === id);
-  if (!t || isMonthLocked(d, m)) return false;
-  if (to) t.to = to;
-  else delete t.to;
-  return true;
-}
-
-/** Ticks or unticks a transfer as « fait » for a month. Refused (false) on a locked or non-initialized month. */
-export function setTransferDone(d: BudgetData, m: MonthKey, id: string, done: boolean): boolean {
-  const md = d.months[m];
-  if (!md?.initialized || isMonthLocked(d, m) || !d.transfers.some(t => t.id === id)) return false;
-  md.transfersDone[id] = done;
   return true;
 }

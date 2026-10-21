@@ -46,7 +46,8 @@ describe('actions', () => {
 
   it('exports CSV in the French dialect', () => {
     const csv = monthCsv([{ key: 'a', block: 'rev', section: '', name: 'Remboursement', budget: 350, actual: 349.93 }], { rev: 'Revenus' } as never);
-    expect(csv.split('\r\n')[1]).toBe('Revenus;;Remboursement;350;349,93');
+    expect(csv.split('\r\n')[1]).toBe('Revenus;;Remboursement;350;349,93;non');
+    expect(csv.split('\r\n')[0]).toBe('\uFEFFBloc;Section;Nom;Budget;Réel;Hors budget');
   });
 });
 
