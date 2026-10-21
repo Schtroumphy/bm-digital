@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { checkLine, setLineSchedule, uncheckLine, updateCheck } from '../../application/checkoff';
-import { EXEC_MODES, isLate, isPointable, lineCheck, lineCounted, lineTooltip } from '../../domain/checkoff';
+import { EXEC_MODES, hasNoAmount, isLate, isPointable, lineCheck, lineCounted, lineTooltip } from '../../domain/checkoff';
 import { money } from '../../domain/format';
 import type { ExecMode, Line, MonthKey } from '../../domain/types';
 import { useStore } from '../state/store';
@@ -18,8 +18,9 @@ interface Props {
 /** Checkbox « pointé » at the start of a line. Lines without a checkbox keep an empty slot so names stay aligned. */
 export function LineCheckBox({ month, line, locked, today }: Props) {
   const { data, update } = useStore();
-  if (!isPointable(data, line)) return <span className="check-slot" />;
   const done = !!lineCheck(data, month, line.key);
+  // A line already checked keeps its box, so it can still be unchecked if its amount later drops to 0.
+  if ((!isPointable(data, line) || hasNoAmount(line)) && !done) return <span className="check-slot" />;
   const received = line.block === 'rev';
   const toggle = () => update(d => void (done ? uncheckLine(d, month, line.key) : checkLine(d, month, line.key)));
   return (

@@ -6,7 +6,7 @@ import { addBankAccount, archiveBankAccount, setBankAccountInBudget } from './ba
 import { setEnvelopeDefaultAccount } from './payment';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, isLineInBudget, defaultBankAccounts, defaultTransactionAccountId, resolveEnvelopeAccountId } from '../domain/bank';
 import { availableReal, blockTotals, budgetLines, lineHistory, monthSummary, variableRemaining } from '../domain/budget';
-import { IGNORED_REASON, accountPointage, balanceDateBounds, envelopeTooltip, ignoredMovements, lineTooltip, isEnvelopePointable, lineCounted, effectiveDueDay, isLate, isPointable, lateCount, monthBalance, monthMode, pointageAccounts } from '../domain/checkoff';
+import { IGNORED_REASON, hasNoAmount, accountPointage, balanceDateBounds, envelopeTooltip, ignoredMovements, lineTooltip, isEnvelopePointable, lineCounted, effectiveDueDay, isLate, isPointable, lateCount, monthBalance, monthMode, pointageAccounts } from '../domain/checkoff';
 import { bankMovements, countedAmount, flowOf } from '../domain/bankMovements';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -1347,5 +1347,13 @@ describe('infobulles des lignes et des tuiles', () => {
     main.envelopes.push({ id: 'x', name: 'X', hue: 1, cash: 0 });
     main.months[M].alloc = { x: 10 };
     expect(envelopeTooltip(main, M, main.envelopes[0])).toBe('');
+  });
+});
+
+describe('lignes sans montant', () => {
+  it('un budget ou un réel à 0 n’a pas de case ni de retard', () => {
+    expect(hasNoAmount({ key: 'a', block: 'fix', section: '', name: 'a', budget: 0, actual: null })).toBe(true);
+    expect(hasNoAmount({ key: 'a', block: 'fix', section: '', name: 'a', budget: 50, actual: 0 })).toBe(true);
+    expect(hasNoAmount({ key: 'a', block: 'fix', section: '', name: 'a', budget: 50, actual: null })).toBe(false);
   });
 });

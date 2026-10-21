@@ -57,11 +57,14 @@ const varAccountId = (d: BudgetData, l: Line) => resolveBoxAccountId(d, l);
 /** A variable line paid from a dedicated account (not the main one): « virer / retirer le budget » can be checked (RG5). */
 export const isDedicatedVar = (d: BudgetData, l: Line): boolean => l.block === 'var' && varAccountId(d, l) !== mainAccount(d).id;
 
-/** Lines that have a checkbox: all but variable lines of the main account (RG4) and lines in « informatif » mode (RG19). Revenues are checked as « reçu » (RG45). */
+/** Lines that have a checkbox: all but variable lines of the main account (RG4), lines in « informatif » mode (RG19) and Revenues are checked as « reçu » (RG45). */
 export function isPointable(d: BudgetData, l: Line): boolean {
   if (l.execMode === 'informatif') return false;
   return l.block === 'var' ? isDedicatedVar(d, l) : true;
 }
+
+/** A budget or an actual of 0: no money to move, so the Budget screen shows no checkbox and no « en retard » badge (a line already checked keeps its box). */
+export const hasNoAmount = (l: Line): boolean => l.budget === 0 || l.actual === 0;
 
 /** Amount counted for a checked or pending line, with where it comes from: the budget sent for a variable line to a dedicated account (RG82), `countedAmount` for the others. */
 export function lineCounted(d: BudgetData, l: Line): { amount: number; source: CountedSource } {
@@ -131,7 +134,7 @@ export const lineCheck = (d: BudgetData, m: MonthKey, key: string): LineCheck | 
  */
 export function isLate(d: BudgetData, m: MonthKey, l: Line, today: string): boolean {
   // A variable line out of the budget is entirely informative: never late (spec 0009, RG105).
-  if (l.dueDay === undefined || !isPointable(d, l) || !isLineInBudget(d, l) || lineCheck(d, m, l.key) || isMonthLocked(d, m)) return false;
+  if (l.dueDay === undefined || hasNoAmount(l) || !isPointable(d, l) || !isLineInBudget(d, l) || lineCheck(d, m, l.key) || isMonthLocked(d, m)) return false;
   const cmp = compareMonths(m, today.slice(0, 7));
   if (cmp < 0) return true;
   if (cmp > 0) return false;
