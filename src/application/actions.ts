@@ -5,10 +5,11 @@ import { isMonthLocked } from '../domain/ledger';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
-function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<string, number>) {
+function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<string, number>, keepActuals = false) {
   d.months[m] = {
     initialized: true,
-    lines: lines.map(l => ({ ...l, actual: l.block === 'var' ? varActualFromTx(d, m, l.key) : null })),
+    // Expenses already recorded on a variable line win over an actual typed in the model.
+    lines: lines.map(l => ({ ...l, actual: (l.block === 'var' ? varActualFromTx(d, m, l.key) : null) ?? (keepActuals ? l.actual : null) })),
     alloc: { ...alloc },
     transfersDone: d.months[m]?.transfersDone ?? {},
     // The pointages belong to the lines just replaced and are not copied (spec 0009, RG17); the balances typed by hand stay.
@@ -16,10 +17,10 @@ function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<stri
   };
 }
 
-/** Creates the month's lines and allocations from the budget model. Refused (false) on a locked month. */
+/** Creates the month's lines and allocations from the budget model (actuals typed in the model included). Refused (false) on a locked month. */
 export function applyTemplate(d: BudgetData, m: MonthKey): boolean {
   if (isMonthLocked(d, m)) return false;
-  initMonth(d, m, d.template.lines.map(l => ({ ...l, actual: null })), d.template.envAlloc);
+  initMonth(d, m, d.template.lines.map(l => ({ ...l, actual: l.actual ?? null })), d.template.envAlloc, true);
   return true;
 }
 

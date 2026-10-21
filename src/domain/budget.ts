@@ -129,6 +129,26 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   };
 }
 
+export interface TemplateSummary {
+  /** Same plan as the month's « Reste à placer », computed on the budget model. */
+  remaining: number;
+  /** (épargnes + investissements + allocations) / revenus, as the month's gross savings rate. */
+  savingsRate: number;
+}
+
+/** Indications of the budget model: what a month created from it would show. */
+export function templateSummary(d: BudgetData): TemplateSummary {
+  const lines = d.template.lines.map((l): Line => ({ ...l, actual: null })).filter(l => isLineInBudget(d, l));
+  const b = (k: BlockKey) => blockTotals(lines, k).budget;
+  const allocSum = sum(Object.values(d.template.envAlloc));
+  const income = b('rev');
+  const saved = round2(b('epa') + b('inv') + allocSum);
+  return {
+    remaining: round2(income - (b('cre') + b('fix') + b('var') + allocSum) - (b('epa') + b('inv'))),
+    savingsRate: income ? (saved / income) * 100 : 0,
+  };
+}
+
 export interface EnvelopeAlert {
   envelopeId: string;
   planned: number;

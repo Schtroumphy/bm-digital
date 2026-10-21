@@ -32,7 +32,8 @@ export interface Line extends PaymentSetting {
   // For a `var` line it is the account assigned to the box, and `payMode` its mode (spec 0006).
 }
 
-export type TemplateLine = Omit<Line, 'actual'>;
+/** A line of the budget model. `actual` is optional: when entered in the model, it is copied into a month created from it. */
+export type TemplateLine = Omit<Line, 'actual'> & { actual?: number | null };
 
 export interface Template {
   lines: TemplateLine[];

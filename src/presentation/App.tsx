@@ -10,9 +10,10 @@ import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
 import { PlanningScreen } from './screens/Planning';
 import { SetupActions, SetupScreen } from './screens/Setup';
+import { TemplateScreen } from './screens/Template';
 import { useSetupDraft } from './state/setupDraft';
 
-export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'setup' | 'close';
+export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close';
 
 const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'budget', label: 'Budget', icon: 'budget' },
@@ -20,6 +21,7 @@ const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soo
   { id: 'dep', label: 'Dépenses', icon: 'list' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
+  { id: 'template', label: 'Modèle', icon: 'copy' },
   { id: 'goals', label: 'Objectifs', icon: 'target', soon: true },
   { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
   { id: 'setup', label: 'Démarrage', icon: 'flag' },
@@ -32,6 +34,7 @@ const TITLES: Record<Screen, string> = {
   env: 'Enveloppes',
   comptes: 'Comptes',
   prevAnn: 'Prévisionnel annuel',
+  template: 'Modèle de budget',
   setup: 'Initialisation',
   close: 'Clôture de l’année',
 };
@@ -116,7 +119,7 @@ export function App() {
                 <Icon name="chevronRight" />
               </button>
             </div>
-          ) : screen === 'setup' ? null : (
+          ) : screen === 'setup' || screen === 'template' ? null : (
             <div className="picker">
               <button className="picker-arrow" disabled={idx <= 0} onClick={() => setMonth(months[idx - 1])} aria-label="Mois précédent">
                 <Icon name="chevronLeft" />
@@ -163,6 +166,7 @@ export function App() {
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
+        {screen === 'template' && <TemplateScreen month={month} />}
         {screen === 'setup' && (
           <SetupScreen
             draft={draft}
