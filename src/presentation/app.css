@@ -146,7 +146,7 @@ input, button { font-family: inherit; }
 .is-preview { opacity: 0.4; pointer-events: none; filter: grayscale(0.4); }
 
 /* ── budget: summary band ──────────────────────────────── */
-.summary { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr 1fr 1.7fr; gap: 16px; min-height: 76px; }
+.summary { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr 1fr 1fr 1.7fr; gap: 16px; min-height: 76px; }
 .kpi { padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; }
 .kpi-hero { background-image: linear-gradient(135deg, oklch(0.97 0.025 300), #fff 70%); }
 .kpi-hero-value { font-size: 28px; font-weight: 800; letter-spacing: -0.025em; color: var(--violet-ink); }
