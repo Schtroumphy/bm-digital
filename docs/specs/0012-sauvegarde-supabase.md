@@ -4,7 +4,7 @@
 - Date : 2026-10-22
 - Branche prévue : feat/supabase_repository
 
-Première des deux specs de la sauvegarde Supabase. La suite (reprise des données locales) est la [spec 0013](0013-import-donnees-locales-vers-supabase.md).
+Spec autonome : l'application repart d'un budget neuf dans Supabase.
 
 ## Contexte et objectif
 
@@ -28,9 +28,7 @@ Inclus :
 - Gestion de l'erreur de chargement et de sauvegarde, indicateur d'état d'enregistrement.
 - Le brouillon de l'assistant et le mois affiché restent en `localStorage`.
 
-Exclus : reprise des données locales et export JSON (spec 0013), import CSV, revue comptes/objectifs, bilan annuel, mot de passe oublié dans l'application (réinitialisation via le tableau de bord Supabase), création de compte dans l'application, mode hors ligne, conflits multi-onglets et multi-appareils.
-
-Conséquence du découpage : entre la livraison de 0012 et celle de 0013, les données locales ne sont plus lues. Les deux specs sont à livrer à la suite (voir RG16).
+Exclus : reprise des données locales et export JSON (abandonnés : le développeur repart d'un budget neuf), import CSV, revue comptes/objectifs, bilan annuel, mot de passe oublié dans l'application (réinitialisation via le tableau de bord Supabase), création de compte dans l'application, mode hors ligne, conflits multi-onglets et multi-appareils.
 
 ## Règles de gestion
 
@@ -49,7 +47,7 @@ Conséquence du découpage : entre la livraison de 0012 et celle de 0013, les do
 - RG13. Session expirée ou invalide : retour à l'écran de connexion. La déconnexion vide les données en mémoire et ramène à l'écran de connexion.
 - RG14. Le brouillon de l'assistant et le mois affiché restent dans `localStorage` (ADR 0002 inchangé). Les données métier n'y sont plus ni lues ni écrites par l'application.
 - RG15. Seuls l'URL du projet et la clé publique (anon) sont utilisés par le navigateur, via des variables d'environnement ; aucune clé de service dans le code ni dans le dépôt.
-- RG16. Cette spec supprime l'usage de `localRepository` dans `main.tsx`. Le fichier reste utilisable par la spec 0013 pour lire l'ancienne clé.
+- RG16. Cette spec supprime l'usage de `localRepository` dans `main.tsx`. Le fichier est conservé mais n'est plus utilisé.
 - RG17. `src/domain/database.types.ts` est régénéré après la migration.
 
 ## Parcours utilisateur
