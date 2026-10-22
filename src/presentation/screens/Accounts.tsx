@@ -12,20 +12,31 @@ import {
   renameBankAccount,
   setBankAccountHue,
   setBankAccountInBudget,
+  setBankAccountKind,
   setBankAccountOpening,
   setMainBankAccount,
   unarchiveBankAccount,
 } from '../../application/bankAccounts';
+import { decideAccountKind, linkLineToAccount } from '../../application/accountKinds';
 import { setPointageStart } from '../../application/checkoff';
 import { setEnvelopeDefaultAccount } from '../../application/payment';
-import { BANK_HUES, CASH_ACCOUNT_ID, envelopeDefaultAccountId } from '../../domain/bank';
+import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
+import { BANK_HUES, CASH_ACCOUNT_ID, envelopeDefaultAccountId, isKindFixed, kindOf } from '../../domain/bank';
 import { canSetPointageStart } from '../../domain/checkoff';
 import { IN_BUDGET_HINT } from '../components/hints';
 import { money, monthLabel } from '../../domain/format';
 import { isMonthLocked, monthLines } from '../../domain/ledger';
-import type { BankAccount, MonthKey } from '../../domain/types';
+import type { AccountKind, BankAccount, MonthKey } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
+
+/** Kinds the user can choose (spec 0010, RG3: « enveloppe » is not offered yet). */
+const KIND_CHOICES: { value: AccountKind; label: string }[] = [
+  { value: 'courant', label: 'Courant' },
+  { value: 'epargne', label: 'Épargne' },
+  { value: 'invest', label: 'Investissement' },
+];
+const KIND_LABEL: Record<AccountKind, string> = { courant: 'courant', epargne: 'épargne', invest: 'investissement', enveloppe: 'enveloppe' };
 
 /** Header button of the screen. */
 export function AccountsActions({ month }: { month: MonthKey }) {
@@ -56,6 +67,10 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   // Account whose month-by-month history is open (spec 0007, RG15).
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
+  // Panel listing the accounts that seem counted twice (spec 0010, RG18).
+  const [reviewing, setReviewing] = useState(false);
+  const candidates = kindCandidates(data);
+  const mismatches = kindMismatches(data);
   const start = data.settings.pointageStart;
   const locked = isMonthLocked(data, month);
   const active = data.accounts.filter(a => !a.archived);
@@ -72,6 +87,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const row = (a: BankAccount) => {
     const r = ledger.bankMonth(a.id, month);
     const blocker = archiveBlocker(data, a.id);
+    const collision = collidingLine(data, a.name, a.id);
     const receives = savingsLines.filter(l => l.linkedAccountId === a.id).map(l => l.name);
     return (
       <div key={a.id} className={`accounts-grid accounts-row${a.archived ? ' is-archived' : ''}`}>
@@ -82,7 +98,21 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
               {a.name}
             </EditableText>
           </div>
+          {!isKindFixed(a) && (
+            <div className="su-kinds" style={{ marginTop: 4, ...toneVars(a.hue) }}>
+              {KIND_CHOICES.map(k => (
+                <div key={k.value} className={`su-kind${kindOf(a) === k.value ? ' is-on' : ''}`} onClick={() => update(d => void setBankAccountKind(d, a.id, k.value))}>{k.label}</div>
+              ))}
+            </div>
+          )}
+          {collision && !a.archived && (
+            <div className="mention">
+              <span className="env-tile-error">Une ligne d’épargne porte déjà ce nom. Liez-la à ce compte pour éviter de la compter deux fois.</span>{' '}
+              <span className="link" onClick={() => update(d => void linkLineToAccount(d, collision.key, a.id))}>Lier à la ligne</span>
+            </div>
+          )}
           <div className="mention">
+            {mismatches[a.id] && <span className="env-tile-error">Type à revoir ({mismatches[a.id].join(', ')}) · </span>}
             {receives.length > 0 && <span>Reçoit : {receives.join(', ')} · </span>}
             <span className="link" onClick={() => setHistoryFor(historyFor === a.id ? null : a.id)}>{historyFor === a.id ? 'Masquer l’historique' : 'Historique'}</span>
           </div>
@@ -177,6 +207,54 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
 
   return (
     <>
+      {candidates.length > 0 && (
+        <div className="banner">
+          <div className="banner-icon">
+            <Icon name="alert" size={18} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="banner-title">
+              {candidates.length} {candidates.length > 1 ? 'comptes semblent comptés' : 'compte semble compté'} deux fois dans la clôture.
+            </div>
+            <div className="banner-text">Un compte porte le même nom qu’une ligne d’épargne ou d’investissement. Confirme leur lien pour ne les compter qu’une fois.</div>
+          </div>
+          <div className="btn-quiet" onClick={() => setReviewing(o => !o)}>{reviewing ? 'Masquer' : 'Vérifier'}</div>
+        </div>
+      )}
+      {candidates.length > 0 && reviewing && (
+        <div className="panel-lg">
+          {candidates.map(c => {
+            const a = data.accounts.find(x => x.id === c.accountId);
+            if (!a) return null;
+            const kind: AccountKind = c.block === 'epa' ? 'epargne' : 'invest';
+            return (
+              <div key={c.accountId} className="accounts-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 22px' }}>
+                <AccountDot account={a} />
+                <b>{a.name}</b>
+                <span className="muted" style={{ flex: 1 }}>
+                  ligne « {c.lineName} » ({KIND_LABEL[kind]})
+                  {c.taken && ' · déjà liée à un autre compte'}
+                  {c.shared && !c.taken && ' · plusieurs comptes portent ce nom : choisis celui à lier'}
+                </span>
+                {!c.taken && (
+                  <span className="btn-quiet" onClick={() => update(d => void linkLineToAccount(d, c.lineKey, c.accountId))}>Confirmer {KIND_LABEL[kind]}</span>
+                )}
+                <select
+                  className="su-select"
+                  value=""
+                  onChange={e => e.target.value && update(d => void decideAccountKind(d, c.accountId, e.target.value as AccountKind))}
+                >
+                  <option value="">Autre type, sans lien…</option>
+                  {KIND_CHOICES.filter(k => k.value !== 'courant').map(k => (
+                    <option key={k.value} value={k.value}>{k.label}</option>
+                  ))}
+                </select>
+                <span className="btn-quiet" onClick={() => update(d => void decideAccountKind(d, c.accountId, 'courant'))}>Garder courant</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {needsOpeningBalances(data) && !locked && (
         <div className="banner">
           <div className="banner-icon">

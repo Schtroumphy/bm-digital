@@ -20,7 +20,8 @@ import {
   type SetupRow,
 } from '../../application/setup';
 import { IN_BUDGET_HINT } from '../components/hints';
-import { BANK_HUES, MAIN_ACCOUNT_ID } from '../../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, kindForBlock, MAIN_ACCOUNT_ID } from '../../domain/bank';
+import type { AccountKind } from '../../domain/types';
 import { money, monthLabel, monthName, parseAmount, parseMonth, rawNumber, round2, sanitizeAmountInput } from '../../domain/format';
 import { newId, useStore } from '../state/store';
 
@@ -31,9 +32,9 @@ interface Column {
   label: string;
   /**
    * `name`: free text, `kind`: choice between chips, `account`: bank account of the line, `linked`: dedicated account of a savings line,
-   * `color`, `main` and `inBudget`: the accounts list, otherwise a money field.
+   * `color`, `main`, `inBudget` and `accountKind` (Courant, Épargne, Investissement): the accounts list, otherwise a money field.
    */
-  field: 'name' | 'kind' | 'account' | 'linked' | 'color' | 'main' | 'inBudget' | Field;
+  field: 'name' | 'kind' | 'account' | 'linked' | 'color' | 'main' | 'inBudget' | 'accountKind' | Field;
   options?: { value: SetupKind; label: string }[];
 }
 
@@ -61,6 +62,7 @@ const LISTS: Record<SetupListId, ListConfig> = {
     add: 'Ajouter un compte',
     cols: [
       NAME,
+      { label: 'Type', field: 'accountKind' },
       { label: 'Couleur', field: 'color' },
       { label: 'Solde au départ', field: 'balance' },
       { label: 'Principal', field: 'main' },
@@ -120,7 +122,14 @@ const INTRO = [
   { title: 'Reste à placer', text: 'Calculé à la fin, avant de créer le budget du premier mois.', hue: 90 },
 ];
 
-const COL_WIDTH: Partial<Record<Column['field'], string>> = { name: 'minmax(0, 1fr)', kind: '130px', account: '170px', linked: '170px', color: '150px', main: '90px', inBudget: '130px' };
+/** Kinds offered when an account is created (spec 0010, RG3, RG23). */
+const ACCOUNT_KINDS: { value: AccountKind; label: string }[] = [
+  { value: 'courant', label: 'Courant' },
+  { value: 'epargne', label: 'Épargne' },
+  { value: 'invest', label: 'Investissement' },
+];
+
+const COL_WIDTH: Partial<Record<Column['field'], string>> = { name: 'minmax(0, 1fr)', kind: '130px', account: '170px', linked: '170px', color: '150px', main: '90px', inBudget: '130px', accountKind: '280px' };
 
 const sumField = (rows: SetupRow[], f: Field) => round2(rows.reduce((s, r) => s + r[f], 0));
 
@@ -287,7 +296,7 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
   const grid: CSSProperties = {
     gridTemplateColumns: `${cfg.cols.map(c => COL_WIDTH[c.field] ?? '150px').join(' ')} 30px`,
   };
-  const textCols = ['name', 'kind', 'account', 'linked', 'color', 'main', 'inBudget'];
+  const textCols = ['name', 'kind', 'account', 'linked', 'color', 'main', 'inBudget', 'accountKind'];
   const moneyCols = cfg.cols.filter(c => !textCols.includes(c.field));
   const set = (id: string, patch: Partial<Omit<SetupRow, 'id'>>) => setDraft(d => updateRow(d, list, id, patch));
   const mainRowId = draft.rows.acc.find(a => a.isDefault)?.id ?? MAIN_ACCOUNT_ID;
@@ -331,8 +340,21 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
                   return (
                     <select key={c.label} className="su-select" value={r.linkedAccountId ?? ''} onChange={e => set(r.id, { linkedAccountId: e.target.value || undefined })}>
                       <option value="">Aucun</option>
-                      {draft.rows.acc.filter(a => a.id !== mainRowId).map(a => <option key={a.id} value={a.id}>{a.name.trim() || 'Sans nom'}</option>)}
+                      {draft.rows.acc.filter(a => a.id !== mainRowId && (a.accountKind ?? 'courant') === kindForBlock(list)).map(a => <option key={a.id} value={a.id}>{a.name.trim() || 'Sans nom'}</option>)}
                     </select>
+                  );
+                if (c.field === 'accountKind')
+                  // The main account and « Espèces » are always « Courant » (spec 0010, RG2); « Enveloppe » is not offered (RG3).
+                  return (
+                    <div key={c.label} className="su-kinds">
+                      {ACCOUNT_KINDS.map(o => {
+                        const fixed = r.isDefault || r.id === CASH_ACCOUNT_ID;
+                        const on = fixed ? o.value === 'courant' : (r.accountKind ?? 'courant') === o.value;
+                        return (
+                          <div key={o.value} className={`su-kind${on ? ' is-on' : ''}`} style={fixed ? { cursor: 'default', opacity: on ? 1 : 0.4 } : undefined} onClick={fixed ? undefined : () => set(r.id, { accountKind: o.value })}>{o.label}</div>
+                        );
+                      })}
+                    </div>
                   );
                 if (c.field === 'color')
                   return (
