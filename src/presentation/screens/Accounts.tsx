@@ -19,18 +19,17 @@ import {
 } from '../../application/bankAccounts';
 import { decideAccountKind, linkLineToAccount } from '../../application/accountKinds';
 import { setPointageStart } from '../../application/checkoff';
-import { setEnvelopeDefaultAccount } from '../../application/payment';
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
-import { BANK_HUES, CASH_ACCOUNT_ID, envelopeDefaultAccountId, isKindFixed, kindOf } from '../../domain/bank';
+import { BANK_HUES, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
 import { canSetPointageStart } from '../../domain/checkoff';
 import { IN_BUDGET_HINT } from '../components/hints';
-import { money, monthLabel } from '../../domain/format';
+import { money, monthLabel, round2 } from '../../domain/format';
 import { isMonthLocked, monthLines } from '../../domain/ledger';
 import type { AccountKind, BankAccount, MonthKey } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
-/** Kinds the user can choose (spec 0010, RG3: « enveloppe » is not offered yet). */
+/** Kinds the user can choose (spec 0010, RG3). « enveloppe » is never chosen: the account of an envelope is made with its envelope (spec 0011, RG3). */
 const KIND_CHOICES: { value: AccountKind; label: string }[] = [
   { value: 'courant', label: 'Courant' },
   { value: 'epargne', label: 'Épargne' },
@@ -64,6 +63,8 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const { setEditing } = useUi();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  // The accounts of the envelopes are grouped and folded by default, with their total (spec 0011, Q10).
+  const [showEnvelopes, setShowEnvelopes] = useState(false);
   // Account whose month-by-month history is open (spec 0007, RG15).
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
@@ -73,7 +74,9 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const mismatches = kindMismatches(data);
   const start = data.settings.pointageStart;
   const locked = isMonthLocked(data, month);
-  const active = data.accounts.filter(a => !a.archived);
+  const active = data.accounts.filter(a => !a.archived && !isEnvelopeAccount(a));
+  const envelopeAccounts = data.accounts.filter(a => !a.archived && isEnvelopeAccount(a));
+  const envelopeTotal = round2(envelopeAccounts.reduce((sum, a) => sum + (ledger.bankMonth(a.id, month)?.balance ?? 0), 0));
   const archived = data.accounts.filter(a => a.archived);
   const lastMonth = ledger.months[ledger.months.length - 1];
   const savingsLines = monthLines(data, month).filter(l => (l.block === 'epa' || l.block === 'inv') && l.linkedAccountId);
@@ -89,12 +92,14 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     const blocker = archiveBlocker(data, a.id);
     const collision = collidingLine(data, a.name, a.id);
     const receives = savingsLines.filter(l => l.linkedAccountId === a.id).map(l => l.name);
+    // The name, the kind and the budget status of an envelope's account follow its envelope (spec 0011, RG3, RG4).
+    const fromEnvelope = isEnvelopeAccount(a);
     return (
       <div key={a.id} className={`accounts-grid accounts-row${a.archived ? ' is-archived' : ''}`}>
         <div>
           <div className="accounts-name">
             <AccountDot account={a} />
-            <EditableText id={`an:${a.id}`} value={a.name} onCommit={name => update(d => void renameBankAccount(d, a.id, name))} className="ellipsis" inputClassName="cell-input is-text" disabled={locked}>
+            <EditableText id={`an:${a.id}`} value={a.name} onCommit={name => update(d => void renameBankAccount(d, a.id, name))} className="ellipsis" inputClassName="cell-input is-text" disabled={locked || fromEnvelope}>
               {a.name}
             </EditableText>
           </div>
@@ -139,20 +144,26 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         <div>
           <div
             className="su-kind is-on"
-            style={{ ...toneVars(a.hue), cursor: locked ? 'default' : 'pointer', width: 'max-content' }}
-            title={IN_BUDGET_HINT}
-            onClick={locked ? undefined : () => update(d => setBankAccountInBudget(d, a.id, !a.inBudget))}
+            style={{ ...toneVars(a.hue), cursor: locked || fromEnvelope ? 'default' : 'pointer', width: 'max-content' }}
+            title={fromEnvelope ? 'Le compte d’une enveloppe est toujours dans le budget' : IN_BUDGET_HINT}
+            onClick={locked || fromEnvelope ? undefined : () => update(d => setBankAccountInBudget(d, a.id, !a.inBudget))}
           >
             {a.inBudget ? 'oui' : 'non'}
           </div>
         </div>
-        <div
-          className={`accounts-radio${a.isDefault ? ' is-on' : ''}${locked || a.archived ? ' is-disabled' : ''}`}
-          title="Compte principal"
-          onClick={locked || a.archived ? undefined : () => update(d => void setMainBankAccount(d, a.id))}
-        />
+        {fromEnvelope ? (
+          <span />
+        ) : (
+          <div
+            className={`accounts-radio${a.isDefault ? ' is-on' : ''}${locked || a.archived ? ' is-disabled' : ''}`}
+            title="Compte principal"
+            onClick={locked || a.archived ? undefined : () => update(d => void setMainBankAccount(d, a.id))}
+          />
+        )}
         {a.archived ? (
-          <span className="btn-quiet" onClick={locked ? undefined : () => update(d => unarchiveBankAccount(d, a.id))}>Désarchiver</span>
+          fromEnvelope ? <span /> : <span className="btn-quiet" onClick={locked ? undefined : () => update(d => unarchiveBankAccount(d, a.id))}>Désarchiver</span>
+        ) : fromEnvelope ? (
+          <span />
         ) : (
           <span className="icon-btn" title="Actions" onClick={locked ? undefined : () => setMenuFor(menuFor === a.id ? null : a.id)}>⋯</span>
         )}
@@ -189,14 +200,14 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
               </div>
               <div
                 className={`popmenu-item${blocker ? ' is-disabled' : ''}`}
-                title={blocker === 'main' ? 'Choisis d’abord un autre compte principal' : blocker === 'cash' ? 'Le compte Espèces ne peut pas être archivé' : undefined}
+                title={blocker === 'main' ? 'Choisis d’abord un autre compte principal' : blocker === 'cash' ? 'Le compte Espèces ne peut pas être archivé' : blocker === 'envelope' ? 'Supprime l’enveloppe pour archiver son compte' : undefined}
                 onClick={() => {
                   if (blocker) return;
                   setMenuFor(null);
                   archive(a);
                 }}
               >
-                Archiver{blocker === 'main' ? ' (compte principal)' : blocker === 'cash' ? ' (toujours actif)' : ''}
+                Archiver{blocker === 'main' ? ' (compte principal)' : blocker === 'cash' ? ' (toujours actif)' : blocker === 'envelope' ? ' (enveloppe)' : ''}
               </div>
             </div>
           </>
@@ -283,6 +294,15 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         {active.map(row)}
         <div style={{ height: 8 }} />
       </div>
+      {envelopeAccounts.length > 0 && (
+        <div className="panel-lg" style={toneVars(280)}>
+          <div className="accounts-fold" onClick={() => setShowEnvelopes(o => !o)}>
+            <Icon name={showEnvelopes ? 'chevronDown' : 'chevronRight'} size={14} />
+            Enveloppes ({envelopeAccounts.length}) · <b>{money(envelopeTotal)}</b>
+          </div>
+          {showEnvelopes && envelopeAccounts.map(row)}
+        </div>
+      )}
       {historyFor && <AccountHistory accountId={historyFor} />}
       <div className="pointage-start">
         <span>Pointage depuis :</span>
@@ -303,19 +323,6 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         </select>
         <span className="accounts-sub">Avant ce mois, le Solde estimé suit le réel ; à partir de ce mois, il suit les pointages.</span>
         {startError && <span className="env-tile-error">{startError}</span>}
-      </div>
-      <div className="pointage-start">
-        <span>Compte des enveloppes :</span>
-        <select className="su-select" value={envelopeDefaultAccountId(data)} onChange={e => {
-            // The choices are active accounts other than « Espèces »: the action cannot refuse, its result is ignored on purpose.
-            const id = e.target.value;
-            update(d => void setEnvelopeDefaultAccount(d, id));
-          }}>
-          {active.filter(a => a.id !== CASH_ACCOUNT_ID).map(a => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
-        <span className="accounts-sub">Les enveloppes sans compte propre utilisent ce compte. Une allocation pointée sort du principal vers lui.</span>
       </div>
       {archived.length > 0 && (
         <div className="panel-lg">

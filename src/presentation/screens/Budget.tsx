@@ -9,6 +9,7 @@ import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
 import { LineCheckBox, LineCheckMeta } from '../components/LineCheck';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
+import { addEnvelope, renameEnvelope } from '../../application/envelopes';
 import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
@@ -655,7 +656,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
               onClick={canEdit ? () => setEditing(`ea:${e.id}`) : undefined}
             >
               <div className="env-tile-head">
-                <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void (d.envelopes.find(x => x.id === e.id)!.name = name))} className="env-tile-name" inputClassName="cell-input is-text">
+                <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void renameEnvelope(d, e.id, name))} className="env-tile-name" inputClassName="cell-input is-text">
                   {e.name}
                 </EditableText>
                 {warn && <span className="warn-dot" />}
@@ -683,9 +684,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
           className={`env-add${data.envelopes.length % 2 === 0 ? ' is-row' : ''}`}
           onClick={() => {
             const id = newId('env');
-            update(d => {
-              d.envelopes.push({ id, name: 'Nouvelle enveloppe', hue: (d.envelopes.length * 47 + 20) % 360, cash: 0 });
-            });
+            update(d => void addEnvelope(d, id));
             setEditing(`en:${id}`);
           }}
         >

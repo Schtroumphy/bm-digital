@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
-import { PayModePicker } from '../components/PayModePicker';
-import { setEnvelopePayment } from '../../application/payment';
+import { deleteEnvelope, envelopeBalance, renameEnvelope } from '../../application/envelopes';
 import { toneVars } from '../components/tone';
-import { envelopeDefaultAccountId } from '../../domain/bank';
 import { envelopeAlerts } from '../../domain/budget';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
 import { isMonthLocked, monthAlloc } from '../../domain/ledger';
@@ -47,7 +45,6 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
   const alerts = envelopeAlerts(data, ledger, year, m0);
   const alloc = monthAlloc(data, month);
   const editable = !!data.months[month]?.initialized && !isMonthLocked(data, month);
-  const locked = isMonthLocked(data, month);
   const drawerEnv = data.envelopes.find(e => e.id === open);
 
   return (
@@ -72,7 +69,10 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
                     label: 'Supprimer l’enveloppe',
                     danger: true,
                     onSelect: () => {
-                      if (window.confirm(`Supprimer l’enveloppe « ${e.name} » ?`)) update(d => void (d.envelopes = d.envelopes.filter(x => x.id !== e.id)));
+                      // Refused while the envelope holds money: it has to be emptied first (spec 0011, Q7).
+                      if (round2(envelopeBalance(data, e.id)) !== 0) return void window.alert(`« ${e.name} » contient encore de l’argent. Vide-la d’abord (par exemple avec un écart constaté sur son compte), puis supprime-la.`);
+                      if (!window.confirm(`Supprimer l’enveloppe « ${e.name} » ? Son compte est archivé.`)) return;
+                      update(d => void deleteEnvelope(d, e.id));
                     },
                   },
                 ])
@@ -81,7 +81,6 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
               <div className="env-card-head">
                 <span className="dot is-12" style={{ background: 'var(--t-base)' }} />
                 <span className="env-card-name">{e.name}</span>
-                <PayModePicker data={data} box={e} disabled={locked} fallbackId={envelopeDefaultAccountId(data)} onChange={patch => update(d => setEnvelopePayment(d, month, e.id, patch))} />
                 <div style={{ flex: 1 }} />
                 {alert && (
                   <div className="alert-pill">
@@ -207,7 +206,7 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
         <div className="drawer-head">
           <div className="drawer-title-row">
             <span className="dot is-12" style={{ background: 'var(--t-base)' }} />
-            <EditableText id={`dn:${env.id}`} value={env.name} onCommit={name => patch(e => void (e.name = name))} className="drawer-name" inputClassName="cell-input is-title">
+            <EditableText id={`dn:${env.id}`} value={env.name} onCommit={name => update(d => void renameEnvelope(d, env.id, name))} className="drawer-name" inputClassName="cell-input is-title">
               {env.name}
             </EditableText>
             <div style={{ flex: 1 }} />
