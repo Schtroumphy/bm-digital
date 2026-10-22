@@ -1,6 +1,6 @@
-import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from './bank';
+import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, newEnvelopeAccount } from './bank';
 import { addMonths, monthKey, round2 } from './format';
-import type { BlockKey, BudgetData, EnvHistory, Line, MonthKey, Transaction, TxType } from './types';
+import type { BlockKey, BudgetData, EnvHistory, Line, LineCheck, MonthKey, Transaction, TxType } from './types';
 
 /*
  * Sample data from the design prototype. December 2026 is the showcase month:
@@ -64,6 +64,9 @@ const PLANNED: [number, string, number, string][] = [
   [10, 'Ostéopathe', 70, 'sante'], [11, 'Dentiste', 60, 'sante'], [11, 'Cadeaux de Noël', 150, 'love'],
 ];
 
+/** Account of an envelope of the example (spec 0011). */
+const envelopeAccountId = (envelopeId: string) => `acc-env-${envelopeId}`;
+
 export function seedData(): BudgetData {
   const template = {
     lines: LINES.map(([block, section, key, name, budget]) => ({ block, section, key, name, budget })),
@@ -72,7 +75,8 @@ export function seedData(): BudgetData {
   const transactions: Transaction[] = [];
   let txn = 0;
   const tx = (month: MonthKey, day: number, label: string, amount: number, type: TxType, target: string, source: 'vir' | 'esp' = 'vir') =>
-    transactions.push({ id: `t${++txn}`, month, day, label, amount: round2(amount), type, target, ...(source === 'esp' ? { accountId: CASH_ACCOUNT_ID } : {}) });
+    // An envelope expense is always on the account of its envelope (spec 0011, RG10).
+    transactions.push({ id: `t${++txn}`, month, day, label, amount: round2(amount), type, target, ...(type === 'env' ? { accountId: envelopeAccountId(target) } : source === 'esp' ? { accountId: CASH_ACCOUNT_ID } : {}) });
 
   // Imported history: envelopes Jan → Sep, statements Jul → Sep.
   const envHistory: BudgetData['envHistory'] = {};
@@ -121,7 +125,10 @@ export function seedData(): BudgetData {
     'f-cj': { dueDay: 2, execMode: 'virement_auto' }, 'e-la': { dueDay: 3, execMode: 'virement_auto' }, 'i-pea': { dueDay: 15, execMode: 'virement_manuel' },
   };
   for (const l of [...template.lines, ...months['2026-12'].lines]) Object.assign(l, SCHEDULE[l.key]);
-  months['2026-12'].checks = { 'c-108': { doneOn: '2026-12-05' }, 'f-cj': { doneOn: '2026-12-02' }, 'e-la': { doneOn: '2026-12-03' } };
+  const decChecks: Record<string, LineCheck> = { 'c-108': { doneOn: '2026-12-05' }, 'f-cj': { doneOn: '2026-12-02' }, 'e-la': { doneOn: '2026-12-03' } };
+  // December is counted at the checks: the allocations of the envelopes are checked, so they reach their accounts (spec 0011, RG6).
+  for (const e of ENVELOPES) decChecks[`env:${e.id}`] = { doneOn: '2026-12-01' };
+  months['2026-12'].checks = decChecks;
 
   // Envelope spending of Oct/Nov, so balances land on the Dec figures.
   for (const e of ENVELOPES) {
@@ -144,8 +151,9 @@ export function seedData(): BudgetData {
     firstMonth: '2026-10',
     template,
     months,
-    envelopes: ENVELOPES.map(({ id, name, hue, cash }) => ({ id, name, hue, cash })),
-    accounts: defaultBankAccounts('2026-10'),
+    envelopes: ENVELOPES.map(({ id, name, hue, cash }) => ({ id, name, hue, cash, accountId: envelopeAccountId(id) })),
+    // Each envelope opens its account on the first month with its balance at the end of September.
+    accounts: [...defaultBankAccounts('2026-10'), ...ENVELOPES.map(e => newEnvelopeAccount(envelopeAccountId(e.id), e.id, e.name, e.hue, ENV_BALANCES[e.id][8], '2026-10'))],
     envHistory,
     statements,
     transactions,

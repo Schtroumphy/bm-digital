@@ -1,5 +1,5 @@
-import { currentMonthKey } from './format';
-import type { AccountKind, BankAccount, BudgetData, Line, MonthKey, PaymentSetting, Transaction } from './types';
+import { compareMonths, currentMonthKey } from './format';
+import type { AccountKind, BankAccount, BudgetData, Envelope, Line, MonthKey, PaymentSetting, Transaction } from './types';
 
 /*
  * Bank accounts: helpers shared by the Ledger, the budget figures and the use cases.
@@ -40,7 +40,34 @@ export const bankAccount = (d: BudgetData, id?: string): BankAccount | undefined
 /** True when the operation goes through the main account (no account of its own, or the main one). */
 export const isOnMainAccount = (d: BudgetData, accountId?: string): boolean => accountIdOf(d, accountId) === mainAccount(d).id;
 
-export const activeBankAccounts = (d: BudgetData) => d.accounts.filter(a => !a.archived);
+/** True for the account of an envelope (spec 0011): it belongs to one envelope and is never a choice for anything else (RG2). */
+export const isEnvelopeAccount = (a?: Pick<BankAccount, 'kind'>): boolean => a?.kind === 'enveloppe';
+
+/** Accounts offered in the lists of choice (« Payé avec », account of a line…): active, and not an envelope's account (spec 0011, RG2, RG23). */
+export const activeBankAccounts = (d: BudgetData) => d.accounts.filter(a => !a.archived && !isEnvelopeAccount(a));
+
+/** Id given to the account of an envelope: stable and readable, with a number if it is already taken (here or in `taken`). */
+export function freeEnvelopeAccountId(d: BudgetData, envelopeId: string, taken: Iterable<string> = []): string {
+  const used = new Set([...d.accounts.map(a => a.id), ...taken]);
+  const base = `acc-env-${envelopeId}`;
+  let id = base;
+  for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+/** The account of an envelope (spec 0011, RG3): same name and hue, always in the budget, balance confirmed. */
+export const newEnvelopeAccount = (id: string, envelopeId: string, name: string, hue: number, openingBalance: number, openingMonth: MonthKey): BankAccount => ({
+  id, name, hue, isDefault: false, openingBalance, openingMonth, inBudget: true, archived: false, kind: 'enveloppe', envelopeId, openingConfirmed: true,
+});
+
+/**
+ * The account of an envelope in month `m`, once it exists: the envelope's account when it is of kind `enveloppe`
+ * and opened on or before `m`. Before that month the envelope is still the old calculation (spec 0011, RG16).
+ */
+export function envelopeAccountAt(d: BudgetData, e: Pick<Envelope, 'accountId'>, m: MonthKey): BankAccount | undefined {
+  const a = d.accounts.find(x => x.id === e.accountId);
+  return a && isEnvelopeAccount(a) && compareMonths(m, a.openingMonth) >= 0 ? a : undefined;
+}
 
 /** Operations of an unknown account count in the budget (nothing to exclude them with). */
 export const isAccountInBudget = (d: BudgetData, accountId?: string): boolean => bankAccount(d, accountId)?.inBudget ?? true;
@@ -63,37 +90,40 @@ export const isLineInBudget = (d: BudgetData, l: Line): boolean =>
 export function resolveBoxAccountId(d: BudgetData, box: PaymentSetting, fallbackId: string = mainAccount(d).id): string {
   if (box.payMode === 'especes') return CASH_ACCOUNT_ID;
   const assigned = box.accountId ? d.accounts.find(a => a.id === box.accountId) : undefined;
-  return assigned && !assigned.archived ? assigned.id : fallbackId;
+  return assigned && !assigned.archived && !isEnvelopeAccount(assigned) ? assigned.id : fallbackId;
 }
 
 /**
- * Account that receives the envelopes without an account of their own (spec 0009, RG98): the one set in
- * `settings.envelopeAccountId` when it exists, is active and is not « Espèces »; otherwise the main account.
+ * The account an expense cannot leave (« Payé avec » frozen): the account of its envelope once that account exists
+ * (spec 0011, RG10), or the account assigned to its variable line (spec 0006), when it is an active one.
+ * Undefined when the user is free to choose (no assigned account, « Espèces » mode, savings withdrawal).
  */
-export function envelopeDefaultAccountId(d: BudgetData): string {
-  const set = d.settings.envelopeAccountId ? d.accounts.find(a => a.id === d.settings.envelopeAccountId) : undefined;
-  return set && !set.archived && set.id !== CASH_ACCOUNT_ID ? set.id : mainAccount(d).id;
+export function fixedTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string | undefined {
+  if (t.type === 'env') {
+    const e = d.envelopes.find(x => x.id === t.target);
+    return e ? envelopeAccountAt(d, e, t.month)?.id : undefined;
+  }
+  const box = transactionBox(d, t);
+  if (!box?.accountId || box.payMode === 'especes') return undefined;
+  const resolved = resolveBoxAccountId(d, box);
+  return resolved === box.accountId ? resolved : undefined;
 }
 
-/** Account of an envelope (RG98): « Espèces » mode → cash; its own active account wins; else the default account of the envelopes. */
-export const resolveEnvelopeAccountId = (d: BudgetData, env: PaymentSetting): string => resolveBoxAccountId(d, env, envelopeDefaultAccountId(d));
-
-/** The box a transaction was made on: its variable line (or the model's, for a month not created yet) or its envelope. */
+/** The variable line a transaction was made on (or the model's, for a month not created yet). */
 export function transactionBox(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): PaymentSetting | undefined {
-  if (t.type === 'env') return d.envelopes.find(e => e.id === t.target);
   if (t.type !== 'var') return undefined;
   const md = d.months[t.month];
   return (md?.initialized ? md.lines : d.template.lines).find(l => l.block === 'var' && l.key === t.target);
 }
 
 /**
- * Account proposed for a new transaction: the one resolved from its box for a
- * variable expense or an envelope, the main account otherwise (savings withdrawal).
+ * Account proposed for a new transaction: the account of the envelope for an envelope expense (spec 0011, RG10),
+ * the one resolved from its box for a variable expense, the main account otherwise (savings withdrawal).
  */
 export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string {
+  if (t.type === 'env') return d.envelopes.find(e => e.id === t.target)?.accountId ?? mainAccount(d).id;
   const box = transactionBox(d, t);
-  if (!box) return mainAccount(d).id;
-  return t.type === 'env' ? resolveEnvelopeAccountId(d, box) : resolveBoxAccountId(d, box);
+  return box ? resolveBoxAccountId(d, box) : mainAccount(d).id;
 }
 
 /** Savings and investment lines are the ones that can be tied to a dedicated bank account (spec 0007, RG1). */
@@ -105,8 +135,8 @@ export const kindOf = (a: Pick<BankAccount, 'kind'>): AccountKind => a.kind ?? '
 /** Kind an account must have to be tied to a line of this block: `epargne` for `epa`, `invest` for `inv` (spec 0010, RG7). */
 export const kindForBlock = (block: string): AccountKind | undefined => (block === 'epa' ? 'epargne' : block === 'inv' ? 'invest' : undefined);
 
-/** The main account and « Espèces » are always `courant` and their kind cannot change (spec 0010, RG2). */
-export const isKindFixed = (a: Pick<BankAccount, 'id' | 'isDefault'>): boolean => a.isDefault || a.id === CASH_ACCOUNT_ID;
+/** The main account and « Espèces » are always `courant` (spec 0010, RG2); an envelope's account always `enveloppe` (spec 0011, RG3): their kind cannot change. */
+export const isKindFixed = (a: Pick<BankAccount, 'id' | 'isDefault' | 'kind'>): boolean => a.isDefault || a.id === CASH_ACCOUNT_ID || isEnvelopeAccount(a);
 
 /**
  * Whether a savings/investment line can be tied to the given bank account (spec 0007, RG2, RG5; spec 0010, RG7):

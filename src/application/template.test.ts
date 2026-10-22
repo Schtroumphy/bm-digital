@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { emptyData } from '../domain/empty';
 import { templateSummary } from '../domain/budget';
 import { applyTemplate } from './actions';
+import { addEnvelope } from './envelopes';
 import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, updateTemplateLine } from './template';
 
 const base = () => {
   const d = emptyData();
-  d.envelopes = [{ id: 'e1', name: 'Perso', hue: 10, cash: 0 }];
+  addEnvelope(d, 'e1', 'Perso');
   addTemplateLine(d, 'rev', 'a');
   addTemplateLine(d, 'fix', 'b');
   addTemplateLine(d, 'rev', 'c');

@@ -1,5 +1,5 @@
-import { accountIdOf, isAccountInBudget, isSavingsBlock, mainAccount, resolveBoxAccountId } from './bank';
-import { round2 } from './format';
+import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, mainAccount, resolveBoxAccountId } from './bank';
+import { compareMonths, round2 } from './format';
 import type { BudgetData, MonthKey } from './types';
 
 /*
@@ -36,6 +36,11 @@ export type CountedSource = 'actual' | 'budget';
 export function countedAmount(l: { actual: number | null; budget: number }): { amount: number; source: CountedSource } {
   return l.actual !== null ? { amount: l.actual, source: 'actual' } : { amount: l.budget, source: 'budget' };
 }
+
+/** « Mois compté au réel » or « au pointage » (spec 0009, RG59, RG61): from `settings.pointageStart` on, a month is counted from the checks. */
+export type MonthMode = 'real' | 'pointage';
+
+export const monthMode = (d: BudgetData, m: MonthKey): MonthMode => (d.settings.pointageStart !== undefined && compareMonths(m, d.settings.pointageStart) >= 0 ? 'pointage' : 'real');
 
 /** Key of an envelope's allocation check in `MonthData.checks` (a line key never contains a colon). */
 export const envelopeCheckKey = (envelopeId: string) => `env:${envelopeId}`;
@@ -92,11 +97,27 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
     const c = md.checks?.[l.key];
     if (l.block === 'var' && c) counterpart(resolveBoxAccountId(d, l), l.budget, c.doneOn, l.name, l.key, nameOf(resolveBoxAccountId(d, l)));
   }
-  // A checked envelope allocation sends the month's allocation to the account recorded when it was checked (RG88, RG90, RG91).
+  // Envelope allocations (spec 0011). They are read from the accounts of the envelopes, not from the envelopes, so that
+  // deleting an envelope leaves its past allocations in the history. From the month its account exists, an envelope receives
+  // its allocation from the main account (RG5): on the 1st in a month counted at the actuals, on the day it is checked in a
+  // month counted at the checks (RG6). The two faces are the debit of the main account and the credit of the envelope's account (RG7).
   if (md?.initialized) {
+    for (const account of d.accounts) {
+      if (!account.envelopeId || account.kind !== 'enveloppe' || compareMonths(m, account.openingMonth) < 0 || account.id === main) continue;
+      const amount = md.alloc[account.envelopeId] ?? 0;
+      if (amount === 0) continue; // RG8
+      const key = envelopeCheckKey(account.envelopeId);
+      const c = md.checks?.[key];
+      const counted = monthMode(d, m) === 'real' ? { date: first, done: 'virée' } : c ? { date: c.doneOn, done: 'pointée' } : null;
+      if (!counted) continue;
+      const kind = c && counted.done === 'pointée' ? 'check' : 'transfer';
+      if (id === main) out.push({ date: counted.date, label: `Allocation → ${account.name} (${counted.done})`, amount: -amount, kind, lineKey: key, counterpart: true });
+      else if (id === account.id) out.push({ date: counted.date, label: `Allocation ${account.name} (${counted.done})`, amount, kind, lineKey: key, counterpart: true });
+    }
+    // Before its account exists, a checked allocation keeps the account recorded when it was checked (spec 0009, RG88, RG90, RG91; spec 0011, RG18).
     for (const e of d.envelopes) {
       const c = md.checks?.[envelopeCheckKey(e.id)];
-      if (c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), 'pointée');
+      if (!envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), 'pointée');
     }
   }
   for (const t of d.transactions) {

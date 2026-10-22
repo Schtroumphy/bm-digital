@@ -1,4 +1,4 @@
-import { canLinkAccount, CASH_ACCOUNT_ID, isKindFixed, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
+import { canLinkAccount, CASH_ACCOUNT_ID, fixedTransactionAccountId, isEnvelopeAccount, isKindFixed, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
 import { currentMonthKey } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import type { AccountKind, BudgetData, MonthKey } from '../domain/types';
@@ -25,18 +25,21 @@ export function addBankAccount(d: BudgetData, id: string, name = 'Nouveau compte
   });
 }
 
-/** The kind is chosen at the creation (default `courant`, RG23) and can be changed. Refused for the main account and « Espèces » (RG2). Changes no balance (RG4). */
+/**
+ * The kind is chosen at the creation (default `courant`, RG23) and can be changed. Refused for the main account and « Espèces »
+ * (spec 0010, RG2) and for the account of an envelope; `enveloppe` itself is never chosen by hand (spec 0011, RG3). Changes no balance (RG4).
+ */
 export function setBankAccountKind(d: BudgetData, id: string, kind: AccountKind): boolean {
   const a = find(d, id);
-  if (!a || isKindFixed(a)) return false;
+  if (!a || isKindFixed(a) || kind === 'enveloppe') return false;
   a.kind = kind;
   return true;
 }
 
-/** An empty name is refused. */
+/** An empty name is refused, and so is the account of an envelope: its name follows the envelope (spec 0011, RG3). */
 export function renameBankAccount(d: BudgetData, id: string, name: string): boolean {
   const a = find(d, id);
-  if (!a || !name.trim()) return false;
+  if (!a || isEnvelopeAccount(a) || !name.trim()) return false;
   a.name = name.trim();
   return true;
 }
@@ -52,7 +55,7 @@ export function setBankAccountHue(d: BudgetData, id: string, hue: number) {
  */
 export function setMainBankAccount(d: BudgetData, id: string): boolean {
   const next = find(d, id);
-  if (!next || next.archived) return false;
+  if (!next || next.archived || isEnvelopeAccount(next)) return false;
   const old = mainAccount(d);
   if (old.id === id) return true;
   for (const l of d.template.lines) l.accountId ??= old.id;
@@ -68,7 +71,8 @@ export function setMainBankAccount(d: BudgetData, id: string): boolean {
  */
 export function setBankAccountInBudget(d: BudgetData, id: string, inBudget: boolean) {
   const a = find(d, id);
-  if (!a) return;
+  // The account of an envelope is always in the budget (spec 0011, RG4).
+  if (!a || isEnvelopeAccount(a)) return;
   a.inBudget = inBudget;
 }
 
@@ -81,9 +85,13 @@ export function setBankAccountOpening(d: BudgetData, id: string, patch: { balanc
   a.openingConfirmed = true;
 }
 
-/** Why an account cannot be archived, or null when it can (RG3, RG4). */
-export function archiveBlocker(d: BudgetData, id: string): 'main' | 'cash' | null {
+/**
+ * Why an account cannot be archived, or null when it can (RG3, RG4). The account of an envelope is archived with its
+ * envelope, not on its own (spec 0011, RG22).
+ */
+export function archiveBlocker(d: BudgetData, id: string): 'main' | 'cash' | 'envelope' | null {
   if (id === CASH_ACCOUNT_ID) return 'cash';
+  if (d.envelopes.some(e => e.accountId === id)) return 'envelope';
   return find(d, id)?.isDefault ? 'main' : null;
 }
 
@@ -95,9 +103,10 @@ export function archiveBankAccount(d: BudgetData, id: string): boolean {
   return true;
 }
 
+/** An envelope's account that was archived with its envelope stays archived (spec 0011, RG23). */
 export function unarchiveBankAccount(d: BudgetData, id: string) {
   const a = find(d, id);
-  if (a) a.archived = false;
+  if (a && !isEnvelopeAccount(a)) a.archived = false;
 }
 
 /** Marks the opening balances of the main account and « Espèces » as seen, which hides the reminder banner. */
@@ -117,6 +126,9 @@ export function setLineAccount(d: BudgetData, m: MonthKey, key: string, accountI
   if (isMonthLocked(d, m)) return false;
   const l = d.months[m]?.lines.find(x => x.key === key);
   if (!l || (l.linkedAccountId && l.linkedAccountId === accountId)) return false;
+  // The account of an envelope is never the account of a line (spec 0011, RG2).
+  const target = find(d, accountId);
+  if (target && isEnvelopeAccount(target)) return false;
   l.accountId = accountId;
   return true;
 }
@@ -141,10 +153,18 @@ export function setLineLinkedAccount(d: BudgetData, m: MonthKey, key: string, ac
   return true;
 }
 
-/** Changes the account of a transaction; the actual of a variable line does not change (spec 0008, RG2). */
+/**
+ * Changes the account of a transaction; the actual of a variable line does not change (spec 0008, RG2). Refused for the
+ * account of an envelope, and for an expense whose account is frozen: an envelope expense once the envelope has its account, a variable
+ * expense on a line with an assigned account (spec 0011, RG2, RG10; spec 0006 amended).
+ */
 export function setTransactionAccount(d: BudgetData, id: string, accountId: string): boolean {
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month) || !isSavingsWithdrawalAllowed(d, { ...t, accountId })) return false;
+  const target = find(d, accountId);
+  if (target && isEnvelopeAccount(target)) return false;
+  const fixed = fixedTransactionAccountId(d, t);
+  if (fixed && fixed !== accountId) return false;
   t.accountId = accountId;
   return true;
 }

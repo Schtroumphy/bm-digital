@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual, varActualFromTx } from '../domain/budget';
 import { isMonthLocked } from '../domain/ledger';
@@ -118,17 +118,24 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
     ...rows.epa.map(r => line('epa', r, SAVINGS_SECTIONS[r.kind === 'MT' ? 'MT' : 'LT'])),
     ...rows.inv.map(r => line('inv', r)),
   ];
-  const envelopes: Envelope[] = rows.env.map((r, i) => ({
-    id: r.id,
-    name: r.name.trim() || 'Sans nom',
-    hue: ENVELOPE_HUES[i % ENVELOPE_HUES.length],
-    cash: Math.min(r.cash, r.balance),
-  }));
+  // Each envelope has its own account, opening on the first month with the balance typed in the assistant (spec 0011, RG3).
+  const keptAccount = (id: string) => d.envelopes.find(e => e.id === id)?.accountId;
+  const envelopeAccounts: BankAccount[] = [];
+  const envelopes: Envelope[] = rows.env.map((r, i) => {
+    const name = r.name.trim() || 'Sans nom';
+    const hue = ENVELOPE_HUES[i % ENVELOPE_HUES.length];
+    const kept = keptAccount(r.id);
+    const accountId = kept ?? freeEnvelopeAccountId(d, r.id, envelopeAccounts.map(a => a.id));
+    if (!kept) envelopeAccounts.push(newEnvelopeAccount(accountId, r.id, name, hue, r.balance, m));
+    return { id: r.id, name, hue, cash: Math.min(r.cash, r.balance), accountId };
+  });
   const envAlloc = Object.fromEntries(rows.env.map(r => [r.id, r.amount]));
 
   d.template = { lines: lines.map(({ actual: _actual, ...l }) => l), envAlloc };
+  // The accounts of the envelopes that are no longer in the draft stay, archived (spec 0011, RG22).
+  for (const a of d.accounts) if (isEnvelopeAccount(a) && !envelopes.some(e => e.accountId === a.id)) a.archived = true;
   d.envelopes = envelopes;
-  d.accounts = d.firstMonth === null ? accountsFromDraft(rows.acc, m) : mergeAccounts(d.accounts, accountsFromDraft(rows.acc, m));
+  d.accounts = [...(d.firstMonth === null ? accountsFromDraft(rows.acc, m) : mergeAccounts(d.accounts, accountsFromDraft(rows.acc, m))), ...envelopeAccounts];
   initMonth(d, m, lines, envAlloc);
 
   const before = addMonths(m, -1);
@@ -261,13 +268,24 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
 
 /**
  * Records a transaction; a variable expense also raises its line's actual. Refused (false) on a locked month,
- * or for a withdrawal credited to the dedicated account of its savings line (spec 0007, RG7).
+ * for a withdrawal credited to the dedicated account of its savings line (spec 0007, RG7), and for a variable
+ * expense or a withdrawal on the account of an envelope (spec 0011, RG2).
+ * An envelope expense is always on the account of its envelope, whatever account is given (spec 0011, RG10); a variable
+ * expense on a line with an assigned account is refused on any other account.
  * Without an account, the transaction takes the one resolved from its box (spec 0006, RG3):
  * the account is written down, so a later change of the box does not move it (RG6).
  */
 export function addTransaction(d: BudgetData, input: Transaction): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
-  const t = input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
+  const given = d.accounts.find(a => a.id === input.accountId);
+  if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
+  // A variable expense on a line with an assigned account stays on it: another account is refused (spec 0006 amended, 0011 RG10).
+  const fixed = input.type === 'var' ? fixedTransactionAccountId(d, input) : undefined;
+  if (fixed && input.accountId !== undefined && input.accountId !== fixed) return false;
+  const envelope = input.type === 'env' ? d.envelopes.find(e => e.id === input.target) : undefined;
+  const t = envelope
+    ? { ...input, accountId: envelope.accountId }
+    : input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   d.transactions.push(t);
   // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).
   if (t.type !== 'var') return true;

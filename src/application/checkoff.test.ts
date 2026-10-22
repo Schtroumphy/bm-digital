@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, applyTemplate, deleteLine, duplicatePrevious, saveAsTemplate, setStatement, updateLine, monthCsv } from './actions';
-import { cancelAdjustment, checkEnvelope, checkLine, uncheckEnvelope, createAdjustment, setAccountStatement, setLineSchedule, setPointageStart, uncheckLine, updateCheck } from './checkoff';
+import { cancelAdjustment, checkEnvelope, checkLine, createAdjustment, setAccountStatement, setLineSchedule, setPointageStart, uncheckLine, updateCheck } from './checkoff';
 import { closeMonth } from './monthClosing';
-import { addBankAccount, archiveBankAccount, setBankAccountInBudget } from './bankAccounts';
-import { setEnvelopeDefaultAccount } from './payment';
-import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, isLineInBudget, defaultBankAccounts, defaultTransactionAccountId, resolveEnvelopeAccountId } from '../domain/bank';
+import { addBankAccount, setBankAccountInBudget } from './bankAccounts';
+import { addEnvelope } from './envelopes';
+import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, isLineInBudget, defaultBankAccounts } from '../domain/bank';
 import { availableReal, blockTotals, budgetLines, lineHistory, monthSummary, variableRemaining } from '../domain/budget';
-import { IGNORED_REASON, hasNoAmount, accountPointage, balanceDateBounds, envelopeTooltip, ignoredMovements, lineTooltip, isEnvelopePointable, lineCounted, effectiveDueDay, isLate, isPointable, lateCount, monthBalance, monthMode, pointageAccounts } from '../domain/checkoff';
+import { IGNORED_REASON, hasNoAmount, accountPointage, balanceDateBounds, envelopeTooltip, ignoredMovements, lineTooltip, lineCounted, effectiveDueDay, isLate, isPointable, lateCount, monthBalance, monthMode, pointageAccounts } from '../domain/checkoff';
 import { bankMovements, countedAmount, flowOf } from '../domain/bankMovements';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -786,66 +786,9 @@ describe('migration: montants retirés, destinations gardées', () => {
   });
 });
 
-describe('allocations d’enveloppes et comptes hors budget (amendement 6)', () => {
+describe('comptes hors budget (amendement 6)', () => {
   const T = '2027-01-25';
-  /** Opening 1 000 €, an envelope « sante » allocated 100 € this month. */
-  const withEnv = (extra: Partial<BudgetData['envelopes'][number]> = {}, lines: Line[] = []) => {
-    const d = started(lines);
-    d.envelopes.push({ id: 'sante', name: 'Santé', hue: 170, cash: 0, ...extra });
-    d.months[M].alloc = { sante: 100 };
-    return d;
-  };
-  const envTx = (id: string, day: number, amount: number, accountId?: string) =>
-    ({ id, month: M, day, label: id, amount, type: 'env' as const, target: 'sante', ...(accountId ? { accountId } : {}) });
   const est = (d: BudgetData, id: string) => accountPointage(d, M, id, T)!.estimated;
-  /** Puts the month back at the actuals while keeping the check (RG72: counterparts move money in both modes). */
-  const atActuals = (d: BudgetData) => void (d.settings.pointageStart = '2027-02');
-
-  it('CA80: enveloppe sur le principal: l’allocation n’est pas un mouvement, la dépense débite une fois, pas de case', () => {
-    const d = withEnv();
-    expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(false);
-    expect(checkEnvelope(d, M, 'sante', '2027-01-05')).toBe(false);
-    addTransaction(d, envTx('e1', 3, 30));
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(970);
-    expect(est(d, MAIN_ACCOUNT_ID)).toBe(970);
-  });
-
-  it('CA81: enveloppe en Espèces pointée: principal −100, Espèces +100 puis −30; écran Comptes = Solde estimé au réel', () => {
-    const d = withEnv({ payMode: 'especes' });
-    expect(checkEnvelope(d, M, 'sante', '2027-01-05')).toBe(true);
-    expect(d.months[M].checks!['env:sante']).toEqual({ doneOn: '2027-01-05', accountId: CASH_ACCOUNT_ID });
-    addTransaction(d, envTx('e1', 8, 30));
-    const main = accountPointage(d, M, MAIN_ACCOUNT_ID, T)!;
-    expect(main.movements.find(x => x.label.startsWith('Allocation'))).toMatchObject({ date: '2027-01-05', amount: -100, label: 'Allocation Santé → Espèces (pointée)' });
-    expect(accountPointage(d, M, CASH_ACCOUNT_ID, T)!.movements.map(x => [x.label, x.amount])).toEqual([['Allocation Santé (pointée)', 100], ['e1 (dépense)', -30]]);
-    expect([est(d, MAIN_ACCOUNT_ID), est(d, CASH_ACCOUNT_ID)]).toEqual([900, 70]);
-    atActuals(d);
-    expect(monthMode(d, M)).toBe('real');
-    expect([bank(d, MAIN_ACCOUNT_ID), bank(d, CASH_ACCOUNT_ID)]).toEqual([900, 70]);
-    expect([est(d, MAIN_ACCOUNT_ID), est(d, CASH_ACCOUNT_ID)]).toEqual([900, 70]); // CA83
-  });
-
-  it('CA82: non pointée: aucun mouvement; décochée: les soldes reviennent', () => {
-    const d = withEnv({ payMode: 'especes' });
-    const before = [bank(d, MAIN_ACCOUNT_ID), bank(d, CASH_ACCOUNT_ID)];
-    expect(before).toEqual([1000, 0]);
-    checkEnvelope(d, M, 'sante', '2027-01-05');
-    expect(uncheckEnvelope(d, M, 'sante')).toBe(true);
-    expect([bank(d, MAIN_ACCOUNT_ID), bank(d, CASH_ACCOUNT_ID)]).toEqual(before);
-    expect(uncheckEnvelope(d, M, 'sante')).toBe(false);
-  });
-
-  it('CA84: allocation vers un compte hors budget: le principal n’est pas touché, le compte hors budget reçoit; budget inchangé', () => {
-    const d = withEnv({ accountId: SWILE }, [ln('sal', 'rev', 100, { actual: 100 })]);
-    setBankAccountInBudget(d, SWILE, false);
-    const snap = (x: BudgetData) => ({ summary: monthSummary(x, new Ledger(x, M), M), avail: availableReal(x, M) });
-    const before = snap(d);
-    expect(checkEnvelope(d, M, 'sante', '2027-01-05')).toBe(true);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1100);
-    expect(bank(d, SWILE)).toBe(100);
-    expect(snap(d)).toEqual(before);
-    expect(est(d, MAIN_ACCOUNT_ID)).toBe(1000); // pointage mode: the unchecked revenue is not counted
-  });
 
   it('CA85: ligne var pointée vers un compte hors budget: le principal n’est pas touché, le compte reçoit son budget', () => {
     const d = started([ln('cantine', 'var', 120, { accountId: SWILE })]);
@@ -871,143 +814,38 @@ describe('allocations d’enveloppes et comptes hors budget (amendement 6)', () 
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
     expect(bank(d, SWILE)).toBe(-20);
   });
-
-  it('CA87: changer le mode de l’enveloppe après pointage garde la destination d’origine', () => {
-    const d = withEnv({ payMode: 'especes' });
-    checkEnvelope(d, M, 'sante', '2027-01-05');
-    d.envelopes[0].payMode = 'virtuel';
-    expect(accountPointage(d, M, CASH_ACCOUNT_ID, T)!.estimated).toBe(100);
-    expect(est(d, MAIN_ACCOUNT_ID)).toBe(900);
-    expect(bank(d, CASH_ACCOUNT_ID)).toBe(100);
-  });
-
-  it('CA88: sans pointage d’allocation, rien ne change; Solde estimé = écran Comptes sur le seed', () => {
-    const d = seedData();
-    delete d.settings.pointageStart;
-    for (const md of Object.values(d.months)) delete md.checks;
-    const ledger = new Ledger(d, '2027-02');
-    for (const m of ledger.months) for (const a of d.accounts) expect(monthBalance(d, m, a.id)?.end ?? null).toBe(ledger.bankMonth(a.id, m)?.balance ?? null);
-    expect(d.version).toBe(1);
-    expect(d.settings.envelopeAccountId).toBeUndefined();
-    expect(d.envelopes.every(e => resolveEnvelopeAccountId(d, e) === MAIN_ACCOUNT_ID)).toBe(true);
-  });
-
-  it('CA89: mois clôturé: pointer/dépointer refusé; allocation à 0: pas de case ni de mouvement', () => {
-    const d = withEnv({ payMode: 'especes' });
-    d.months[M].alloc.sante = 0;
-    expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(false);
-    expect(checkEnvelope(d, M, 'sante', '2027-01-05')).toBe(false);
-    d.months[M].alloc.sante = 100;
-    checkEnvelope(d, M, 'sante', '2027-01-05');
-    d.months[M].closed = true;
-    expect(uncheckEnvelope(d, M, 'sante')).toBe(false);
-    expect(d.months[M].checks!['env:sante']).toBeDefined();
-    expect(est(d, CASH_ACCOUNT_ID)).toBe(100);
-  });
-
-  it('CA91: le mouvement suit l’allocation à la lecture; figé quand le mois est verrouillé', () => {
-    const d = withEnv({ payMode: 'especes' });
-    checkEnvelope(d, M, 'sante', '2027-01-05');
-    d.months[M].alloc.sante = 150;
-    expect(est(d, CASH_ACCOUNT_ID)).toBe(150);
-    expect(est(d, MAIN_ACCOUNT_ID)).toBe(850);
-    d.months[M].closed = true;
-    const frozen = est(d, CASH_ACCOUNT_ID);
-    expect(frozen).toBe(150);
-  });
-
-  it('CA92: compte par défaut non réglé: principal, sans case; réglé sur « Enveloppes »: le compte reçoit, ses dépenses le débitent une fois', () => {
-    const d = withEnv();
-    expect(resolveEnvelopeAccountId(d, d.envelopes[0])).toBe(MAIN_ACCOUNT_ID);
-    expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(false);
-    expect(setEnvelopeDefaultAccount(d, SWILE)).toBe(true);
-    expect(resolveEnvelopeAccountId(d, d.envelopes[0])).toBe(SWILE);
-    expect(checkEnvelope(d, M, 'sante', '2027-01-05')).toBe(true);
-    addTransaction(d, envTx('e1', 8, 30));
-    expect(d.transactions[0].accountId).toBe(SWILE);
-    expect([est(d, MAIN_ACCOUNT_ID), est(d, SWILE)]).toEqual([900, 70]);
-    expect([bank(d, MAIN_ACCOUNT_ID), bank(d, SWILE)]).toEqual([900, 70]);
-  });
-
-  it('CA93: le compte propre de l’enveloppe (ou Espèces) prime sur le défaut', () => {
-    const d = withEnv({ accountId: 'acc-other' });
-    addBankAccount(d, 'acc-other', 'Autre');
-    setEnvelopeDefaultAccount(d, SWILE);
-    expect(resolveEnvelopeAccountId(d, d.envelopes[0])).toBe('acc-other');
-    d.envelopes[0].payMode = 'especes';
-    expect(resolveEnvelopeAccountId(d, d.envelopes[0])).toBe(CASH_ACCOUNT_ID);
-  });
-
-  it('CA94: défaut archivé: retombe sur le principal; Espèces, archivé, inconnu: refusés', () => {
-    const d = withEnv();
-    setEnvelopeDefaultAccount(d, SWILE);
-    archiveBankAccount(d, SWILE);
-    expect(resolveEnvelopeAccountId(d, d.envelopes[0])).toBe(MAIN_ACCOUNT_ID);
-    expect(setEnvelopeDefaultAccount(d, CASH_ACCOUNT_ID)).toBe(false);
-    expect(setEnvelopeDefaultAccount(d, SWILE)).toBe(false);
-    expect(setEnvelopeDefaultAccount(d, 'nope')).toBe(false);
-    expect(setEnvelopeDefaultAccount(d, null)).toBe(true);
-    expect(d.settings.envelopeAccountId).toBeUndefined();
-  });
-
-  it('une enveloppe supprimée du budget après pointage: le mouvement d’allocation s’arrête', () => {
-    const d = withEnv({ payMode: 'especes' });
-    checkEnvelope(d, M, 'sante', '2027-01-05');
-    expect(est(d, MAIN_ACCOUNT_ID)).toBe(900);
-    d.envelopes = [];
-    expect(est(d, MAIN_ACCOUNT_ID)).toBe(1000);
-    expect(est(d, CASH_ACCOUNT_ID)).toBe(0);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
-  });
-
-  it('CA95: changer le défaut ne change ni la destination pointée ni le compte des transactions; la proposition suit', () => {
-    const d = withEnv();
-    setEnvelopeDefaultAccount(d, SWILE);
-    checkEnvelope(d, M, 'sante', '2027-01-05');
-    addTransaction(d, envTx('e1', 8, 30));
-    addBankAccount(d, 'acc-new', 'Nouveau');
-    setEnvelopeDefaultAccount(d, 'acc-new');
-    expect(d.months[M].checks!['env:sante'].accountId).toBe(SWILE);
-    expect(d.transactions[0].accountId).toBe(SWILE);
-    expect(defaultTransactionAccountId(d, { type: 'env', month: M, target: 'sante' })).toBe('acc-new');
-    expect(est(d, SWILE)).toBe(70);
-  });
 });
 
 describe('mouvements ignorés en gris (amendement 7)', () => {
   const T = '2027-01-25';
-  /** Opening 1 000 €. A variable line, an envelope and an old transfer, all sent to `target` and checked. */
+  /** Opening 1 000 €. A variable line and an old transfer, both sent to `target` and checked. */
   function sendTo(target: 'cash' | 'swile', inBudget: boolean) {
     const id = target === 'cash' ? CASH_ACCOUNT_ID : SWILE;
     const d = started([ln('cantine', 'var', 120, target === 'cash' ? { payMode: 'especes' } : { accountId: SWILE })]);
-    d.envelopes.push({ id: 'sante', name: 'Santé', hue: 170, cash: 0, ...(target === 'cash' ? { payMode: 'especes' as const } : { accountId: SWILE }) });
-    d.months[M].alloc = { sante: 60 };
     d.transfers.push({ id: 'v1', name: 'Virement', amount: 50, fromAccountId: MAIN_ACCOUNT_ID, to: { kind: 'bank', id } });
     d.months[M].transfersDone.v1 = true;
     setBankAccountInBudget(d, id, inBudget);
     checkLine(d, M, 'cantine', '2027-01-08');
-    checkEnvelope(d, M, 'sante', '2027-01-09');
     return { d, id };
   }
   const main = (d: BudgetData) => accountPointage(d, M, MAIN_ACCOUNT_ID, T)!;
 
-  it('CA96: vers Espèces « oui »: vrais mouvements comptés (principal −230, Espèces +230), aucune ligne grise', () => {
+  it('CA96: vers Espèces « oui »: vrais mouvements comptés (principal −170, Espèces +170), aucune ligne grise', () => {
     const { d } = sendTo('cash', true);
     expect(main(d).ignored).toEqual([]);
-    expect(main(d).estimated).toBe(1000 - 120 - 60 - 50);
-    expect(accountPointage(d, M, CASH_ACCOUNT_ID, T)!.estimated).toBe(230);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(770);
+    expect(main(d).estimated).toBe(1000 - 120 - 50);
+    expect(accountPointage(d, M, CASH_ACCOUNT_ID, T)!.estimated).toBe(170);
+    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(830);
   });
 
-  it('CA97: vers Swile « non »: le principal n’est pas touché, Swile enregistre son côté, la liste grise nomme les trois mouvements', () => {
+  it('CA97: vers Swile « non »: le principal n’est pas touché, Swile enregistre son côté, la liste grise nomme les deux mouvements', () => {
     const { d } = sendTo('swile', false);
     expect(main(d).estimated).toBe(1000);
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
-    expect(accountPointage(d, M, SWILE, T)!.estimated).toBe(230);
+    expect(accountPointage(d, M, SWILE, T)!.estimated).toBe(170);
     expect(main(d).ignored).toEqual([
       { date: '2027-01-01', label: 'Virement (virement)', amount: -50, reason: IGNORED_REASON },
       { date: '2027-01-08', label: 'cantine → Swile (pointé)', amount: -120, reason: IGNORED_REASON },
-      { date: '2027-01-09', label: 'Allocation Santé → Swile (pointée)', amount: -60, reason: IGNORED_REASON },
     ]);
   });
 
@@ -1017,7 +855,7 @@ describe('mouvements ignorés en gris (amendement 7)', () => {
     setAccountStatement(d, M, MAIN_ACCOUNT_ID, 1000, '2027-01-20', T);
     createAdjustment(d, M, 'adj', MAIN_ACCOUNT_ID, '2027-01-20', 5, T);
     const p = main(d);
-    expect(p.ignored).toHaveLength(3);
+    expect(p.ignored).toHaveLength(2);
     // everything the card sums comes from the counted movements and the chain, never from the grey list
     expect(p.estimated).toBe(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end);
     const counted = flowOf(p.movements.filter(x => x.counted));
@@ -1032,33 +870,33 @@ describe('mouvements ignorés en gris (amendement 7)', () => {
         if (mode === 'real') expect(monthBalance(d, M, id)!.end).toBe(ledger.bankMonth(id, M)!.balance);
         expect(accountPointage(d, M, id, T)!.mode).toBe(mode);
       }
-      expect(main(d).ignored).toHaveLength(3);
+      expect(main(d).ignored).toHaveLength(2);
     }
   });
 
   it('CA99: Espèces « non » → « oui » → « non »: les lignes sont grises, puis comptées, puis grises', () => {
     const { d } = sendTo('cash', false);
-    expect(main(d).ignored).toHaveLength(3);
+    expect(main(d).ignored).toHaveLength(2);
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
     setBankAccountInBudget(d, CASH_ACCOUNT_ID, true);
     expect(main(d).ignored).toEqual([]);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(770);
+    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(830);
     setBankAccountInBudget(d, CASH_ACCOUNT_ID, false);
-    expect(main(d).ignored).toHaveLength(3);
+    expect(main(d).ignored).toHaveLength(2);
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
   });
 
   it('CA100: la liste existe sur un mois clôturé, une année clôturée, au réel et au pointage; pas de ligne grise sur le compte hors budget', () => {
     const { d } = sendTo('swile', false);
-    expect(main(d).ignored).toHaveLength(3);
+    expect(main(d).ignored).toHaveLength(2);
     d.settings.pointageStart = '2027-02';
     expect(main(d).mode).toBe('real');
-    expect(main(d).ignored).toHaveLength(3);
+    expect(main(d).ignored).toHaveLength(2);
     d.months[M].closed = true;
-    expect(main(d).ignored).toHaveLength(3);
+    expect(main(d).ignored).toHaveLength(2);
     delete d.months[M].closed;
     d.closes[2027] = { closed: true, overrides: {} };
-    expect(main(d).ignored).toHaveLength(3);
+    expect(main(d).ignored).toHaveLength(2);
     expect(accountPointage(d, M, SWILE, T)!.ignored).toEqual([]);
     expect(ignoredMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
   });
@@ -1066,8 +904,6 @@ describe('mouvements ignorés en gris (amendement 7)', () => {
   it('cohérence: bankMovements et ignoredMovements partitionnent exactement les contreparties du principal', () => {
     for (const inBudget of [true, false]) {
       const d = started([ln('cantine', 'var', 120, { accountId: SWILE }), ln('vide', 'var', 0, { accountId: SWILE })]);
-      d.envelopes.push({ id: 'sante', name: 'Santé', hue: 170, cash: 0, accountId: SWILE }, { id: 'zero', name: 'Zéro', hue: 10, cash: 0, accountId: SWILE });
-      d.months[M].alloc = { sante: 60, zero: 0 };
       d.transfers.push(
         { id: 'sortant', name: 'Sortant', amount: 50, fromAccountId: MAIN_ACCOUNT_ID, to: { kind: 'bank', id: SWILE } },
         { id: 'entrant', name: 'Entrant', amount: 30, fromAccountId: SWILE, to: { kind: 'bank', id: MAIN_ACCOUNT_ID } },
@@ -1078,17 +914,15 @@ describe('mouvements ignorés en gris (amendement 7)', () => {
       setBankAccountInBudget(d, SWILE, inBudget);
       checkLine(d, M, 'cantine', '2027-01-08');
       checkLine(d, M, 'vide', '2027-01-08');
-      checkEnvelope(d, M, 'sante', '2027-01-09');
-      d.months[M].checks!['env:zero'] = { doneOn: '2027-01-09', accountId: SWILE }; // a checked allocation that later fell to 0
 
       const counted = new Set(bankMovements(d, MAIN_ACCOUNT_ID, M, 'checks').filter(x => x.kind === 'check' || x.kind === 'transfer').map(x => x.label));
       const ignored = new Set(ignoredMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.label));
-      const all = ['cantine → Swile (pointé)', 'Allocation Santé → Swile (pointée)', 'Sortant (virement)', 'Entrant (virement)'];
+      const all = ['cantine → Swile (pointé)', 'Sortant (virement)', 'Entrant (virement)'];
       expect([...counted].filter(l => ignored.has(l))).toEqual([]); // never in both
       expect(all.filter(l => counted.has(l) !== ignored.has(l))).toEqual(all); // exactly one of the two
       expect(all.every(l => (inBudget ? counted : ignored).has(l))).toBe(true);
       // zero amounts (RG108): in neither list, old transfers included
-      for (const zero of ['vide → Swile (pointé)', 'Allocation Zéro → Swile (pointée)', 'Nul sortant (virement)', 'Nul entrant (virement)']) {
+      for (const zero of ['vide → Swile (pointé)', 'Nul sortant (virement)', 'Nul entrant (virement)']) {
         expect([zero, counted.has(zero), ignored.has(zero)]).toEqual([zero, false, false]);
       }
     }
@@ -1191,7 +1025,7 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
     }
   });
 
-  it('CA110: dépense payée avec Swile: réel affiché, solde de Swile baisse, principal et totaux inchangés; avec le principal: le principal baisse, totaux inchangés', () => {
+  it('CA110: dépense payée avec Swile: réel affiché, solde de Swile baisse, principal et totaux inchangés; un autre compte est refusé (« Payé avec » figé)', () => {
     const { withLine, without } = pair();
     withLine.months[M].lines[2].actual = null;
     addTransaction(withLine, tx('t1', 3, 1.58, 'swile', SWILE));
@@ -1199,8 +1033,8 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
     expect(bank(withLine, SWILE)).toBe(-1.58);
     expect(bank(withLine, MAIN_ACCOUNT_ID)).toBe(bank(without, MAIN_ACCOUNT_ID));
     expect(figures(withLine)).toEqual(figures(without));
-    addTransaction(withLine, tx('t2', 4, 5, 'swile', MAIN_ACCOUNT_ID));
-    expect(bank(withLine, MAIN_ACCOUNT_ID)).toBe(bank(without, MAIN_ACCOUNT_ID) - 5);
+    expect(addTransaction(withLine, tx('t2', 4, 5, 'swile', MAIN_ACCOUNT_ID))).toBe(false);
+    expect(bank(withLine, MAIN_ACCOUNT_ID)).toBe(bank(without, MAIN_ACCOUNT_ID));
     expect(figures(withLine)).toEqual(figures(without));
   });
 
@@ -1336,17 +1170,16 @@ describe('infobulles des lignes et des tuiles', () => {
     expect(t).not.toContain('En retard');
   });
 
-  it('tuile d’enveloppe: destination et date une fois pointée, compte, mode de paiement', () => {
+  it('tuile d’enveloppe: destination, puis date une fois pointée (mois au pointage)', () => {
     const d = started([]);
-    d.envelopes.push({ id: 'sante', name: 'Santé', hue: 170, cash: 0, payMode: 'especes' });
+    addEnvelope(d, 'sante', 'Santé', M);
     d.months[M].alloc = { sante: 120 };
-    expect(plain(envelopeTooltip(d, M, d.envelopes[0])).split('\n')).toEqual(['Virement de l’allocation (120 €) vers Espèces', 'Mode de paiement : Espèces']);
+    // Month counted at the actuals: the allocation moves by itself, nothing to check.
+    expect(envelopeTooltip(d, M, d.envelopes[0])).toBe('');
+    d.settings.pointageStart = M;
+    expect(plain(envelopeTooltip(d, M, d.envelopes[0])).split('\n')).toEqual(['Virement de l’allocation (120 €) vers Santé']);
     checkEnvelope(d, M, 'sante', '2027-01-05');
-    expect(plain(envelopeTooltip(d, M, d.envelopes[0])).split('\n')).toEqual(['Allocation virée le 05/01 vers Espèces', 'Montant : 120 €', 'Mode de paiement : Espèces']);
-    const main = started([]);
-    main.envelopes.push({ id: 'x', name: 'X', hue: 1, cash: 0 });
-    main.months[M].alloc = { x: 10 };
-    expect(envelopeTooltip(main, M, main.envelopes[0])).toBe('');
+    expect(plain(envelopeTooltip(d, M, d.envelopes[0])).split('\n')).toEqual(['Allocation virée le 05/01 vers Santé', 'Montant : 120 €']);
   });
 });
 

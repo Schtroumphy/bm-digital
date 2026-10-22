@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { setEnvelopeAllocation, undoValidateMonth, validateMonth } from './actions';
+import { addEnvelope } from './envelopes';
 import { setLineAccount, setMainBankAccount, setBankAccountInBudget, archiveBankAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, accountIdOf } from '../domain/bank';
 import { availableReal, monthSummary } from '../domain/budget';
@@ -131,7 +132,7 @@ describe('disponible à placer (réel)', () => {
 
   it('CA14: modifier l’allocation d’une enveloppe fait varier le reste et le disponible du même montant', () => {
     const d = started([ln('sal', 'rev', 1000, 1000)]);
-    d.envelopes.push({ id: 'sante', name: 'Santé', hue: 170, cash: 0 });
+    addEnvelope(d, 'sante', 'Santé', M);
     const [r, a] = [remaining(d), avail(d)!];
     setEnvelopeAllocation(d, M, 'sante', 80);
     expect(remaining(d)).toBe(r - 80);

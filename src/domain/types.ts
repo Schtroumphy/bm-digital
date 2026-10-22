@@ -3,10 +3,10 @@ export type MonthKey = string;
 
 export type BlockKey = 'rev' | 'cre' | 'fix' | 'var' | 'epa' | 'inv';
 
-/** How a box (variable line or envelope) is paid: with the bank card of an account, or in cash. Absent = `virtuel`. */
+/** How a variable line is paid: with the bank card of an account, or in cash. Absent = `virtuel`. */
 export type PayMode = 'virtuel' | 'especes';
 
-/** What decides the account of an expense made on a box. Lines and envelopes both fit this shape. */
+/** What decides the account of an expense made on a variable line (an envelope has its own account, spec 0011). */
 export interface PaymentSetting {
   /** Account assigned to the box for `virtuel` payments; absent = the main account. */
   accountId?: string;
@@ -47,7 +47,10 @@ export interface Template {
 export interface LineCheck {
   /** Day the money moved, `YYYY-MM-DD`. The amount counted is never stored: see `countedAmount` (spec 0009, RG76, RG77). */
   doneOn: string;
-  /** Pointage of an envelope's allocation only: the account it was sent to, written when it was checked (spec 0009, RG90). */
+  /**
+   * Pointage of an envelope's allocation only. Written before spec 0011 (the account it was sent to, spec 0009, RG90):
+   * kept for the months before the envelope's own account exists, ignored from then on (spec 0011, RG18).
+   */
   accountId?: string;
 }
 
@@ -73,13 +76,15 @@ export interface MonthData {
   accountBalances?: Record<string, AccountBalanceEntry>;
 }
 
-export interface Envelope extends PaymentSetting {
+export interface Envelope {
   id: string;
   name: string;
   /** OKLCH hue used for the envelope's accent. */
   hue: number;
-  /** Part of the balance held in cash (the rest is "virtuel"). */
+  /** Part of the balance held in cash (the rest is "virtuel"). Informative only. */
   cash: number;
+  /** Bank account of the envelope, of kind `enveloppe`: its balance is the envelope's balance (spec 0011, RG1). */
+  accountId: string;
 }
 
 /** Imported month for an envelope, before the app managed it. */
@@ -109,8 +114,8 @@ export interface Transaction {
 }
 
 /**
- * Kind of a bank account (spec 0010). It only decides the group of the account in the year closing.
- * `enveloppe` exists in the model for spec 0011 but is not offered yet.
+ * Kind of a bank account (spec 0010). It decides the group of the account in the year closing.
+ * `enveloppe` (spec 0011) is the account of one envelope: created and kept up to date with it, never chosen by hand.
  */
 export type AccountKind = 'courant' | 'epargne' | 'invest' | 'enveloppe';
 
@@ -130,6 +135,8 @@ export interface BankAccount {
   archived: boolean;
   /** Kind of account; absent = not decided yet, read as `courant` (spec 0010, RG1). */
   kind?: AccountKind;
+  /** Account of kind `enveloppe` only: the envelope it belongs to. Kept after the envelope is deleted, so its past allocations stay in the history (spec 0011). */
+  envelopeId?: string;
   /** The user has entered (or dismissed) the opening balance; drives the reminder banner. */
   openingConfirmed?: boolean;
 }
@@ -181,8 +188,6 @@ export interface Adjustment {
 }
 
 export interface Settings {
-  /** Bank account receiving the envelopes that have no account of their own. Absent = the main account (spec 0009, RG98). */
-  envelopeAccountId?: string;
   /** First month counted from the checks instead of the actuals (spec 0009, RG61). Absent = every month is counted from the actuals. */
   pointageStart?: MonthKey;
   emergencyAccounts: string[];

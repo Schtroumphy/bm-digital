@@ -1,4 +1,3 @@
-import { resolveEnvelopeAccountId } from '../domain/bank';
 import { envelopeCheckKey } from '../domain/bankMovements';
 import { canSetPointageStart, envelopeCheck, isEnvelopePointable, isoDate, isIsoDate, isPointable, isValidDueDay, lineCheck, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
 import { round2 } from '../domain/format';
@@ -39,15 +38,15 @@ export function checkLine(d: BudgetData, m: MonthKey, key: string, today = isoDa
 }
 
 /**
- * Checks the allocation of an envelope: « the allocation was sent to its account » (spec 0009, RG90). Writes the date
- * and the account it resolves to now (it keeps it later, RG98); the amount is the month's allocation, read each time (RG91).
- * Refused on a locked or not initialized month, an unknown envelope, an allocation at 0 and an envelope on the main account.
+ * Checks the allocation of an envelope: « the allocation was sent to its account » (spec 0011, RG6). Writes the date
+ * only; the amount is the month's allocation, read each time (spec 0009, RG91).
+ * Refused on a locked or not initialized month, an unknown envelope, an allocation at 0 and a month counted at the actuals.
  */
 export function checkEnvelope(d: BudgetData, m: MonthKey, envelopeId: string, today = isoDate(), patch: CheckPatch = {}): boolean {
   const e = d.envelopes.find(x => x.id === envelopeId);
   const md = d.months[m];
   if (!e || !md?.initialized || isMonthLocked(d, m) || !isEnvelopePointable(d, m, e) || envelopeCheck(d, m, envelopeId) || !isValidPatch(patch)) return false;
-  (md.checks ??= {})[envelopeCheckKey(envelopeId)] = { doneOn: patch.doneOn ?? today, accountId: resolveEnvelopeAccountId(d, e) };
+  (md.checks ??= {})[envelopeCheckKey(envelopeId)] = { doneOn: patch.doneOn ?? today };
   d.settings.pointageStart ??= m;
   return true;
 }

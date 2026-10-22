@@ -1,5 +1,5 @@
-import { accountIdOf, isAccountInBudget, isLineInBudget, mainAccount, resolveBoxAccountId, resolveEnvelopeAccountId } from './bank';
-import { bankMovements, countedAmount, envelopeCheckKey, flowOf, type BankMovement, type CountedSource } from './bankMovements';
+import { accountIdOf, envelopeAccountAt, isAccountInBudget, isEnvelopeAccount, isLineInBudget, mainAccount, resolveBoxAccountId } from './bank';
+import { bankMovements, countedAmount, envelopeCheckKey, flowOf, monthMode, type BankMovement, type CountedSource, type MonthMode } from './bankMovements';
 import { addMonths, compareMonths, money, parseMonth, round2 } from './format';
 import { closeKey, isMonthLocked, isYearClosed, monthLines, type Ledger } from './ledger';
 import type { AccountBalanceEntry, BankAccount, BudgetData, ExecMode, Line, LineCheck, MonthKey } from './types';
@@ -95,20 +95,19 @@ export function lineTooltip(d: BudgetData, m: MonthKey, l: Line, today: string):
 }
 
 /**
- * Tooltip text of an envelope tile (RG90): the allocation sent (date and destination once checked, otherwise what
- * checking would do), the account, and the payment mode of the envelope. Empty for an envelope with nothing to check.
+ * Tooltip text of an envelope tile (spec 0011, RG6): the allocation sent from the main account to the account of the
+ * envelope (date once checked, otherwise what checking would do). Empty for an envelope with nothing to check.
  */
-export function envelopeTooltip(d: BudgetData, m: MonthKey, e: { id: string; name: string; payMode?: Line['payMode']; accountId?: string }): string {
+export function envelopeTooltip(d: BudgetData, m: MonthKey, e: { id: string; name: string; accountId: string }): string {
+  // No checkbox in a month counted at the actuals: nothing to say (spec 0011, RG6).
+  if (monthMode(d, m) === 'real') return '';
   const check = envelopeCheck(d, m, e.id);
   if (!check && !isEnvelopePointable(d, m, e)) return '';
-  const accountId = check?.accountId ?? resolveEnvelopeAccountId(d, e);
-  const account = d.accounts.find(a => a.id === accountId);
+  const account = d.accounts.find(a => a.id === e.accountId);
   const alloc = d.months[m]?.alloc[e.id] ?? 0;
   const parts = [
     check ? `Allocation virée le ${shortDate(check.doneOn)} vers ${account?.name ?? 'ce compte'}` : `Virement de l’allocation (${money(alloc)}) vers ${account?.name ?? 'ce compte'}`,
     check ? `Montant : ${money(alloc)}` : null,
-    `Mode de paiement : ${e.payMode === 'especes' ? 'Espèces' : 'Virtuel'}`,
-    account && !account.inBudget ? 'Compte hors budget : le principal n’est pas touché' : null,
   ];
   return parts.filter(Boolean).join('\n');
 }
@@ -117,12 +116,13 @@ export function envelopeTooltip(d: BudgetData, m: MonthKey, e: { id: string; nam
 export const envelopeCheck = (d: BudgetData, m: MonthKey, envelopeId: string): LineCheck | undefined => d.months[m]?.checks?.[envelopeCheckKey(envelopeId)];
 
 /**
- * An envelope's allocation can be checked when the month exists, the allocation is above 0 and the account of
- * the envelope (RG98) is not the main account: on the main account the money simply stays where it is (RG89).
+ * An envelope's allocation can be checked in a month counted at the checks, when the month exists, the allocation is
+ * above 0 and the envelope has its own account from that month (spec 0011, RG6). In a month counted at the actuals the
+ * allocation moves by itself and no checkbox is ever shown, and before the account exists there is no movement to check.
  */
-export function isEnvelopePointable(d: BudgetData, m: MonthKey, e: { id: string; payMode?: Line['payMode']; accountId?: string }): boolean {
+export function isEnvelopePointable(d: BudgetData, m: MonthKey, e: { id: string; accountId: string }): boolean {
   const md = d.months[m];
-  return !!md?.initialized && (md.alloc[e.id] ?? 0) > 0 && resolveEnvelopeAccountId(d, e) !== mainAccount(d).id;
+  return !!md?.initialized && (md.alloc[e.id] ?? 0) > 0 && monthMode(d, m) === 'pointage' && !!envelopeAccountAt(d, e, m);
 }
 
 export const lineCheck = (d: BudgetData, m: MonthKey, key: string): LineCheck | undefined => d.months[m]?.checks?.[key];
@@ -160,10 +160,7 @@ export function balanceDateBounds(m: MonthKey, today: string): { min: string; ma
   return { min: `${m}-01`, max: last < today ? last : today };
 }
 
-/** « Mois compté au réel » or « au pointage » (RG59, RG61): from `settings.pointageStart` on, a month is counted from the checks. */
-export type MonthMode = 'real' | 'pointage';
-
-export const monthMode = (d: BudgetData, m: MonthKey): MonthMode => (d.settings.pointageStart !== undefined && compareMonths(m, d.settings.pointageStart) >= 0 ? 'pointage' : 'real');
+export { monthMode, type MonthMode };
 
 /**
  * Can the start of the pointage become `start` (null = none)? Refused when it would change the mode of a
@@ -329,7 +326,8 @@ export function ignoredMovements(d: BudgetData, accountId: string, m: MonthKey):
   for (const e of d.envelopes) {
     const c = md.checks?.[envelopeCheckKey(e.id)];
     const amount = md.alloc[e.id] ?? 0;
-    if (c?.accountId && outOfBudget(c.accountId) && amount !== 0) out.push({ date: c.doneOn, label: `Allocation ${e.name} → ${nameOf(c.accountId)} (pointée)`, amount: -amount, reason: IGNORED_REASON });
+    // From the month its own account exists, an envelope never leaves the budget (spec 0011, RG4): only older checks are concerned.
+    if (!envelopeAccountAt(d, e, m) && c?.accountId && outOfBudget(c.accountId) && amount !== 0) out.push({ date: c.doneOn, label: `Allocation ${e.name} → ${nameOf(c.accountId)} (pointée)`, amount: -amount, reason: IGNORED_REASON });
   }
   for (const t of d.transfers) {
     if (!md.transfersDone[t.id] || t.to?.kind !== 'bank' || t.amount === 0) continue;
@@ -404,6 +402,8 @@ export function pointageAccounts(d: BudgetData, m: MonthKey): BankAccount[] {
     if (l.block === 'var') withLine.add(varAccountId(d, l));
   }
   return d.accounts.filter(a => {
+    // The accounts of the envelopes have no line to pay: they are read in the Comptes tab (spec 0011).
+    if (isEnvelopeAccount(a)) return false;
     if (withLine.has(a.id)) return true;
     if (a.archived) return false;
     return a.id === main || !!d.months[m]?.accountBalances?.[a.id] || bankMovements(d, a.id, m, monthMode(d, m) === 'pointage' ? 'checks' : 'actual').length > 0;
