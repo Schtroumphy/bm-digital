@@ -23,6 +23,8 @@ Le pointage des lignes (spec 0009) donne un « Solde estimé » par compte. Les 
 
 13. Mouvements ignorés affichés en gris (amendement 7) : le détail du compte principal liste, à leur date et en gris, les contreparties que l'isolation d'un compte hors budget ne compte pas. Elles viennent d'une fonction pure `ignoredMovements`, séparée de `bankMovements`, jamais sommée : elles ne peuvent changer ni le Solde estimé, ni les entrées/sorties, ni l'écart, ni le `Ledger`. Il n'y a qu'un seul réglage « Dans le budget » par compte : un compte « non » est à la fois exclu des chiffres du budget et isolé du principal.
 
+14. Compte dédié d'une ligne d'épargne (réconciliation avec la spec 0007) : les mouvements du compte dédié d'une ligne `epa`/`inv` liée sont produits par `bankMovements`, comme les autres. Au réel il reçoit le réel de la ligne au 1er du mois et est débité des sorties d'épargne à leur jour ; au pointage il reçoit le montant compté de la ligne à la date du pointage, le principal étant débité du même montant. Le solde de la ligne (`Ledger.acc`) et le « solde estimé » des blocs Épargnes et Investissements restent au réel.
+
 Suite prévue : une spec « comptes typés » (courant, épargne, investissement, enveloppe, avec soldes propres) reprendra ce réglage comme première brique. Elle n'est pas écrite.
 
 ## Alternatives écartées
@@ -36,6 +38,7 @@ Suite prévue : une spec « comptes typés » (courant, épargne, investissement
 - Proposer ou créer automatiquement un compte « Enveloppes » : l'utilisateur le crée lui-même.
 - Un champ « ignoré » dans `bankMovements` : un total (`flowOf`, `Ledger`) risquerait de le compter.
 - Garder un montant pointé saisi à la coche : deux montants par ligne (réel et pointé) à réconcilier, sans utilité une fois que le réel prime sur le budget.
+- Laisser le calcul du compte dédié dans `Ledger.bankFlow` (spec 0007) à côté de `bankMovements` : deux sources de mouvements pour le même compte, donc risque d'écart entre Solde estimé et écran Comptes.
 - Stocker le Solde estimé : il serait périmé à chaque changement ; un calcul pur à la lecture est cohérent avec la décision 4 de l'architecture.
 
 ## Conséquences
@@ -47,5 +50,6 @@ Suite prévue : une spec « comptes typés » (courant, épargne, investissement
 - `bankMovements` devient le point central à maintenir : tout nouveau mouvement de compte doit y passer.
 - Le solde du principal des mois déjà saisis peut changer pour les contreparties vers un compte hors budget (impact assumé, la régularisation sert de rattrapage).
 - `bankMovements` reste l'unique point où ajouter un mouvement de compte ; Ledger et Solde estimé restent égaux en mode réel.
+- Le solde d'un compte dédié au pointage peut différer du solde de la ligne d'épargne (`Ledger.acc`, au réel) : c'est voulu, deux notions distinctes.
 - Un compte réglé « non » par erreur (cas d'Espèces) n'a plus d'effet silencieux : la liste grise le rend visible.
 - La synchro Supabase devra gérer `adjustments`, `pointage_start`, `line_checks.account_id` et `settings.envelope_account_id` (migration SQL prête, non appliquée).
