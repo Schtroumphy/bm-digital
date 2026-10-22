@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, applyTemplate, createFirstMonth, duplicatePrevious, saveAsTemplate } from './actions';
 import { addBankAccount, archiveBankAccount, setBankAccountInBudget, setMainBankAccount } from './bankAccounts';
-import { setEnvelopePayment, setLinePayment } from './payment';
+import { addEnvelope } from './envelopes';
+import { setLinePayment } from './payment';
 import { emptyDraft, exampleDraft, updateRow, type IdFactory } from './setup';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, MAIN_ACCOUNT_ID, resolveBoxAccountId } from '../domain/bank';
 import { monthSummary } from '../domain/budget';
@@ -30,9 +31,9 @@ function started(): BudgetData {
   swile.openingBalance = 120;
   swile.inBudget = false;
   const lines = [ln('rev', 'rev', 2000), ln('courses', 'var', 400), ln('marche', 'var', 80)];
-  d.months[M] = { initialized: true, lines, alloc: { sante: 50 }, transfersDone: {} };
-  d.template = { lines: lines.map(({ actual: _a, ...l }) => l), envAlloc: { sante: 50 } };
-  d.envelopes = [{ id: 'sante', name: 'Santé', hue: 170, cash: 0 }];
+  d.months[M] = { initialized: true, lines, alloc: { sante: 0 }, transfersDone: {} };
+  d.template = { lines: lines.map(({ actual: _a, ...l }) => l), envAlloc: { sante: 0 } };
+  addEnvelope(d, 'sante', 'Santé', M);
   return d;
 }
 
@@ -68,12 +69,11 @@ describe('résolution du compte d’une box', () => {
     expect(resolveBoxAccountId(d, { accountId: 'inconnu' })).toBe(MAIN_ACCOUNT_ID);
   });
 
-  it('le compte proposé pour une saisie suit la box (ligne, enveloppe) ou le principal (sortie d’épargne)', () => {
+  it('le compte proposé pour une saisie suit la box (ligne), le compte de l’enveloppe (0011, RG10) ou le principal (sortie d’épargne)', () => {
     const d = started();
     setLinePayment(d, M, 'courses', { accountId: 'bourso' });
-    setEnvelopePayment(d, M, 'sante', { payMode: 'especes' });
     expect(defaultTransactionAccountId(d, tx())).toBe('bourso');
-    expect(defaultTransactionAccountId(d, tx({ type: 'env', target: 'sante' }))).toBe(CASH_ACCOUNT_ID);
+    expect(defaultTransactionAccountId(d, tx({ type: 'env', target: 'sante' }))).toBe(d.envelopes[0].accountId);
     expect(defaultTransactionAccountId(d, tx({ type: 'epa', target: 'livret' }))).toBe(MAIN_ACCOUNT_ID);
   });
 });
@@ -106,12 +106,14 @@ describe('saisie d’une dépense sur une box', () => {
     expect(d.transactions[0].accountId).toBe('bourso');
   });
 
-  it('une dépense d’enveloppe suit le mode de l’enveloppe', () => {
+  it('une dépense d’enveloppe est toujours sur le compte de l’enveloppe, même si un autre compte est donné (0011, RG10)', () => {
     const d = started();
-    setEnvelopePayment(d, M, 'sante', { payMode: 'especes' });
+    const envAccount = d.envelopes[0].accountId;
     addTransaction(d, tx({ type: 'env', target: 'sante', amount: 15 }));
-    expect(d.transactions[0].accountId).toBe(CASH_ACCOUNT_ID);
-    expect(balance(d, CASH_ACCOUNT_ID)).toBe(35);
+    addTransaction(d, tx({ id: 't2', type: 'env', target: 'sante', amount: 5, accountId: CASH_ACCOUNT_ID }));
+    expect(d.transactions.map(t => t.accountId)).toEqual([envAccount, envAccount]);
+    expect(balance(d, envAccount)).toBe(-20);
+    expect(balance(d, CASH_ACCOUNT_ID)).toBe(50);
   });
 
   it('CA7 (amendé 0008): compte résolu « hors budget » : la dépense compte dans le réel de la ligne, pas dans le reste à placer, et le solde baisse', () => {
@@ -143,7 +145,7 @@ describe('migration des box (RG12)', () => {
     const before = seedData();
     const { accounts: _a, ...legacy } = before;
     const migrated = migrateBankAccounts(structuredClone({ ...legacy, transfers: before.transfers }) as never);
-    const boxes = [...migrated.template.lines.filter(l => l.block === 'var'), ...migrated.envelopes];
+    const boxes = migrated.template.lines.filter(l => l.block === 'var');
     expect(boxes.length).toBeGreaterThan(0);
     for (const b of boxes) {
       expect(b.payMode).toBeUndefined();
@@ -200,7 +202,9 @@ describe('changer le mode d’une box', () => {
   it('RG13: Espèces n’est pas un compte attribué ; un compte inconnu est refusé', () => {
     const d = started();
     expect(setLinePayment(d, M, 'courses', { accountId: CASH_ACCOUNT_ID })).toBe(false);
-    expect(setEnvelopePayment(d, M, 'sante', { accountId: 'inconnu' })).toBe(false);
+    expect(setLinePayment(d, M, 'courses', { accountId: 'inconnu' })).toBe(false);
+    // Le compte d'une enveloppe ne s'attribue pas à une ligne (0011, RG2).
+    expect(setLinePayment(d, M, 'courses', { accountId: d.envelopes[0].accountId })).toBe(false);
     expect(box(d, 'courses').accountId).toBeUndefined();
   });
 
@@ -208,7 +212,6 @@ describe('changer le mode d’une box', () => {
     const d = started();
     d.closes[2027] = { closed: true, overrides: {} };
     expect(setLinePayment(d, M, 'courses', { payMode: 'especes' })).toBe(false);
-    expect(setEnvelopePayment(d, M, 'sante', { payMode: 'especes' })).toBe(false);
     expect(box(d, 'courses').payMode).toBeUndefined();
   });
 
@@ -216,7 +219,6 @@ describe('changer le mode d’une box', () => {
     const d = started();
     expect(setLinePayment(d, M, 'rev', { payMode: 'especes' })).toBe(false);
     expect(setLinePayment(d, M, 'absente', { payMode: 'especes' })).toBe(false);
-    expect(setEnvelopePayment(d, M, 'absente', { payMode: 'especes' })).toBe(false);
   });
 
   it('changer de compte principal fige aussi les lignes variables sans compte sur l’ancien principal', () => {

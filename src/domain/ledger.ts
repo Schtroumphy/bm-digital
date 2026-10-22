@@ -1,5 +1,5 @@
 import { bankMovements, flowOf } from './bankMovements';
-import { isTransactionInBudget } from './bank';
+import { envelopeAccountAt, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
 import type { BudgetData, Line, MonthKey, Transaction } from './types';
 
@@ -86,7 +86,9 @@ const sumTx = (d: BudgetData, m: MonthKey, type: string, target: string, keep = 
 
 /**
  * Month-by-month balances of envelopes and savings/investment accounts, from
- * the imported history through the app months. A closed year's adjusted bases
+ * the imported history through the app months. From the month its own account exists
+ * (spec 0011), an envelope's balance is the balance of that account; before, it is the old
+ * calculation (start + allocation − spending) over the imported history. A closed year's adjusted bases
  * become the opening balances of the following January.
  */
 export class Ledger {
@@ -124,9 +126,24 @@ export class Ledger {
       const prevClose = month === 0 && isYearClosed(d, year - 1) ? d.closes[year - 1] : null;
       const md = d.months[m];
       const alloc = md?.initialized ? md.alloc : {};
+      for (const b of d.accounts) {
+        if (compareMonths(m, b.openingMonth) < 0) continue;
+        const start = prevClose?.overrides[closeKey('bank', b.id)] ?? (compareMonths(m, b.openingMonth) === 0 ? undefined : bankBal[b.id]) ?? b.openingBalance;
+        const flow = this.bankFlow(b.id, m);
+        const r = { start, in: flow.in, out: flow.out, balance: round2(start + flow.in - flow.out) };
+        this.bank.set(`${m}|${b.id}`, r);
+        bankBal[b.id] = r.balance;
+      }
       for (const e of d.envelopes) {
-        const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
         const a = alloc[e.id] ?? 0;
+        // From the month its account exists, an envelope is its account: balance of the account, spending on it (spec 0011, RG9, RG10).
+        if (envelopeAccountAt(d, e, m)) {
+          const b = this.bank.get(`${m}|${e.accountId}`)!;
+          this.env.set(`${m}|${e.id}`, { start: b.start, alloc: a, spent: sumTx(d, m, 'env', e.id), balance: b.balance });
+          envBal[e.id] = b.balance;
+          continue;
+        }
+        const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
         // Spending paid from an account that is out of the budget does not touch the envelope.
         const spent = sumTx(d, m, 'env', e.id, t => isTransactionInBudget(d, t));
         // An envelope opening balance set by the assistant for a later month acts like an account statement.
@@ -146,14 +163,6 @@ export class Ledger {
         const r = { start, paid, out, expected, statement, balance: statement ?? expected };
         this.acc.set(`${m}|${a.key}`, r);
         accBal[a.key] = r.balance;
-      }
-      for (const b of d.accounts) {
-        if (compareMonths(m, b.openingMonth) < 0) continue;
-        const start = prevClose?.overrides[closeKey('bank', b.id)] ?? (compareMonths(m, b.openingMonth) === 0 ? undefined : bankBal[b.id]) ?? b.openingBalance;
-        const flow = this.bankFlow(b.id, m);
-        const r = { start, in: flow.in, out: flow.out, balance: round2(start + flow.in - flow.out) };
-        this.bank.set(`${m}|${b.id}`, r);
-        bankBal[b.id] = r.balance;
       }
     }
   }

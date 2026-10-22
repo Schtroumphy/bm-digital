@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, applyTemplate, deleteTransaction } from './actions';
+import { addEnvelope } from './envelopes';
 import { addBankAccount, setBankAccountInBudget, setTransactionAccount } from './bankAccounts';
 import { availableReal, lineRemaining, monthSummary } from '../domain/budget';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from '../domain/bank';
@@ -27,9 +28,9 @@ function started(): BudgetData {
   d.accounts[0].openingBalance = 100;
   d.accounts[1].openingBalance = 50;
   d.accounts[1].inBudget = false;
-  d.months[M] = { initialized: true, lines: [ln('rev', 'rev', 2000), ln('ali', 'var', 400), ln('liv', 'epa', 0)], alloc: { e: 50 }, transfersDone: {} };
-  d.template = { lines: d.months[M].lines.map(({ actual: _a, ...l }) => l), envAlloc: { e: 50 } };
-  d.envelopes = [{ id: 'e', name: 'Env', hue: 100, cash: 0 }];
+  d.months[M] = { initialized: true, lines: [ln('rev', 'rev', 2000), ln('ali', 'var', 400), ln('liv', 'epa', 0)], alloc: { e: 0 }, transfersDone: {} };
+  d.template = { lines: d.months[M].lines.map(({ actual: _a, ...l }) => l), envAlloc: { e: 0 } };
+  addEnvelope(d, 'e', 'Env', M);
   return d;
 }
 
@@ -88,16 +89,16 @@ describe('réel d’une ligne variable (0008)', () => {
     expect([monthSummary(d, new Ledger(d, M), M).remaining, availableReal(d, M)]).toEqual(before);
   });
 
-  it('CA7: enveloppe et sortie d’épargne sur un compte hors budget restent exclues du budget, le solde baisse', () => {
+  it('CA7: une sortie d’épargne sur un compte hors budget reste exclue du budget, le solde monte ; une dépense d’enveloppe reste sur son compte, dans le budget (0011, RG10)', () => {
     const d = started();
     const before = monthSummary(d, new Ledger(d, M), M);
-    addTransaction(d, tx({ id: 'e1', type: 'env', target: 'e', amount: 15 }));
+    addTransaction(d, tx({ id: 'e1', type: 'env', target: 'e', amount: 15, accountId: CASH_ACCOUNT_ID }));
     addTransaction(d, tx({ id: 'p1', type: 'epa', target: 'liv', amount: 20 }));
     const after = monthSummary(d, new Ledger(d, M), M);
-    expect(after.envelopeSpent).toBe(before.envelopeSpent);
+    expect(after.envelopeSpent).toBe(before.envelopeSpent + 15);
     expect(after.savingsOut).toBe(before.savingsOut);
-    expect(new Ledger(d, M).envMonth('e', M)!.spent).toBe(0);
-    expect(balance(d, CASH_ACCOUNT_ID)).toBe(50 - 15 + 20);
+    expect(new Ledger(d, M).envMonth('e', M)!.spent).toBe(15);
+    expect(balance(d, CASH_ACCOUNT_ID)).toBe(50 + 20);
   });
 
   it('un mois créé ensuite avec des dépenses déjà saisies reprend toutes les dépenses', () => {

@@ -1,9 +1,9 @@
-import { CASH_ACCOUNT_ID } from '../domain/bank';
+import { CASH_ACCOUNT_ID, isEnvelopeAccount } from '../domain/bank';
 import { isMonthLocked } from '../domain/ledger';
 import type { BudgetData, MonthKey, PayMode, PaymentSetting } from '../domain/types';
 
 /*
- * Use cases on the payment mode of a box (a variable line or an envelope), spec 0006.
+ * Use cases on the payment mode of a variable line, spec 0006 (an envelope has its own account since spec 0011).
  * Each one returns false, changing nothing, when a rule forbids it.
  * They only change the box: transactions already recorded keep their account (RG6).
  */
@@ -14,10 +14,10 @@ export interface PaymentPatch {
   accountId?: string | null;
 }
 
-/** « Espèces » can only be used through the cash mode (RG13); the account must exist. */
+/** « Espèces » can only be used through the cash mode (RG13); the account must exist and not be an envelope's (spec 0011, RG2). */
 function isAssignable(d: BudgetData, accountId: string | null | undefined): boolean {
   if (accountId == null) return true;
-  return accountId !== CASH_ACCOUNT_ID && d.accounts.some(a => a.id === accountId);
+  return accountId !== CASH_ACCOUNT_ID && d.accounts.some(a => a.id === accountId && !isEnvelopeAccount(a));
 }
 
 function apply(box: PaymentSetting, patch: PaymentPatch) {
@@ -38,30 +38,5 @@ export function setLinePayment(d: BudgetData, m: MonthKey, key: string, patch: P
   apply(line, patch);
   const model = d.template.lines.find(l => l.block === 'var' && l.key === key);
   if (model) apply(model, patch);
-  return true;
-}
-
-/** Same for an envelope. It is not tied to a month: `m` is the month being viewed, whose lock protects the change (RG11). */
-export function setEnvelopePayment(d: BudgetData, m: MonthKey, id: string, patch: PaymentPatch): boolean {
-  if (isMonthLocked(d, m) || !isAssignable(d, patch.accountId)) return false;
-  const env = d.envelopes.find(e => e.id === id);
-  if (!env) return false;
-  apply(env, patch);
-  return true;
-}
-
-/**
- * Sets the account that receives the envelopes without an account of their own (spec 0009, RG98); `null` goes back
- * to the main account. Refused for an unknown or archived account and for « Espèces » (a mode, not a choice here).
- * Not retroactive: transactions and checked allocations keep their account. Not tied to a month, so a locked month does not matter.
- */
-export function setEnvelopeDefaultAccount(d: BudgetData, accountId: string | null): boolean {
-  if (accountId === null) {
-    delete d.settings.envelopeAccountId;
-    return true;
-  }
-  const a = d.accounts.find(x => x.id === accountId);
-  if (!a || a.archived || a.id === CASH_ACCOUNT_ID) return false;
-  d.settings.envelopeAccountId = accountId;
   return true;
 }

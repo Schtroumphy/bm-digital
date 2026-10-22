@@ -13,7 +13,7 @@ import type { AccountKind, BankAccount, BudgetData } from './types';
 export type ClosingGroupId = AccountKind;
 
 export interface ClosingRow {
-  /** Key of the adjustment (`bank:`, `acc:` or `env:`): never renamed, so saved closings stay valid (RG13). */
+  /** Key of the adjustment (`bank:` or `acc:`; `env:` only in closings saved before spec 0011): never renamed, so saved closings stay valid (RG13). */
   id: string;
   name: string;
   /** Balance at 31 December, as computed. */
@@ -60,7 +60,7 @@ export function closingView(d: BudgetData, ledger: Ledger, year: number): Closin
   const overrides = d.closes[year]?.overrides ?? {};
   const raw: Record<ClosingGroupId, RawRow[]> = { courant: [], epargne: [], enveloppe: [], invest: [] };
 
-  // Bank accounts: archived ones stay while they have a balance to carry over (RG12).
+  // Bank accounts, the accounts of the envelopes included (one row per envelope, spec 0011, RG14): archived ones stay while they have a balance to carry over (RG12).
   for (const a of d.accounts) {
     const r = ledger.bankMonth(a.id, dec);
     if (!r || (a.archived && r.balance === 0)) continue;
@@ -71,7 +71,6 @@ export function closingView(d: BudgetData, ledger: Ledger, year: number): Closin
     if (isLineLinked(d, l)) continue;
     raw[l.block === 'epa' ? 'epargne' : 'invest'].push({ id: closeKey('acc', l.key), name: l.name, calc: ledger.accMonth(l.key, dec)?.balance ?? 0, unlinked: true });
   }
-  for (const e of d.envelopes) raw.enveloppe.push({ id: closeKey('env', e.id), name: e.name, calc: ledger.envMonth(e.id, dec)?.balance ?? 0 });
 
   let nAdj = 0;
   const groups = ORDER.map((id): ClosingGroup => {

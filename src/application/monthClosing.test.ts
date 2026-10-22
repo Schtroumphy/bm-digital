@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addLine, addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, setEnvelopeAllocation, setStatement, undoValidateMonth, updateLine, validateMonth } from './actions';
+import { addEnvelope } from './envelopes';
 import { setLineAccount, setTransactionAccount } from './bankAccounts';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth } from './monthClosing';
 import { availableReal } from '../domain/budget';
@@ -13,7 +14,7 @@ const ln = (key: string, budget: number, actual: number | null): Line => ({ key,
 function budgetWith(...months: string[]): BudgetData {
   const d = emptyData();
   d.firstMonth = months[0];
-  d.envelopes.push({ id: 'sante', name: 'Santé', hue: 170, cash: 0 });
+  addEnvelope(d, 'sante', 'Santé', months[0]);
   for (const m of months) d.months[m] = { initialized: true, lines: [ln('sal', 1000, 1000), { ...ln('livret', 1000, null), block: 'epa' }], alloc: {}, transfersDone: {} };
   return d;
 }

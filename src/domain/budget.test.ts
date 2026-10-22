@@ -68,7 +68,7 @@ describe('seed data matches the design', () => {
   });
 
   it('carries a closed year into January', () => {
-    const closed = { ...d, closes: { 2026: { closed: true, overrides: { 'acc:e-vc': 300, 'env:perso': 400 } } } };
+    const closed = { ...d, closes: { 2026: { closed: true, overrides: { 'acc:e-vc': 300, 'bank:acc-env-perso': 400 } } } };
     const l = new Ledger(closed, TODAY);
     expect(l.accMonth('e-vc', '2027-01')!.start).toBe(300);
     expect(l.envMonth('perso', '2027-01')!.start).toBe(400);

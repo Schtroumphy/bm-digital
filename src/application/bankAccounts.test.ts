@@ -166,20 +166,21 @@ describe('compte hors budget', () => {
     expect(monthSummary(d, l2, '2026-12').remaining).toBe(before.remaining);
   });
 
-  it('CA4 (amendé 0008): changer le réglage recalcule enveloppes et budget, mais plus le réel des lignes variables', () => {
+  it('CA4 (amendé 0008 et 0011): changer le réglage ne change ni le réel des lignes variables ni les dépenses des enveloppes (leur compte est toujours dans le budget)', () => {
     const d = seedData();
     swile(d);
     addTransaction(d, { id: 'x', month: '2026-12', day: 5, label: 'Resto', amount: 60, type: 'var', target: 'v-sw', accountId: 'swile' });
     addTransaction(d, { id: 'y', month: '2026-12', day: 6, label: 'Livre', amount: 20, type: 'env', target: 'perso', accountId: 'swile' });
     const spent0 = monthSummary(d, new Ledger(d, '2026-10'), '2026-12').envelopeSpent;
     const persoBefore = new Ledger(d, '2026-10').envMonth('perso', '2026-12')!.spent;
+    expect(d.transactions.find(t => t.id === 'y')!.accountId).toBe('acc-env-perso');
 
     const swReal = d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual;
     setBankAccountInBudget(d, 'swile', true);
     const l = new Ledger(d, '2026-10');
     expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(swReal);
-    expect(monthSummary(d, l, '2026-12').envelopeSpent).toBe(spent0 + 20);
-    expect(l.envMonth('perso', '2026-12')!.spent).toBe(persoBefore + 20);
+    expect(monthSummary(d, l, '2026-12').envelopeSpent).toBe(spent0);
+    expect(l.envMonth('perso', '2026-12')!.spent).toBe(persoBefore);
 
     setBankAccountInBudget(d, 'swile', false);
     expect(d.months['2026-12'].lines.find(x => x.key === 'v-sw')!.actual).toBe(swReal);
@@ -310,10 +311,17 @@ describe('assistant : étape Comptes', () => {
     const draft = exampleDraft(M, mkId);
     draft.rows.rev[0].accountId = CASH_ACCOUNT_ID;
     expect(createFirstMonth(d, draft, TODAY)).toBe(true);
-    expect(d.accounts.map(a => [a.id, a.openingBalance, a.openingMonth, a.isDefault])).toEqual([
+    expect(d.accounts.filter(a => a.kind !== 'enveloppe').map(a => [a.id, a.openingBalance, a.openingMonth, a.isDefault])).toEqual([
       [MAIN_ACCOUNT_ID, 1800, M, true],
       [CASH_ACCOUNT_ID, 40, M, false],
     ]);
+    // Each envelope of the draft has its own account, opening on the first month with the balance typed (spec 0011, RG3).
+    expect(d.envelopes.length).toBeGreaterThan(0);
+    for (const [i, e] of d.envelopes.entries()) {
+      const a = d.accounts.find(x => x.id === e.accountId)!;
+      expect([a.kind, a.name, a.openingMonth, a.openingBalance, a.inBudget]).toEqual(['enveloppe', e.name, M, draft.rows.env[i].balance, true]);
+    }
+    expect(new Set(d.envelopes.map(e => e.accountId)).size).toBe(d.envelopes.length);
     expect(d.months[M].lines.find(l => l.key === draft.rows.rev[0].id)!.accountId).toBe(CASH_ACCOUNT_ID);
     expect(d.template.lines.find(l => l.key === draft.rows.rev[0].id)!.accountId).toBe(CASH_ACCOUNT_ID);
     expect(needsOpeningBalances(d)).toBe(false);
