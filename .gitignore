@@ -4,3 +4,6 @@ dist
 
 # Explications pédagogiques générées par l'agent implementer (non versionnées)
 docs/explanations/
+
+# Clés Supabase locales (seule la clé publique y va, jamais une clé de service)
+.env.local

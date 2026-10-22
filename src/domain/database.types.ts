@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_balances: {
+        Row: {
+          account_id: string
+          amount: number
+          entered_on: string
+          month: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          entered_on: string
+          month: string
+          user_id?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          entered_on?: string
+          month?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_balances_user_id_month_fkey"
+            columns: ["user_id", "month"]
+            isOneToOne: false
+            referencedRelation: "months"
+            referencedColumns: ["user_id", "month"]
+          },
+        ]
+      }
       account_statements: {
         Row: {
           account_key: string
@@ -35,36 +67,135 @@ export type Database = {
         }
         Relationships: []
       }
+      adjustments: {
+        Row: {
+          account_id: string
+          amount: number
+          cancelled_on: string | null
+          created_on: string
+          date: string
+          id: string
+          label: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          cancelled_on?: string | null
+          created_on: string
+          date: string
+          id: string
+          label?: string
+          position?: number
+          user_id?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          cancelled_on?: string | null
+          created_on?: string
+          date?: string
+          id?: string
+          label?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      bank_accounts: {
+        Row: {
+          archived: boolean
+          envelope_id: string | null
+          hue: number
+          id: string
+          in_budget: boolean
+          is_default: boolean
+          kind: string | null
+          name: string
+          opening_balance: number
+          opening_confirmed: boolean | null
+          opening_month: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          archived?: boolean
+          envelope_id?: string | null
+          hue?: number
+          id: string
+          in_budget?: boolean
+          is_default?: boolean
+          kind?: string | null
+          name: string
+          opening_balance?: number
+          opening_confirmed?: boolean | null
+          opening_month: string
+          position: number
+          user_id?: string
+        }
+        Update: {
+          archived?: boolean
+          envelope_id?: string | null
+          hue?: number
+          id?: string
+          in_budget?: boolean
+          is_default?: boolean
+          kind?: string | null
+          name?: string
+          opening_balance?: number
+          opening_confirmed?: boolean | null
+          opening_month?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       budget_lines: {
         Row: {
+          account_id: string | null
           actual: number | null
           block: string
           budget: number
+          due_day: number | null
+          exec_mode: string | null
           key: string
+          linked_account_id: string | null
           month: string
           name: string
+          pay_mode: string | null
           position: number
           section: string
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           actual?: number | null
           block: string
           budget?: number
+          due_day?: number | null
+          exec_mode?: string | null
           key: string
+          linked_account_id?: string | null
           month: string
           name: string
+          pay_mode?: string | null
           position: number
           section?: string
           user_id?: string
         }
         Update: {
+          account_id?: string | null
           actual?: number | null
           block?: string
           budget?: number
+          due_day?: number | null
+          exec_mode?: string | null
           key?: string
+          linked_account_id?: string | null
           month?: string
           name?: string
+          pay_mode?: string | null
           position?: number
           section?: string
           user_id?: string
@@ -98,15 +229,7 @@ export type Database = {
           month?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "envelope_allocations_user_id_envelope_id_fkey"
-            columns: ["user_id", "envelope_id"]
-            isOneToOne: false
-            referencedRelation: "envelopes"
-            referencedColumns: ["user_id", "id"]
-          },
-        ]
+        Relationships: []
       }
       envelope_history: {
         Row: {
@@ -137,46 +260,84 @@ export type Database = {
       }
       envelopes: {
         Row: {
+          account_id: string | null
           cash: number
           hue: number
           id: string
           name: string
           position: number
-          template_alloc: number
+          template_alloc: number | null
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           cash?: number
           hue: number
           id: string
           name: string
           position: number
-          template_alloc?: number
+          template_alloc?: number | null
           user_id?: string
         }
         Update: {
+          account_id?: string | null
           cash?: number
           hue?: number
           id?: string
           name?: string
           position?: number
-          template_alloc?: number
+          template_alloc?: number | null
           user_id?: string
         }
         Relationships: []
       }
+      line_checks: {
+        Row: {
+          account_id: string | null
+          done_on: string
+          line_key: string
+          month: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          done_on: string
+          line_key: string
+          month: string
+          user_id?: string
+        }
+        Update: {
+          account_id?: string | null
+          done_on?: string
+          line_key?: string
+          month?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "line_checks_user_id_month_fkey"
+            columns: ["user_id", "month"]
+            isOneToOne: false
+            referencedRelation: "months"
+            referencedColumns: ["user_id", "month"]
+          },
+        ]
+      }
       months: {
         Row: {
+          closed: boolean | null
           initialized: boolean
           month: string
           user_id: string
         }
         Insert: {
+          closed?: boolean | null
           initialized?: boolean
           month: string
           user_id?: string
         }
         Update: {
+          closed?: boolean | null
           initialized?: boolean
           month?: string
           user_id?: string
@@ -190,6 +351,7 @@ export type Database = {
           id: string
           label: string
           month: number
+          position: number
           user_id: string
           year: number
         }
@@ -199,6 +361,7 @@ export type Database = {
           id: string
           label: string
           month: number
+          position?: number
           user_id?: string
           year: number
         }
@@ -208,6 +371,7 @@ export type Database = {
           id?: string
           label?: string
           month?: number
+          position?: number
           user_id?: string
           year?: number
         }
@@ -217,24 +381,27 @@ export type Database = {
         Row: {
           emergency_accounts: string[]
           emergency_target: number
-          first_month: string
+          first_month: string | null
           invest_target: number
+          pointage_start: string | null
           savings_rate_target: number
           user_id: string
         }
         Insert: {
           emergency_accounts?: string[]
           emergency_target?: number
-          first_month: string
+          first_month?: string | null
           invest_target?: number
+          pointage_start?: string | null
           savings_rate_target?: number
           user_id?: string
         }
         Update: {
           emergency_accounts?: string[]
           emergency_target?: number
-          first_month?: string
+          first_month?: string | null
           invest_target?: number
+          pointage_start?: string | null
           savings_rate_target?: number
           user_id?: string
         }
@@ -242,28 +409,46 @@ export type Database = {
       }
       template_lines: {
         Row: {
+          account_id: string | null
+          actual: number | null
           block: string
           budget: number
+          due_day: number | null
+          exec_mode: string | null
           key: string
+          linked_account_id: string | null
           name: string
+          pay_mode: string | null
           position: number
           section: string
           user_id: string
         }
         Insert: {
+          account_id?: string | null
+          actual?: number | null
           block: string
           budget?: number
+          due_day?: number | null
+          exec_mode?: string | null
           key: string
+          linked_account_id?: string | null
           name: string
+          pay_mode?: string | null
           position: number
           section?: string
           user_id?: string
         }
         Update: {
+          account_id?: string | null
+          actual?: number | null
           block?: string
           budget?: number
+          due_day?: number | null
+          exec_mode?: string | null
           key?: string
+          linked_account_id?: string | null
           name?: string
+          pay_mode?: string | null
           position?: number
           section?: string
           user_id?: string
@@ -272,37 +457,40 @@ export type Database = {
       }
       transactions: {
         Row: {
+          account_id: string | null
           amount: number
           created_at: string
           day: number
           id: string
           label: string
           month: string
-          source: string
+          position: number
           target: string
           type: string
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           amount: number
           created_at?: string
           day: number
           id: string
           label: string
           month: string
-          source: string
+          position?: number
           target: string
           type: string
           user_id?: string
         }
         Update: {
+          account_id?: string | null
           amount?: number
           created_at?: string
           day?: number
           id?: string
           label?: string
           month?: string
-          source?: string
+          position?: number
           target?: string
           type?: string
           user_id?: string
@@ -312,39 +500,51 @@ export type Database = {
       transfers: {
         Row: {
           amount: number
+          from_account_id: string
           id: string
           name: string
           position: number
+          to_id: string | null
+          to_kind: string | null
           user_id: string
         }
         Insert: {
           amount?: number
+          from_account_id?: string
           id: string
           name: string
           position: number
+          to_id?: string | null
+          to_kind?: string | null
           user_id?: string
         }
         Update: {
           amount?: number
+          from_account_id?: string
           id?: string
           name?: string
           position?: number
+          to_id?: string | null
+          to_kind?: string | null
           user_id?: string
         }
         Relationships: []
       }
       transfers_done: {
         Row: {
+          done: boolean
           month: string
           transfer_id: string
           user_id: string
         }
         Insert: {
+          done?: boolean
           month: string
           transfer_id: string
           user_id?: string
         }
         Update: {
+          done?: boolean
           month?: string
           transfer_id?: string
           user_id?: string
@@ -387,6 +587,7 @@ export type Database = {
     }
   }
 }
+
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
