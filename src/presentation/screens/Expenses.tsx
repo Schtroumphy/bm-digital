@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
 import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, defaultTransactionAccountId, isAccountInBudget, isLineInBudget } from '../../domain/bank';
+import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
@@ -61,8 +61,11 @@ function EntryTab({ month }: { month: MonthKey }) {
   const targets: [string, string][] =
     form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
-  // Until the user picks an account (form.accountId empty), « Payé avec » follows the payment mode of the chosen box (spec 0006, RG5).
-  const accountId = data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: form.type, month, target });
+  // « Payé avec » is frozen on the account of the envelope (spec 0011, RG10) or on the account assigned to the variable line (spec 0006 amended).
+  // Otherwise, until the user picks an account (form.accountId empty), it follows the payment mode of the chosen box (spec 0006, RG5).
+  const fixedId = form.type === 'epa' ? undefined : fixedTransactionAccountId(data, { type: form.type, month, target });
+  const envelopeAccount = form.type === 'env' ? data.accounts.find(a => a.id === data.envelopes.find(e => e.id === target)?.accountId) : data.accounts.find(a => a.id === fixedId);
+  const accountId = envelopeAccount ? envelopeAccount.id : data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: form.type, month, target });
   // A withdrawal cannot be credited to the dedicated account of its savings line (spec 0007, RG7).
   const refusedAccountId = form.type === 'epa' ? lines.find(l => l.key === target)?.linkedAccountId : undefined;
   const accountRefused = accountId === refusedAccountId;
@@ -155,8 +158,8 @@ function EntryTab({ month }: { month: MonthKey }) {
         <div>
           <div className="field-label is-gap">{form.type === 'epa' ? 'Reçu sur' : 'Payé avec'}</div>
           <div className="chips is-wrap">
-            {activeBankAccounts(data).map(a => (
-              <Chip key={a.id} on={accountId === a.id} onClick={() => setForm(f => ({ ...f, accountId: a.id }))}>
+            {(envelopeAccount ? [envelopeAccount] : activeBankAccounts(data)).map(a => (
+              <Chip key={a.id} on={accountId === a.id} onClick={envelopeAccount ? () => undefined : () => setForm(f => ({ ...f, accountId: a.id }))}>
                 <span className="acc-item">
                   <AccountDot account={a} />
                   {a.name}
@@ -216,7 +219,7 @@ function EntryTab({ month }: { month: MonthKey }) {
                   <span className="ellipsis">{targetName(t.type, t.target)}</span>
                   <span className="tx-type">{TYPE_LABEL[t.type]}</span>
                 </span>
-                <AccountPicker data={data} accountId={t.accountId} showName disabled={locked} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
+                <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
                 <b className="num">{money(t.amount)}</b>
                 {locked ? <span /> : (
                   <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>

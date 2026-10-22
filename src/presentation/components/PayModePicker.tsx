@@ -7,11 +7,9 @@ import { Icon } from './Icon';
 
 interface Props {
   data: BudgetData;
-  /** The box (variable line or envelope) whose payment mode is shown. */
+  /** The variable line whose payment mode is shown. */
   box: PaymentSetting;
   disabled?: boolean;
-  /** Account used when the box has none of its own and is not in cash mode; absent = the main account. Envelopes pass their default account (spec 0009, RG98). */
-  fallbackId?: string;
   onChange: (patch: PaymentPatch) => void;
 }
 
@@ -19,13 +17,13 @@ interface Props {
  * Chip of a box: the dot of the account its expenses go to (a banknote in cash
  * mode), hidden while it is the main account. Clicking it opens a menu with the payment mode and the assigned account.
  */
-export function PayModePicker({ data, box, disabled, fallbackId, onChange }: Props) {
+export function PayModePicker({ data, box, disabled, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const cash = box.payMode === 'especes';
-  const resolved = bankAccount(data, resolveBoxAccountId(data, box, fallbackId));
+  const resolved = bankAccount(data, resolveBoxAccountId(data, box));
   const quiet = !cash && isOnMainAccount(data, resolved?.id);
   // What « Virtuel » means for this box, whatever the current mode.
-  const virtual = bankAccount(data, resolveBoxAccountId(data, { ...box, payMode: 'virtuel' }, fallbackId));
+  const virtual = bankAccount(data, resolveBoxAccountId(data, { ...box, payMode: 'virtuel' }));
   const assigned = box.accountId ? data.accounts.find(a => a.id === box.accountId) : undefined;
   const pick = (patch: PaymentPatch) => {
     setOpen(false);
@@ -55,8 +53,8 @@ export function PayModePicker({ data, box, disabled, fallbackId, onChange }: Pro
             <div>
               <div className={`popmenu-item${!assigned ? ' is-active' : ''}${cash ? ' is-disabled' : ''}`} onClick={cash ? undefined : () => pick({ accountId: null })}>
                 <span className="acc-item">
-                  <AccountDot account={bankAccount(data, fallbackId)} />
-                  {bankAccount(data, fallbackId)?.name ?? 'Compte principal'} <span className="popmenu-tag">défaut</span>
+                  <AccountDot account={bankAccount(data)} />
+                  {bankAccount(data)?.name ?? 'Compte principal'} <span className="popmenu-tag">défaut</span>
                 </span>
               </div>
               {choices.map(a => (
