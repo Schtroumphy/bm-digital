@@ -117,3 +117,7 @@ Tests automatisés (Vitest, domaine et application) : CA1 à CA8 et CA14. Le res
 
 Aucune. Décisions du développeur intégrées : portée = mois affiché + modèle (RG10) ; Espèces non proposé comme compte attribué (RG13) ; `cash` et mode Espèces distincts ; enveloppes sans colonne dans l'assistant ; pas de maquette, design à valider avec la spec.
 Ajouts de l'analyste à valider ou écarter : RG4 (compte attribué archivé → principal) et RG11 (lecture seule sur année clôturée).
+
+## Amendement (spec 0011, 2026-10-22)
+
+Une dépense variable dont la ligne a un compte attribué est figée sur ce compte : « Payé avec » n'est plus modifiable, `addTransaction` et `setTransactionAccount` refusent un autre compte. Les enveloppes n'ont plus ni mode de paiement ni compte attribué : leur compte est celui de l'enveloppe (spec 0011).
