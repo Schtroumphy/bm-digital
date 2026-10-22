@@ -809,3 +809,28 @@ Note de rédaction : une version précédente de cet amendement, annoncée comme
 ### Questions ouvertes de l'amendement 8
 
 Aucune. Décisions du développeur : classement « hors budget » calculé et rétroactif sur tous les mois, clos compris, sans donnée écrite (RG113) ; allocations d'enveloppes hors budget conservées dans le « Reste à placer » (RG93 de l'amendement 6, RG114) ; colonne « Hors budget » (oui / non) ajoutée à l'export CSV, sans marque dans l'écran Dépenses (RG119).
+
+## Amendement du 2026-10-21 (9) — Réconciliation avec la spec 0007 (ligne épargne vers compte dédié)
+
+Numérotation : RG120 à RG125, CA119 à CA125. La spec 0007 (compte dédié d'une ligne `epa` / `inv`, champ `linkedAccountId`) a été livrée dans `develop` pendant le développement de cette spec ; cet amendement fixe comment les deux se combinent. Aucun changement de données, de migration ni de SQL.
+
+### Règles de gestion
+
+- RG120. Source unique : les mouvements d'un compte dédié d'une ligne `epa` / `inv` liée (spec 0007 RG6) sont produits par `bankMovements` (`domain/bankMovements.ts`), lu par le `Ledger` et par le Solde estimé. `Ledger.bankFlow` ne les calcule plus à part.
+- RG121. Mode réel : le compte dédié est crédité du réel de la ligne au 1er du mois et débité des sorties d'épargne (transactions `epa` sur la ligne) à leur jour ; le compte source est débité du réel (RG60). Inchangé par rapport à la spec 0007.
+- RG122. Mode pointage : une ligne liée pointée crédite le compte dédié du montant compté (RG76 : réel sinon budget) à la date du pointage, et débite le compte source du même montant ; une ligne liée non pointée ne bouge rien. Les sorties d'épargne débitent le dédié à leur jour comme au réel. Un compte dédié hors budget est crédité de la même façon ; le principal n'est débité que par la ligne elle-même (RG92 ne concerne pas ce cas : ce n'est pas une contrepartie hors budget).
+- RG123. Divergences voulues : le solde d'un compte dédié au pointage peut différer du solde de la ligne `Ledger.acc`, qui reste au réel ; le « solde estimé » des blocs Épargnes et Investissements (spec 0007 RG19 à RG24, `estimatedBalance`) lit le `Ledger` au réel et n'est pas modifié ; un compte dédié sans ligne liée pointée n'apparaît pas dans la carte « Pointage par compte » en mois au pointage (la carte n'affiche que les comptes ayant une ligne, un relevé ou un mouvement).
+- RG124. Ventilation par signe : `flowOf` répartit les mouvements en entrées (montants positifs) et sorties (montants négatifs). Un réel négatif apparaît donc dans l'autre colonne que sa nature ne le suggère ; le solde net (entrées − sorties) est identique.
+- RG125. Pas de double comptage : une ligne liée à la fois avec un réel et pointée compte une seule fois en mode pointage (le montant compté, pas le réel en plus).
+
+### Critères d'acceptation
+
+(T) = test automatisé (Vitest).
+
+- CA119 (T). Ligne liée pointée avec réel : le dédié reçoit le réel à la date de pointage, le principal est débité du même montant.
+- CA120 (T). Ligne liée pointée sans réel : le budget est crédité sur le dédié et débité sur le principal.
+- CA121 (T). Ligne liée non pointée en mode pointage : rien ne bouge.
+- CA122 (T). Dédié hors budget : crédité, le principal n'est débité que par la ligne, aucune ligne grise.
+- CA123 (T). Transaction `epa` sur une ligne liée en mode pointage : sort du dédié à son jour.
+- CA124 (T). Mois au réel avec un compte dédié : crédit au 1er du mois, retraits à leur jour, Solde estimé = écran Comptes.
+- CA125 (T). Non-double-comptage (RG125) et ventilation de `flowOf` par signe (RG124).
