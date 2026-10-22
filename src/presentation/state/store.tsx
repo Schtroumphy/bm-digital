@@ -1,14 +1,20 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { migrateBankAccounts, migrateCheckAmounts, migratePointageStart, realignVariableActuals } from '../../domain/migrate';
 import { Ledger } from '../../domain/ledger';
 import type { BudgetData } from '../../domain/types';
 import type { BudgetRepository } from '../../application/ports';
+import { LoadError } from '../components/LoadError';
+import { createSaveTracker, type SaveStatus } from '../../application/saveTracker';
 
 interface Store {
   data: BudgetData;
   ledger: Ledger;
   /** Applies a mutation to a copy of the data, then saves it. */
   update: (fn: (d: BudgetData) => void) => void;
+  /** Where the saving stands: shown as « Enregistrement… », « Enregistré » or the error banner. */
+  saveStatus: SaveStatus;
+  /** Sends again everything that is not stored yet (after a failed save). */
+  retrySave: () => void;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -22,19 +28,35 @@ interface StoreProviderProps {
 
 export function StoreProvider({ children, repository, initialData }: StoreProviderProps) {
   const [data, setData] = useState<BudgetData | null>(null);
-  const loaded = useRef(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Bumped by « Réessayer » to run the loading effect again.
+  const [attempt, setAttempt] = useState(0);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const tracker = useMemo(() => createSaveTracker(repository, setSaveStatus), [repository]);
 
   useEffect(() => {
-    repository.load().then(d => {
-      loaded.current = true;
-      // Data saved before bank accounts existed is brought up to date here (idempotent), then the variable lines' actuals are realigned (spec 0008, RG18).
-      setData(migratePointageStart(migrateCheckAmounts(realignVariableActuals(migrateBankAccounts(d ?? initialData())))));
-    });
-  }, [repository, initialData]);
+    let cancelled = false;
+    setLoadFailed(false);
+    repository.load().then(
+      d => {
+        if (cancelled) return;
+        // Data saved before bank accounts existed is brought up to date here (idempotent), then the variable lines' actuals are realigned (spec 0008, RG18).
+        setData(migratePointageStart(migrateCheckAmounts(realignVariableActuals(migrateBankAccounts(d ?? initialData())))));
+      },
+      () => {
+        // A failed read is never taken for an empty account: nothing is shown but the error (spec 0012, RG12).
+        if (!cancelled) setLoadFailed(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, initialData, attempt]);
 
+  // `data` only exists once the load is over, so nothing is saved before it.
   useEffect(() => {
-    if (data && loaded.current) void repository.save(data);
-  }, [data, repository]);
+    if (data) tracker.save(data);
+  }, [data, tracker]);
 
   const update = useCallback((fn: (d: BudgetData) => void) => {
     setData(prev => {
@@ -45,10 +67,13 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
     });
   }, []);
 
+  const retrySave = useCallback(() => tracker.retry(), [tracker]);
+
   const ledger = useMemo(() => (data ? new Ledger(data) : null), [data]);
 
-  if (!data || !ledger) return null;
-  return <StoreContext.Provider value={{ data, ledger, update }}>{children}</StoreContext.Provider>;
+  if (loadFailed) return <LoadError onRetry={() => setAttempt(a => a + 1)} />;
+  if (!data || !ledger) return <p className="auth-wait">Chargement de vos données…</p>;
+  return <StoreContext.Provider value={{ data, ledger, update, saveStatus, retrySave }}>{children}</StoreContext.Provider>;
 }
 
 export function useStore(): Store {

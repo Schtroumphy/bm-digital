@@ -10,8 +10,8 @@ Budget Perso est une application de budget personnel, **desktop uniquement (1440
 | Langage | TypeScript 5.9 |
 | Build / dev | Vite 8 (port 5180) |
 | Tests | Vitest 5 |
-| Dépendances runtime | React et React DOM uniquement (pas de routeur, pas de lib d'état) |
-| Persistance | `localStorage` aujourd'hui, Supabase prévu |
+| Dépendances runtime | React, React DOM et `@supabase/supabase-js` (exception validée, spec 0012) ; pas de routeur, pas de lib d'état |
+| Persistance | Supabase (source de vérité, authentification e-mail + mot de passe) ; `localStorage` pour le brouillon de l'assistant et le mois affiché |
 
 ## 2. Structure des dossiers
 
@@ -22,7 +22,7 @@ src/
   main.tsx          racine de composition : choisit le repository et l'injecte
   domain/           entités (types) et règles pures : ledger, budget, bank, migrate, format, empty, seed (tests)
   application/      cas d'usage (actions, setup de l'assistant) et ports (BudgetRepository)
-  infrastructure/   implémentations des ports : localRepository (Supabase à venir)
+  infrastructure/   implémentations des ports : supabaseRepository (+ rows, remote, auth, client), localRepository (lecture de l'ancienne clé, spec 0013)
   presentation/     App, screens, components, state (store, ui), ds, app.css
 supabase/
   migrations/       schéma SQL et RLS
@@ -54,8 +54,8 @@ flowchart LR
 
 | Principe | Application dans le projet |
 | --- | --- |
-| **S** | Un fichier, une responsabilité : `Ledger` calcule, `actions` mute, le store orchestre, `localRepository` persiste. |
-| **O** | Ajouter un `SupabaseRepository` ne modifie ni le store ni les écrans. |
+| **S** | Un fichier, une responsabilité : `Ledger` calcule, `actions` mute, le store orchestre, `supabaseRepository` persiste. |
+| **O** | Ajouter un `SupabaseRepository` n'a changé ni les actions ni les écrans (le store n'a gagné que l'état de sauvegarde). |
 | **L** | Tout `BudgetRepository` est interchangeable : `load` renvoie les données ou `null`, `save` écrit l'agrégat. |
 | **I** | Ports petits et ciblés : `BudgetRepository` n'a que `load` et `save`. |
 | **D** | Le store dépend du port `BudgetRepository` et reçoit `repository` et `initialData` par props. |
@@ -98,19 +98,20 @@ sequenceDiagram
   participant R as BudgetRepository
 
   St->>R: load() au montage
-  R-->>St: BudgetData ou null (seedData)
+  R-->>St: BudgetData, null (compte vide) ou erreur (écran « Réessayer »)
   S->>St: update(fn)
   St->>D: fn sur un structuredClone
   St->>L: nouveau Ledger (useMemo)
   St-->>S: re-render
-  St->>R: save(data) (useEffect)
+  St->>R: save(data) via le suivi de sauvegarde (useEffect)
 ```
 
-- `StoreProvider` ne rend rien tant que le chargement n'est pas terminé.
+- `AuthGate` (présentation) n'affiche le store et l'application que pour un utilisateur connecté ; sinon écran de connexion. La déconnexion retire l'arbre : les données en mémoire disparaissent.
+- `StoreProvider` affiche un écran d'attente pendant le chargement, et un écran d'erreur avec « Réessayer » si la lecture échoue (jamais l'assistant vide).
 - Sans données, il utilise `initialData()`, injecté par `main.tsx` : `emptyData` (budget vide, `firstMonth: null`). `seedData` (chiffres de décembre 2026) ne sert plus qu'aux tests.
 - Tant que `firstMonth` est `null`, l'application n'affiche que l'écran « Démarrage » (assistant en 9 étapes). `createFirstMonth` (`application/actions.ts`) crée le premier mois à partir du brouillon ; les soldes de départ des épargnes et enveloppes sont stockés comme soldes de fin du mois précédent (ADR 0001), ceux des comptes bancaires sur le compte lui-même (`openingBalance`).
 - Le brouillon de l'assistant vit dans `localStorage` (clé `budget-perso:setup-draft`), hors de `BudgetData` (ADR 0002).
-- La sauvegarde se déclenche à chaque changement de `data`, sans debounce, sur l'agrégat entier.
+- La sauvegarde se déclenche à chaque changement de `data`, sans debounce, par `createSaveTracker` (`application/saveTracker.ts`) : état `saving` / `saved` / `error` (indicateur dans la barre latérale, bannière avec « Réessayer » en erreur). Le repository n'envoie que le diff.
 - `presentation/state/ui.tsx` gère les menus contextuels et popovers, séparément des données.
 - L'écran actif et le mois courant sont un état local de `presentation/App.tsx`.
 
@@ -125,26 +126,27 @@ interface BudgetRepository {
 }
 ```
 
-C'est un port défini dans `application/ports.ts`, seule porte d'accès à la persistance. `infrastructure/localRepository.ts` sérialise tout sous la clé `budget-perso:v1` et ignore les erreurs de stockage.
+C'est un port défini dans `application/ports.ts`, seule porte d'accès à la persistance. `load` renvoie `null` seulement si rien n'est enregistré ; une erreur de lecture rejette. `application/ports.ts` définit aussi `AuthService` (connexion, déconnexion, session). `main.tsx` branche `createSupabaseRepository` et `createSupabaseAuth`. `infrastructure/localRepository.ts` (clé `budget-perso:v1`) n'est plus utilisé par l'application ; la spec 0013 s'en sert pour reprendre les anciennes données.
 
 ### Schéma Supabase
 
-Défini dans `supabase/migrations/20261020000000_init_schema.sql` : 13 tables (`settings`, `template_lines`, `months`, `budget_lines`, `envelopes`, `envelope_allocations`, `envelope_history`, `account_statements`, `transactions`, `transfers`, `transfers_done`, `planned_items`, `year_closes`).
+17 tables, définies par `20261020000000_init_schema.sql` puis rattrapées sur le domaine par `20261022160000_domain_schema_catchup.sql` (spec 0012) : `settings`, `bank_accounts`, `template_lines`, `months`, `budget_lines`, `line_checks`, `account_balances`, `envelopes`, `envelope_allocations`, `envelope_history`, `account_statements`, `transactions`, `transfers`, `transfers_done`, `adjustments`, `planned_items`, `year_closes`. L'ancien fichier `20261021000000_line_checks.sql`, jamais appliqué, a été supprimé : la migration de rattrapage le remplace.
 
-- Chaque table porte un `user_id`.
+- Chaque table porte un `user_id` (défaut `auth.uid()`, suppression en cascade) dans sa clé primaire.
 - La RLS « own rows » limite l'accès à `user_id = auth.uid()`.
-- `src/domain/database.types.ts` est généré avec `generate_typescript_types`.
-- Le projet Supabase est relié via `.mcp.json`.
+- `src/domain/database.types.ts` est généré avec `generate_typescript_types` (à régénérer après chaque migration).
+- Le projet Supabase est relié via `.mcp.json`. Le navigateur n'utilise que `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` (`.env.local`, modèle dans `.env.example`).
 
-### Stratégie de synchronisation cible : diff par table
+### Synchronisation : diff par table ([ADR 0007](adr/0007-supabase-source-de-verite-et-sauvegarde-par-diff.md))
 
-Un `save(data)` complet à chaque changement ne passe pas à l'échelle avec un schéma relationnel. La cible est un `SupabaseRepository` qui :
+`createSupabaseRepository` (`infrastructure/supabaseRepository.ts`) :
 
-1. garde le dernier état synchronisé ;
-2. compare l'ancien et le nouvel agrégat table par table ;
-3. n'envoie que les `upsert` et `delete` des lignes modifiées.
+1. garde les lignes qu'il sait enregistrées (`synced`) ;
+2. convertit le nouvel agrégat en lignes (`supabaseRows.ts`, fonctions pures) et compare table par table (`application/diff.ts`) ;
+3. envoie les suppressions (enfants avant parents) puis les `upsert` (parents avant enfants) de ce qui a changé seulement, par un port minimal `RemoteTables` (`supabaseRemote.ts` en production, `memoryRemote.ts` dans les tests) ;
+4. exécute les sauvegardes une par une, et avance `synced` à chaque confirmation : après un échec, la sauvegarde suivante envoie ce qui manque.
 
-Le store et les écrans ne changent pas : on change le repository passé à `<StoreProvider>` dans `main.tsx`.
+Authentification : [ADR 0008](adr/0008-authentification-par-e-mail-et-mot-de-passe.md). Bannière d'erreur : [ADR 0009](adr/0009-banniere-d-erreur-de-sauvegarde-avec-reessai.md).
 
 ## 6. Décisions d'architecture
 
@@ -155,8 +157,8 @@ Le store et les écrans ne changent pas : on change le repository passé à `<St
 | 3 | Mutations par `structuredClone` + fonction | Pas de lib d'immutabilité, actions simples à tester. |
 | 4 | `Ledger` dérivé, jamais persisté | Les soldes se recalculent depuis `BudgetData` : une seule source de vérité. |
 | 5 | `BudgetRepository` comme port, injecté depuis `main.tsx` | Inversion de dépendance : on change de persistance sans toucher aux écrans ni au store. |
-| 6 | Sync cible par diff par table | Écritures minimales sans modifier le store ni les actions. |
-| 7 | RLS par `user_id` | L'isolation des données est garantie par la base, pas par le client. |
+| 6 | Sync par diff par table (réalisée, spec 0012) | Écritures minimales sans modifier les actions ni les écrans ([ADR 0007](adr/0007-supabase-source-de-verite-et-sauvegarde-par-diff.md)). |
+| 7 | RLS par `user_id`, connexion e-mail + mot de passe | L'isolation des données est garantie par la base, pas par le client ([ADR 0008](adr/0008-authentification-par-e-mail-et-mot-de-passe.md)). |
 | 8 | CSS transcrit du prototype sur le design system Organic | Fidélité au design, pas de framework CSS. |
 | 9 | Soldes de départ = soldes de fin du mois précédent | Réutilise `statements` et `envHistory`, sans changer le schéma ([ADR 0001](adr/0001-soldes-de-depart-via-le-mois-precedent.md)). |
 | 10 | Brouillon de l'assistant en `localStorage`, hors `BudgetData` | État temporaire, une seule implémentation, pas de nouveau port ([ADR 0002](adr/0002-brouillon-de-l-assistant-en-local-storage.md)). |
@@ -167,17 +169,15 @@ Le store et les écrans ne changent pas : on change le repository passé à `<St
 
 - Vitest couvre le domaine et les cas d'usage :
   - `budget.test.ts` vérifie les chiffres du design (reste à placer 2 950 €, épargne brute 2 060 €, taux d'épargne réel 20,2 %) ;
-  - `application/actions.test.ts` vérifie les cas d'usage.
+  - `application/actions.test.ts` vérifie les cas d'usage ;
+  - `application/budgetRepository.contract.ts` est le test de contrat de `BudgetRepository`, appliqué à `localRepository` et `SupabaseRepository` (`infrastructure/repositories.test.ts`) ; `supabaseRepository.test.ts` couvre le diff, les suppressions et le réessai sur une base en mémoire.
 - L'UI n'a pas de tests.
 - `npm run build` exécute `tsc --noEmit` puis `vite build` : une erreur de type bloque le build.
 
 ## 8. Roadmap et dette technique
 
-- Implémenter `SupabaseRepository` avec diff par table, et ajouter l'authentification. La migration rendant `settings.first_month` nullable (`firstMonth: null` côté domaine) est à écrire avec cette spec.
-- Migrer les données `localStorage` existantes vers Supabase.
+- Reprendre les données `localStorage` existantes vers Supabase (spec 0013).
 - Ajouter des tests d'UI et configurer un linter.
-- Ajouter un test de contrat réutilisable pour valider chaque implémentation de `BudgetRepository` (Liskov).
-- Ajouter un écran de chargement et la gestion d'erreur au démarrage du store.
 - Gérer les conflits multi-onglets et multi-appareils.
 - Aucun support hors desktop 1440 px.
 

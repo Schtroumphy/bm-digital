@@ -6,6 +6,7 @@ const ICONS = {
   list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
   mail: <path d="M4 6h16v12H4zM4 7l8 6 8-6" />,
   calendar: <path d="M8 2v4M16 2v4M3 6h18v15H3zM3 10h18" />,
+  logout: <path d="M9 21H5V3h4M16 17l5-5-5-5M21 12H9" />,
   calendarCheck: <path d="M8 2v4M16 2v4M3 6h18v15H3zM3 10h18M9 16l2 2 4-4" />,
   target: <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z" />,
   goals: (
