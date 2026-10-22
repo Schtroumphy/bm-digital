@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon, type IconName } from './components/Icon';
 import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
+import { useAuth } from './state/auth';
 import { useStore } from './state/store';
 import { useUi } from './state/ui';
 import { AccountsActions, AccountsScreen } from './screens/Accounts';
@@ -56,7 +57,8 @@ const saveMonth = (m: string) => {
 };
 
 export function App() {
-  const { data, ledger } = useStore();
+  const { data, ledger, saveStatus, retrySave } = useStore();
+  const { user, signOut } = useAuth();
   const { setEditing, menu, closeMenu } = useUi();
   // Until the first month exists, the only usable screen is the assistant.
   const [screenState, setScreen] = useState<Screen>(() => (data.firstMonth === null ? 'setup' : 'budget'));
@@ -104,9 +106,27 @@ export function App() {
             <span>{n.label}</span>
           </div>
         ))}
+        <div className="sidebar-foot">
+          <div className={`save-status is-${saveStatus}`} role="status">
+            {saveStatus === 'saving' ? 'Enregistrement…' : saveStatus === 'error' ? 'Non enregistré' : 'Enregistré'}
+          </div>
+          <button type="button" className="nav-item" title={`Se déconnecter (${user.email})`} onClick={() => void signOut()}>
+            <Icon name="logout" size={20} stroke={2} />
+            <span>Quitter</span>
+          </button>
+        </div>
       </nav>
 
       <main className="main">
+        {saveStatus === 'error' && (
+          <div className="banner is-error" role="alert">
+            <div className="banner-title">Les dernières modifications ne sont pas enregistrées</div>
+            <div style={{ flex: 1 }} />
+            <button type="button" className="btn-dark" onClick={retrySave}>
+              Réessayer
+            </button>
+          </div>
+        )}
         <header className="header">
           <div className="title">{TITLES[screen]}</div>
           {screen === 'prevAnn' || screen === 'close' ? (

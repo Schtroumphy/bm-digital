@@ -93,6 +93,19 @@ input, button { font-family: inherit; }
 .nav-item.is-soon { cursor: not-allowed; color: rgba(32, 30, 29, 0.28); }
 .nav-item.is-soon:nth-child(8) { margin-top: 14px; }
 
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.sidebar-foot .nav-item { background: none; border: 0; font: inherit; }
+.save-status { font-size: 10px; font-weight: 600; text-align: center; color: var(--muted); padding: 0 4px; }
+.save-status.is-error { color: oklch(0.45 0.15 25); }
+
+/* ── sign-in ───────────────────────────────────────────── */
+.auth-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+.auth-brand { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.auth-card { width: 340px; box-sizing: border-box; }
+.auth-text { margin: 0; font-size: 13px; color: var(--muted); }
+.auth-error { font-size: 12.5px; font-weight: 600; color: oklch(0.45 0.15 25); }
+.auth-wait { text-align: center; margin-top: 30vh; color: var(--muted); }
+
 /* ── header ────────────────────────────────────────────── */
 .main { flex: 1; min-width: 0; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
 .header { display: flex; align-items: center; gap: 14px; height: 40px; }
@@ -141,6 +154,8 @@ input, button { font-family: inherit; }
   width: 32px; height: 32px; border-radius: 10px; background: oklch(0.9 0.09 90); color: oklch(0.38 0.08 80);
   display: flex; align-items: center; justify-content: center;
 }
+.banner.is-error { background: oklch(0.96 0.03 25); border-color: oklch(0.85 0.08 25); }
+.banner.is-error .banner-title { color: oklch(0.38 0.12 25); }
 .banner-title { font-weight: 700; font-size: 14px; color: oklch(0.3 0.06 80); }
 .banner-text { color: oklch(0.38 0.06 80); }
 .is-preview { opacity: 0.4; pointer-events: none; filter: grayscale(0.4); }
