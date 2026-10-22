@@ -22,7 +22,7 @@ src/
   main.tsx          racine de composition : choisit le repository et l'injecte
   domain/           entités (types) et règles pures : ledger, budget, bank, migrate, format, empty, seed (tests)
   application/      cas d'usage (actions, setup de l'assistant) et ports (BudgetRepository)
-  infrastructure/   implémentations des ports : supabaseRepository (+ rows, remote, auth, client), localRepository (lecture de l'ancienne clé, spec 0013)
+  infrastructure/   implémentations des ports : supabaseRepository (+ rows, remote, auth, client), localRepository (conservé, plus utilisé)
   presentation/     App, screens, components, state (store, ui), ds, app.css
 supabase/
   migrations/       schéma SQL et RLS
@@ -126,11 +126,11 @@ interface BudgetRepository {
 }
 ```
 
-C'est un port défini dans `application/ports.ts`, seule porte d'accès à la persistance. `load` renvoie `null` seulement si rien n'est enregistré ; une erreur de lecture rejette. `application/ports.ts` définit aussi `AuthService` (connexion, déconnexion, session). `main.tsx` branche `createSupabaseRepository` et `createSupabaseAuth`. `infrastructure/localRepository.ts` (clé `budget-perso:v1`) n'est plus utilisé par l'application ; la spec 0013 s'en sert pour reprendre les anciennes données.
+C'est un port défini dans `application/ports.ts`, seule porte d'accès à la persistance. `load` renvoie `null` seulement si rien n'est enregistré ; une erreur de lecture rejette. `application/ports.ts` définit aussi `AuthService` (connexion, déconnexion, session). `main.tsx` branche `createSupabaseRepository` et `createSupabaseAuth`. `infrastructure/localRepository.ts` (clé `budget-perso:v1`) n'est plus utilisé par l'application ; il reste dans le dépôt.
 
 ### Schéma Supabase
 
-17 tables, définies par `20261020000000_init_schema.sql` puis rattrapées sur le domaine par `20261022160000_domain_schema_catchup.sql` (spec 0012) : `settings`, `bank_accounts`, `template_lines`, `months`, `budget_lines`, `line_checks`, `account_balances`, `envelopes`, `envelope_allocations`, `envelope_history`, `account_statements`, `transactions`, `transfers`, `transfers_done`, `adjustments`, `planned_items`, `year_closes`. L'ancien fichier `20261021000000_line_checks.sql`, jamais appliqué, a été supprimé : la migration de rattrapage le remplace.
+17 tables, définies par `20261020120918_init_schema.sql` puis rattrapées sur le domaine par `20261022212402_domain_schema_catchup.sql` (spec 0012) : `settings`, `bank_accounts`, `template_lines`, `months`, `budget_lines`, `line_checks`, `account_balances`, `envelopes`, `envelope_allocations`, `envelope_history`, `account_statements`, `transactions`, `transfers`, `transfers_done`, `adjustments`, `planned_items`, `year_closes`. L'ancien fichier `20261021000000_line_checks.sql`, jamais appliqué, a été supprimé : la migration de rattrapage le remplace.
 
 - Chaque table porte un `user_id` (défaut `auth.uid()`, suppression en cascade) dans sa clé primaire.
 - La RLS « own rows » limite l'accès à `user_id = auth.uid()`.
@@ -176,7 +176,6 @@ Authentification : [ADR 0008](adr/0008-authentification-par-e-mail-et-mot-de-pas
 
 ## 8. Roadmap et dette technique
 
-- Reprendre les données `localStorage` existantes vers Supabase (spec 0013).
 - Ajouter des tests d'UI et configurer un linter.
 - Gérer les conflits multi-onglets et multi-appareils.
 - Aucun support hors desktop 1440 px.
