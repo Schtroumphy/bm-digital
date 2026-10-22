@@ -1,5 +1,5 @@
 import { currentMonthKey } from './format';
-import type { BankAccount, BudgetData, Line, MonthKey, PaymentSetting, Transaction } from './types';
+import type { AccountKind, BankAccount, BudgetData, Line, MonthKey, PaymentSetting, Transaction } from './types';
 
 /*
  * Bank accounts: helpers shared by the Ledger, the budget figures and the use cases.
@@ -99,13 +99,22 @@ export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 
 /** Savings and investment lines are the ones that can be tied to a dedicated bank account (spec 0007, RG1). */
 export const isSavingsBlock = (block: string): boolean => block === 'epa' || block === 'inv';
 
+/** Kind of an account; absent = `courant` (spec 0010, RG1). */
+export const kindOf = (a: Pick<BankAccount, 'kind'>): AccountKind => a.kind ?? 'courant';
+
+/** Kind an account must have to be tied to a line of this block: `epargne` for `epa`, `invest` for `inv` (spec 0010, RG7). */
+export const kindForBlock = (block: string): AccountKind | undefined => (block === 'epa' ? 'epargne' : block === 'inv' ? 'invest' : undefined);
+
+/** The main account and « Espèces » are always `courant` and their kind cannot change (spec 0010, RG2). */
+export const isKindFixed = (a: Pick<BankAccount, 'id' | 'isDefault'>): boolean => a.isDefault || a.id === CASH_ACCOUNT_ID;
+
 /**
- * Whether a savings/investment line can be tied to the given bank account (spec 0007, RG2, RG5):
- * the account exists, is active, and differs from the account the line is paid from.
+ * Whether a savings/investment line can be tied to the given bank account (spec 0007, RG2, RG5; spec 0010, RG7):
+ * the account exists, is active, is of the kind of the line's block, and differs from the account the line is paid from.
  */
 export function canLinkAccount(d: BudgetData, line: Pick<Line, 'block' | 'accountId'>, accountId: string): boolean {
   const target = d.accounts.find(a => a.id === accountId);
-  return isSavingsBlock(line.block) && !!target && !target.archived && accountIdOf(d, line.accountId) !== accountId;
+  return isSavingsBlock(line.block) && !!target && !target.archived && kindOf(target) === kindForBlock(line.block) && accountIdOf(d, line.accountId) !== accountId;
 }
 
 /** Dedicated account of the savings/investment line `key` in month `m`, if any. */

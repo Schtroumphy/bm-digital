@@ -25,8 +25,8 @@ function started(lines: Line[]): BudgetData {
   d.firstMonth = M;
   d.accounts = defaultBankAccounts(M);
   d.accounts[0].openingBalance = 5000;
-  addBankAccount(d, LIVRET, 'Livret A');
-  addBankAccount(d, PEA, 'PEA');
+  addBankAccount(d, LIVRET, 'Livret A', 'epargne');
+  addBankAccount(d, PEA, 'PEA', 'invest');
   d.accounts.find(a => a.id === LIVRET)!.openingBalance = 1000;
   d.months[M] = { initialized: true, lines, alloc: {}, transfersDone: {} };
   d.template.lines = lines.map(({ actual: _a, ...l }) => l);
@@ -260,15 +260,17 @@ describe('assistant Démarrage (RG16)', () => {
   it('le brouillon crée des lignes liées, et ignore un dédié égal au compte principal', () => {
     const d = emptyData();
     const draft = emptyDraft('2027-01');
-    draft.rows.acc.push(row('livret-acc', { name: 'Livret A', hue: 150, inBudget: true }));
+    draft.rows.acc.push(row('livret-acc', { name: 'Livret A', hue: 150, inBudget: true, accountKind: 'epargne' }), row('pea-acc', { name: 'PEA', hue: 100, inBudget: true, accountKind: 'invest' }));
     draft.rows.epa = [row('e1', { kind: 'LT', linkedAccountId: 'livret-acc' }), row('e2', { kind: 'LT', linkedAccountId: MAIN_ACCOUNT_ID }), row('e3', { kind: 'LT' })];
-    draft.rows.inv = [row('i1', { linkedAccountId: 'livret-acc' })];
+    draft.rows.inv = [row('i1', { linkedAccountId: 'pea-acc' }), row('i2', { linkedAccountId: 'livret-acc' })];
     expect(createFirstMonth(d, draft, '2027-01')).toBe(true);
     const lines = d.months['2027-01'].lines;
     expect(lines.find(l => l.key === 'e1')?.linkedAccountId).toBe('livret-acc');
     expect(lines.find(l => l.key === 'e2')?.linkedAccountId).toBeUndefined();
     expect(lines.find(l => l.key === 'e3')?.linkedAccountId).toBeUndefined();
-    expect(lines.find(l => l.key === 'i1')?.linkedAccountId).toBe('livret-acc');
+    expect(lines.find(l => l.key === 'i1')?.linkedAccountId).toBe('pea-acc');
+    // RG7 (spec 0010): an investment line cannot be tied to an « épargne » account.
+    expect(lines.find(l => l.key === 'i2')?.linkedAccountId).toBeUndefined();
     expect(d.template.lines.find(l => l.key === 'e1')?.linkedAccountId).toBe('livret-acc');
   });
 });
@@ -285,7 +287,7 @@ describe('solde estimé cumulé sur les mois (RG20 à RG22ter)', () => {
     const d = emptyData();
     d.firstMonth = NOV;
     d.accounts = defaultBankAccounts(NOV);
-    addBankAccount(d, LIVRET, 'Livret A');
+    addBankAccount(d, LIVRET, 'Livret A', 'epargne');
     d.accounts.find(a => a.id === LIVRET)!.openingBalance = 1000;
     d.months[NOV] = month(nov);
     d.months[DEC] = month(dec);
@@ -401,7 +403,7 @@ describe('solde estimé cumulé sur les mois (RG20 à RG22ter)', () => {
     const d = emptyData();
     d.firstMonth = '2020-01';
     d.accounts = defaultBankAccounts('2020-01');
-    addBankAccount(d, LIVRET, 'Livret A');
+    addBankAccount(d, LIVRET, 'Livret A', 'epargne');
     let last = '2020-01';
     for (let i = 0; i < 120; i++) {
       last = `${2020 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
