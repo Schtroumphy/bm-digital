@@ -403,7 +403,7 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                       <span className="acc-source">
                         <AccountPicker data={data} accountId={l.accountId} exclude={l.linkedAccountId} disabled={locked} hint="Compte débité" onPick={id => update(d => void setLineAccount(d, month, l.key, id))} />
                       </span>
-                      <LinkedAccountPicker data={data} linkedAccountId={l.linkedAccountId} sourceId={accountIdOf(data, l.accountId)} disabled={locked} onPick={id => update(d => void setLineLinkedAccount(d, month, l.key, id))} />
+                      <LinkedAccountPicker data={data} linkedAccountId={l.linkedAccountId} block={l.block} sourceId={accountIdOf(data, l.accountId)} disabled={locked} onPick={id => update(d => void setLineLinkedAccount(d, month, l.key, id))} />
                     </>
                   )}
                   {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked} hint={block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}

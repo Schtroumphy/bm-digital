@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { activeBankAccounts } from '../../domain/bank';
+import { activeBankAccounts, kindForBlock, kindOf } from '../../domain/bank';
 import type { BudgetData } from '../../domain/types';
 import { AccountDot } from './AccountPicker';
 
@@ -7,6 +7,8 @@ interface Props {
   data: BudgetData;
   /** Dedicated account of the line; absent = none. */
   linkedAccountId?: string;
+  /** Block of the line: only the accounts of the matching kind are offered (spec 0010, RG7). */
+  block: string;
   /** The account the line is paid from: it cannot also be the dedicated one (spec 0007, RG2). */
   sourceId: string;
   disabled?: boolean;
@@ -16,12 +18,13 @@ interface Props {
 
 /**
  * Dedicated-account dot of a savings or investment line (spec 0007, RG13): the arrow and the account
- * that receives the payments. Clicking opens the active accounts except the source, plus « Aucun ».
+ * that receives the payments. Clicking opens the active accounts of the right kind except the source, plus « Aucun ».
  * An archived dedicated account keeps showing, greyed out.
  */
-export function LinkedAccountPicker({ data, linkedAccountId, sourceId, disabled, onPick }: Props) {
+export function LinkedAccountPicker({ data, linkedAccountId, block, sourceId, disabled, onPick }: Props) {
   const [open, setOpen] = useState(false);
   const current = data.accounts.find(a => a.id === linkedAccountId);
+  const choices = activeBankAccounts(data).filter(a => a.id !== sourceId && kindOf(a) === kindForBlock(block));
   return (
     <span className="acc-picker" onClick={e => e.stopPropagation()}>
       <span
@@ -45,23 +48,22 @@ export function LinkedAccountPicker({ data, linkedAccountId, sourceId, disabled,
             >
               Aucun
             </div>
-            {activeBankAccounts(data)
-              .filter(a => a.id !== sourceId)
-              .map(a => (
-                <div
-                  key={a.id}
-                  className={`popmenu-item${a.id === linkedAccountId ? ' is-active' : ''}`}
-                  onClick={() => {
-                    setOpen(false);
-                    onPick(a.id);
-                  }}
-                >
-                  <span className="acc-item">
-                    <AccountDot account={a} />
-                    {a.name}
-                  </span>
-                </div>
-              ))}
+            {choices.map(a => (
+              <div
+                key={a.id}
+                className={`popmenu-item${a.id === linkedAccountId ? ' is-active' : ''}`}
+                onClick={() => {
+                  setOpen(false);
+                  onPick(a.id);
+                }}
+              >
+                <span className="acc-item">
+                  <AccountDot account={a} />
+                  {a.name}
+                </span>
+              </div>
+            ))}
+            {choices.length === 0 && <div className="popmenu-item is-disabled">Aucun compte de ce type : crée-le dans Comptes</div>}
           </div>
         </>
       )}
