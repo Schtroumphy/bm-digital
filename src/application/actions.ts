@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, isSavingsWithdrawalAllowed, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual, varActualFromTx } from '../domain/budget';
 import { isMonthLocked } from '../domain/ledger';
@@ -92,7 +92,7 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
 
   // The assistant has no source column for savings: they are paid from the main account, which cannot also be their dedicated one (RG2).
   const mainId = rows.acc.find(a => a.isDefault)?.id ?? MAIN_ACCOUNT_ID;
-  const linkOf = (r: SetupRow) => (isValidSetupLink(r, mainId, rows.acc) ? { linkedAccountId: r.linkedAccountId } : {});
+  const linkOf = (r: SetupRow, block: BlockKey) => (isValidSetupLink(r, block, mainId, rows.acc) ? { linkedAccountId: r.linkedAccountId } : {});
   const line = (block: BlockKey, r: SetupRow, section = ''): Line => ({
     key: r.id,
     block,
@@ -102,7 +102,7 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
     actual: null,
     ...(r.accountId ? { accountId: r.accountId } : {}),
     // Dedicated account of a savings/investment line (spec 0007, RG16); only epa/inv rows carry it.
-    ...(block === 'epa' || block === 'inv' ? linkOf(r) : {}),
+    ...(block === 'epa' || block === 'inv' ? linkOf(r, block) : {}),
   });
 
   // A variable line's « Compte » column also holds « Espèces »: that is the cash mode, not an assigned account (spec 0006, RG9).
@@ -138,10 +138,14 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   return true;
 }
 
-/** A draft row's dedicated account is kept when it differs from the account paying the row and exists in the draft (spec 0007, RG2, RG16). */
-function isValidSetupLink(r: SetupRow, mainId: string, accountRows: SetupRow[]): boolean {
+/**
+ * A draft row's dedicated account is kept when it differs from the account paying the row, exists in the draft
+ * (spec 0007, RG2, RG16) and is of the kind of the row's block (spec 0010, RG7).
+ */
+function isValidSetupLink(r: SetupRow, block: BlockKey, mainId: string, accountRows: SetupRow[]): boolean {
   const id = r.linkedAccountId;
-  return !!id && id !== (r.accountId ?? mainId) && (id === CASH_ACCOUNT_ID || accountRows.some(a => a.id === id));
+  const target = accountRows.find(a => a.id === id);
+  return !!id && id !== (r.accountId ?? mainId) && !!target && !target.isDefault && id !== CASH_ACCOUNT_ID && (target.accountKind ?? 'courant') === kindForBlock(block);
 }
 
 /** Bank accounts typed in the assistant. The main account and « Espèces » are always there, whatever was typed. */
@@ -156,6 +160,8 @@ function accountsFromDraft(rows: SetupRow[], month: MonthKey): BankAccount[] {
     openingMonth: month,
     inBudget: r.inBudget ?? true,
     archived: false,
+    // The main account and « Espèces » are always `courant`: no kind written for them (spec 0010, RG2).
+    ...(r.isDefault || r.id === CASH_ACCOUNT_ID ? {} : { kind: r.accountKind ?? 'courant' }),
     openingConfirmed: true,
   }));
   if (!typed.some(a => a.id === CASH_ACCOUNT_ID)) typed.push(fallback[1]);

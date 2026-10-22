@@ -108,6 +108,12 @@ export interface Transaction {
   accountId?: string;
 }
 
+/**
+ * Kind of a bank account (spec 0010). It only decides the group of the account in the year closing.
+ * `enveloppe` exists in the model for spec 0011 but is not offered yet.
+ */
+export type AccountKind = 'courant' | 'epargne' | 'invest' | 'enveloppe';
+
 /** A bank account (principal, Espèces, Swile…). Not to be confused with savings/investment lines. */
 export interface BankAccount {
   id: string;
@@ -122,6 +128,8 @@ export interface BankAccount {
   /** False: the account's operations are left out of the monthly budget figures (still counted in its balance). */
   inBudget: boolean;
   archived: boolean;
+  /** Kind of account; absent = not decided yet, read as `courant` (spec 0010, RG1). */
+  kind?: AccountKind;
   /** The user has entered (or dismissed) the opening balance; drives the reminder banner. */
   openingConfirmed?: boolean;
 }

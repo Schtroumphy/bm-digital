@@ -1,7 +1,7 @@
-import { canLinkAccount, CASH_ACCOUNT_ID, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
+import { canLinkAccount, CASH_ACCOUNT_ID, isKindFixed, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
 import { currentMonthKey } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
-import type { BudgetData, MonthKey } from '../domain/types';
+import type { AccountKind, BudgetData, MonthKey } from '../domain/types';
 
 /*
  * Use cases on bank accounts. Each one changes the data it is given and
@@ -11,7 +11,7 @@ import type { BudgetData, MonthKey } from '../domain/types';
 const find = (d: BudgetData, id: string) => d.accounts.find(a => a.id === id);
 
 /** Adds an account: next palette colour, opening month = first month of the budget (RG6, RG7, RG16bis). */
-export function addBankAccount(d: BudgetData, id: string, name = 'Nouveau compte') {
+export function addBankAccount(d: BudgetData, id: string, name = 'Nouveau compte', kind: AccountKind = 'courant') {
   d.accounts.push({
     id,
     name,
@@ -21,7 +21,16 @@ export function addBankAccount(d: BudgetData, id: string, name = 'Nouveau compte
     openingMonth: d.firstMonth ?? currentMonthKey(),
     inBudget: true,
     archived: false,
+    kind,
   });
+}
+
+/** The kind is chosen at the creation (default `courant`, RG23) and can be changed. Refused for the main account and « Espèces » (RG2). Changes no balance (RG4). */
+export function setBankAccountKind(d: BudgetData, id: string, kind: AccountKind): boolean {
+  const a = find(d, id);
+  if (!a || isKindFixed(a)) return false;
+  a.kind = kind;
+  return true;
 }
 
 /** An empty name is refused. */

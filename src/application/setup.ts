@@ -1,6 +1,6 @@
 import { BANK_HUES, CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { round2 } from '../domain/format';
-import type { MonthKey } from '../domain/types';
+import type { AccountKind, MonthKey } from '../domain/types';
 
 /*
  * Draft of the « Démarrage » assistant: what the user typed so far, before
@@ -36,6 +36,8 @@ export interface SetupRow {
   hue?: number;
   isDefault?: boolean;
   inBudget?: boolean;
+  /** Account rows only: kind of the account (spec 0010, RG23); absent = `courant`. Not editable for the main account and « Espèces ». */
+  accountKind?: AccountKind;
 }
 
 export interface SetupDraft {
@@ -83,6 +85,7 @@ const accountRow = (d: SetupDraft, id: string, name = ''): SetupRow => ({
   hue: BANK_HUES.find(h => !d.rows.acc.some(r => r.hue === h)) ?? BANK_HUES[d.rows.acc.length % BANK_HUES.length],
   isDefault: false,
   inBudget: true,
+  accountKind: 'courant',
 });
 
 export const addRow = (d: SetupDraft, list: SetupListId, mkId: IdFactory): SetupDraft =>
