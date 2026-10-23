@@ -1,5 +1,5 @@
 import { AccountDot } from '../components/AccountPicker';
-import { lineBalanceWarning, destinationAccounts, isIncome, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
+import { lineBalanceWarning, destinationAccounts, isIncome, isLocked, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
 import { bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
 import { dayLabel, money, monthLabel } from '../../domain/format';
@@ -11,6 +11,8 @@ import { useStore } from '../state/store';
 
 /** Hint of an entry whose label speaks of a transfer: informative, in the tooltip only (spec 0015, RG17). */
 const TRANSFER_HINT = 'Virement possible : vérifiez que ce n’est pas un virement entre vos comptes.';
+
+const LOCKED_HELP = 'Déjà importée dans votre budget : elle ne peut pas être importée à nouveau. Pour une dépense réellement identique, la saisir à la main dans l’onglet Saisie.';
 
 export const targetValue = (t: ImportTarget | null) => (t ? `${t.kind}:${t.kind === 'var' || t.kind === 'line' ? t.key : t.id}` : '');
 export function targetFrom(value: string): ImportTarget | null {
@@ -31,7 +33,7 @@ interface Props {
   line: PreviewLine;
   months: string[];
   onChange: (fn: (l: PreviewLine) => PreviewLine) => void;
-  /** Written during this session: greyed, not editable, not checkable (RG70). */
+  /** Written during this session: struck through, not editable, not checkable (RG70, RG82). */
   imported?: boolean;
   /** The budget refused this line at the last import (RG76). */
   failed?: boolean;
@@ -61,22 +63,25 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
   const states = lineStates(data, l, imported ? new Set([l.id]) : undefined).filter(s => s !== 'decochee');
 
-  if (imported) {
+  // Done lines (imported in this session, or already imported before) are shown struck through and locked (spec 0013, RG82, RG83, RG88).
+  if (imported || isLocked(l)) {
+    const state: LineState = imported ? 'importee' : 'doublon';
     return (
-      <div className="import-grid import-row is-off is-imported">
-        <input type="checkbox" checked={false} disabled aria-label="Ligne déjà importée" />
+      <div className="import-grid import-row is-done" title={imported ? undefined : LOCKED_HELP}>
+        <input type="checkbox" checked={false} disabled aria-label={imported ? 'Ligne déjà importée' : 'Déjà importée, non réimportable'} />
         <span className="muted">{dayLabel(l.row.date.slice(0, 7), Number(l.row.date.slice(8, 10)))}</span>
         <span className="import-label" title={`${l.row.label} ${l.row.notes}`.trim()}>
           <span className="ellipsis">
-            <AccountDot account={account} /> {l.row.label}
+            <AccountDot account={account} /> <s>{l.row.label}</s>
           </span>
+          {l.row.notes && <span className="import-notes ellipsis"><s>{l.row.notes}</s></span>}
         </span>
-        <b className="num import-amount">{money(l.row.amount)}</b>
+        <b className="num import-amount"><s>{money(l.row.amount)}</s></b>
         <span className="muted">—</span>
         <span className="muted">—</span>
         <span className="muted">{monthLabel(l.month).split(' ')[0]}</span>
         <span className="import-chips">
-          <span className={chipClass('importee')}>{STATE_LABEL.importee}</span>
+          <span className={chipClass(state)}>{STATE_LABEL[state]}</span>
         </span>
       </div>
     );
