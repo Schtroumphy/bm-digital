@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, duplicatePrevious, isSetupMonthAllowed, monthCsv, SAVINGS_SECTIONS, setEnvelopeAllocation, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
+import { addLine, addTransaction, applyTemplate, createFirstMonth, deleteLine, deleteTransaction, deleteTransactions, duplicatePrevious, isSetupMonthAllowed, monthCsv, SAVINGS_SECTIONS, setEnvelopeAllocation, setupMonths, undoValidateMonth, updateLine, validateMonth, willReplaceMonth } from './actions';
 import { addSuggested, emptyDraft, exampleDraft, parseDraft, setupSummary, updateRow, type IdFactory } from './setup';
 import { linesWithoutActual, monthSummary } from '../domain/budget';
 import { emptyData } from '../domain/empty';
@@ -16,6 +16,15 @@ describe('actions', () => {
     expect(line(d, '2026-12', 'v-ali').actual).toBe(337.9);
     deleteTransaction(d, 'x');
     expect(line(d, '2026-12', 'v-ali').actual).toBe(312.4);
+  });
+
+  it('deleting several expenses restores the line and ignores unknown ids', () => {
+    const d = seedData();
+    addTransaction(d, { id: 'a', month: '2026-12', day: 3, label: 'Lidl', amount: 25.5, type: 'var', target: 'v-ali' });
+    addTransaction(d, { id: 'b', month: '2026-12', day: 4, label: 'Lidl', amount: 10, type: 'var', target: 'v-ali' });
+    expect(deleteTransactions(d, ['a', 'b', 'nope'])).toBe(2);
+    expect(line(d, '2026-12', 'v-ali').actual).toBe(312.4);
+    expect(d.transactions.some(t => t.id === 'a' || t.id === 'b')).toBe(false);
   });
 
   it('envelope spending lowers real savings and the envelope balance', () => {
