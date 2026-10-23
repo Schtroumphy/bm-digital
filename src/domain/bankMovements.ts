@@ -1,6 +1,7 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, mainAccount, resolveBoxAccountId } from './bank';
 import { compareMonths, round2 } from './format';
 import { bankDateOf } from './lineExpenses';
+import { creditDateOf, debitDateOf, hasEnvelopesDebit, isEnvelopesPool, movementAccountName } from './internalTransfers';
 import { isItemTransferred } from './movementTargets';
 import type { BudgetData, MonthKey, Transaction } from './types';
 
@@ -56,15 +57,17 @@ function imputationOf(d: BudgetData, t: Transaction): { name: string; type: Tran
   return { name: name ?? 'Supprimé', type: t.type };
 }
 
-/** Both faces of the transfers of an account dated in a month: the same in the real and the estimated balance. */
+/**
+ * Both faces of the transfers of an account dated in a month: the same in the real and the estimated balance. Each face has its own date
+ * (spec 0016, RG14); « Enveloppes (global) » is not an account, so its side is never a movement (RG25, RG27).
+ */
 function transferMovements(d: BudgetData, id: string, m: MonthKey): BankMovement[] {
   const out: BankMovement[] = [];
-  const nameOf = (accountId: string) => d.accounts.find(a => a.id === accountId)?.name ?? '';
+  const nameOf = (accountId: string) => movementAccountName(d, accountId);
   for (const mv of d.accountMovements ?? []) {
-    const date = bankDateOf(mv);
-    if (!date.startsWith(m) || mv.amount === 0) continue;
-    if (mv.fromAccountId === id) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (transfert)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
-    if (mv.toAccountId === id) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (transfert)`, amount: mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.amount === 0) continue;
+    if (mv.fromAccountId === id && !isEnvelopesPool(id) && debitDateOf(mv).startsWith(m)) out.push({ date: debitDateOf(mv), label: `${mv.label} → ${nameOf(mv.toAccountId)} (transfert)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.toAccountId === id && !isEnvelopesPool(id) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (transfert)`, amount: mv.amount, kind: 'transfer', counterpart: true });
   }
   return out;
 }
@@ -107,6 +110,8 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
   const mine = (accountId?: string) => accountIdOf(d, accountId) === id;
   const nameOf = (accountId: string) => d.accounts.find(a => a.id === accountId)?.name ?? '';
   const lines = md?.initialized ? md.lines : [];
+  // A transfer « vers enveloppes » in the month stands for every allocation of that month: none is counted, the main account is debited once (spec 0016, RG28).
+  const pooled = hasEnvelopesDebit(d, m);
 
   // Money sent to another account, once checked, as a fictive counterpart. The main account is never touched by an account out of the
   // budget, which records its own side alone (spec 0009, RG92; spec 0019, RG12: only for fictive counterparts).
@@ -140,14 +145,14 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
       const amount = md.alloc[account.envelopeId] ?? 0;
       const key = envelopeCheckKey(account.envelopeId);
       const c = md.checks?.[key];
-      if (amount === 0 || !c || isItemTransferred(d, m, { kind: 'env', id: account.envelopeId })) continue;
+      if (amount === 0 || !c || pooled || isItemTransferred(d, m, { kind: 'env', id: account.envelopeId })) continue;
       if (id === main) out.push({ date: c.doneOn, label: `Allocation → ${account.name} (pointée)`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
       else if (id === account.id) out.push({ date: c.doneOn, label: `Allocation ${account.name} (pointée)`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
     }
     // Before its account exists, a checked allocation keeps the account recorded when it was checked (spec 0009, RG88, RG90, RG91; spec 0011, RG18).
     for (const e of d.envelopes) {
       const c = md.checks?.[envelopeCheckKey(e.id)];
-      if (!envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), 'pointée');
+      if (!pooled && !envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), 'pointée');
     }
   }
 

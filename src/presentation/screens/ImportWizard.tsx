@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import {
-  accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, isReceivedTransfer, natureLabel, prepareImport,
-  previewCounts, refreshPreview, saveReceivedRules, saveSkipChoices, sessionSummary, validateImport,
+  accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, linkLines, natureLabel, prepareImport,
+  previewCounts, refreshPreview, saveSkipChoices, sessionSummary, syncLinked, unlinkLine, validateImport, withLinkedPartners,
   type ImportBatch, type ImportPreview, type ImportSummary, type LineNature, type PreviewLine, type SessionTotals,
 } from '../../application/statementImport';
 import {
@@ -27,12 +27,12 @@ import { ImportRow, targetFrom } from './ImportRow';
 
 const ABANDON = 'Abandonner l’import en cours ? Les corrections seront perdues.';
 const ABANDON_KEEP = `${ABANDON} Les lignes déjà importées sont conservées.`;
-const NO_TOTALS: SessionTotals = { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0 };
+const NO_TOTALS: SessionTotals = { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0 };
 
 /** « 2 dépenses, 1 retrait » : what a batch wrote, for the session banner. */
 function describeBatch(b: ImportBatch): string {
   const part = (n: number, one: string, many: string) => (n > 0 ? [`${n} ${n > 1 ? many : one}`] : []);
-  return [...part(b.expenses, 'dépense', 'dépenses'), ...part(b.revenues, 'entrée', 'entrées'), ...part(b.withdrawals, 'retrait', 'retraits'), ...part(b.internalTransfers, 'transfert interne', 'transferts internes')].join(', ');
+  return [...part(b.expenses, 'dépense', 'dépenses'), ...part(b.revenues, 'entrée', 'entrées'), ...part(b.withdrawals, 'retrait', 'retraits'), ...part(b.internalTransfers, 'transfert interne', 'transferts internes'), ...part(b.envelopeTransfers, 'virement vers enveloppes', 'virements vers enveloppes'), ...part(b.completedFaces, 'ligne liée à un virement existant', 'lignes liées à un virement existant')].join(', ');
 }
 const NATURE_CHOICES: LineNature[] = ['depense', 'retrait', 'interne', 'externe', 'revenu'];
 
@@ -120,7 +120,8 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
     dropUndo();
   };
   const setLine = (id: string, fn: (l: PreviewLine) => PreviewLine) => {
-    setPreview(p => (p ? { ...p, lines: p.lines.map(l => (l.id === id ? fn(l) : l)) } : p));
+    // The other face of a linked pair follows the edit (checked, month), or the pair is cut if the edit broke it (spec 0016, RG7, RG9).
+    setPreview(p => (p ? { ...p, lines: syncLinked(data, p.lines.map(l => (l.id === id ? fn(l) : l)), id) } : p));
     setKept(k => new Set(k).add(id));
     dropUndo();
   };
@@ -190,8 +191,13 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
     update(d => void validateImport(d, preview, newId, options));
     setDone(new Set([...done, ...batch.importedIds]));
     setFailed(f => new Set([...[...f].filter(id => !batch.importedIds.includes(id)), ...batch.failedIds]));
-    setTotals(t => ({ outsideBalances: (t.outsideBalances ?? 0) + batch.outsideBalances, expenses: t.expenses + batch.expenses, revenues: t.revenues + batch.revenues, withdrawals: t.withdrawals + batch.withdrawals, internalTransfers: t.internalTransfers + batch.internalTransfers }));
-    setLastBatch(describeBatch(batch));
+    setTotals(t => ({
+      outsideBalances: (t.outsideBalances ?? 0) + batch.outsideBalances, expenses: t.expenses + batch.expenses, revenues: t.revenues + batch.revenues, withdrawals: t.withdrawals + batch.withdrawals, internalTransfers: t.internalTransfers + batch.internalTransfers,
+      linkedTransfers: (t.linkedTransfers ?? 0) + batch.linkedTransfers, envelopeTransfers: (t.envelopeTransfers ?? 0) + batch.envelopeTransfers, completedFaces: (t.completedFaces ?? 0) + batch.completedFaces,
+    }));
+    // Never a silent click: say what happened when nothing was written, and how many lines the budget refused.
+    const written = describeBatch(batch);
+    setLastBatch(batch.importedIds.length === 0 ? `Aucune ligne importée${batch.failedIds.length ? ` : ${batch.failedIds.length} refusée${batch.failedIds.length > 1 ? 's' : ''} (lignes marquées)` : ' : les lignes cochées sont incomplètes, déjà importées ou liées à une ligne non cochée'}` : batch.failedIds.length ? `${written} · ${batch.failedIds.length} refusée${batch.failedIds.length > 1 ? 's' : ''}` : written);
     const next = refreshPreview(copy, reading, preview);
     setPreview(next);
     setFilters(f => pruneFilters(f, next.lines));
@@ -205,7 +211,6 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
     // The « Ne pas importer » choices made since the last batch are remembered now (RG74).
     update(d => {
       saveSkipChoices(d, preview, newId);
-      saveReceivedRules(d, preview, newId);
     });
     setSummary(sessionSummary(preview, totals, done, failed));
   };
@@ -258,8 +263,9 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
 
   if (summary) {
     const groups: [string, [string, number][]][] = [
-      ['Importées', [['Dépenses', summary.expenses], ['Entrées d’argent (revenus)', summary.revenues], ['Retraits', summary.withdrawals], ['Transferts internes', summary.internalTransfers]]],
-      ['Ignorées', [['Déjà importées (non réimportées)', summary.duplicatesSkipped], ['Virements reçus (non importés)', summary.incomes], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
+      ['Importées', [['Dépenses', summary.expenses], ['Entrées d’argent (revenus)', summary.revenues], ['Retraits', summary.withdrawals], ['Virements internes', summary.internalTransfers], ['dont liés (deux lignes)', summary.linkedTransfers], ['Virements vers enveloppes', summary.envelopeTransfers]]],
+      ['Liées à un virement existant', [['Lignes qui complètent un virement déjà importé (aucune écriture ajoutée)', summary.completedFaces]]],
+      ['Ignorées', [['Déjà importées (non réimportées)', summary.duplicatesSkipped], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
       ['À vérifier', [['Lignes en erreur', summary.errors], ['Importées avec une date hors soldes', summary.outsideBalances]]],
     ];
     const total = summary.expenses + summary.revenues + summary.withdrawals + summary.internalTransfers;
@@ -423,7 +429,8 @@ function PreviewPane(p: PaneProps) {
   const shownIds = useMemo(() => new Set(shown.map(l => l.id)), [shown]);
   // What an import writes (RG68): the checked, complete lines that are shown (N); the ones a filter hides are K, all of them M.
   const importable = useMemo(() => importableIds(data, preview, p.scope), [data, preview, p.scope]);
-  const shownImportable = new Set([...importable].filter(id => shownIds.has(id)));
+  // A linked pair is imported together: its face hidden by a filter comes along with the shown one (spec 0016, RG7).
+  const shownImportable = new Set([...withLinkedPartners(preview.lines, new Set([...importable].filter(id => shownIds.has(id))))].filter(id => importable.has(id)));
   const N = shownImportable.size;
   const M = importable.size;
   const K = M - N;
@@ -454,6 +461,7 @@ function PreviewPane(p: PaneProps) {
         </button>
       </div>
 
+      {!importedAny && p.lastBatch && <div className="import-session" role="alert">{p.lastBatch}</div>}
       {importedAny && (
         <div className="import-session" role="status">
           <span>
@@ -653,7 +661,14 @@ function PreviewPane(p: PaneProps) {
                         </div>
                       )}
                       {rows.map(l => (
-                        <ImportRow key={l.id} line={l} months={p.months} imported={done.has(l.id)} failed={p.failed.has(l.id)} onChange={fn => p.onLine(l.id, fn)} />
+                        <ImportRow
+                          key={l.id} line={l} months={p.months} imported={done.has(l.id)} failed={p.failed.has(l.id)} onChange={fn => p.onLine(l.id, fn)}
+                          lines={preview.lines} onUnlink={id => p.onLines(unlinkLine(preview.lines, id))}
+                          onLink={(debitId, creditId) => {
+                            const linked = linkLines(data, preview.lines, debitId, creditId);
+                            if (linked) p.onLines(linked);
+                          }}
+                        />
                       ))}
                     </div>
                   );
@@ -732,7 +747,7 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
   const [nature, setNature] = useState('');
   const [target, setTarget] = useState('');
   const [month, setMonth] = useState('');
-  const editable = shown.filter(l => !isReceivedTransfer(l));
+  const editable = shown;
   const natureNow = (nature || 'depense') as LineNature;
   const varLines = new Map<string, string>();
   const fixedLines = new Map<string, string>();

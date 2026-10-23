@@ -128,6 +128,17 @@ export interface Transaction {
   detail?: string;
   /** Real date at the bank, `YYYY-MM-DD` (imported entries): balances rank and date the entry by it; the budget follows `month`. Absent = `month`/`day` (spec 0015, RG1, RG2). */
   bankDate?: string;
+  /** `rev` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
+  source?: string;
+}
+
+/** The trace of one line of the bank file on a transfer: its import key and its date at the bank (spec 0016, RG11). */
+export interface ImportTrace {
+  importAccountId: string;
+  fingerprint: string;
+  rank: number;
+  /** `YYYY-MM-DD`. */
+  bankDate: string;
 }
 
 /**
@@ -148,7 +159,9 @@ export interface AccountMovement {
   label: string;
   /** Positive. */
   amount: number;
+  /** Account debited, or `ENVELOPES_ID` (« Enveloppes (global) »): the credit of an envelope's account whose debit was the global one (spec 0016, RG27). */
   fromAccountId: string;
+  /** Account credited, or `ENVELOPES_ID`: a debit « vers enveloppes », no account credited (spec 0016, RG25). */
   toAccountId: string;
   importAccountId?: string;
   fingerprint?: string;
@@ -160,6 +173,12 @@ export interface AccountMovement {
   bankDate?: string;
   /** Budget item this transfer stands for, in `month` (spec 0019, RG10): it then replaces the item's pointed counterpart in the estimated balance. */
   target?: MovementTarget;
+  /**
+   * Trace of the CREDIT face of an internal transfer imported from the file (spec 0016, RG11). The flat fields above (`importAccountId`, `fingerprint`,
+   * `rank`, `bankDate`) are the trace of the DEBIT face; a movement made from a credit alone has no flat trace, only this one, and its `bankDate` is
+   * that of the credit. Debit trace + credit trace = « Lié »; one of them = « Une face ».
+   */
+  creditTrace?: ImportTrace;
 }
 
 /**

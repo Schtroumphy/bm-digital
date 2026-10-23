@@ -1,12 +1,15 @@
 import { AccountDot } from '../components/AccountPicker';
-import { lineBalanceWarning, destinationAccounts, transferAttachment, isIncome, isLocked, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
+import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
 import { bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
+import { ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget, MovementTarget } from '../../domain/types';
 import { expenseLineAccountId } from '../../domain/lineExpenses';
 import { transferItems } from '../../domain/transfers';
 import { useStore } from '../state/store';
+
+const isEnvelopesTarget = (l: PreviewLine) => l.target?.kind === 'account' && l.target.id === ENVELOPES_ID;
 
 /** One line of the import preview: checkbox, date, label, amount, nature, target, month and state chips (spec 0013). */
 
@@ -33,6 +36,7 @@ function movementTargetFrom(value: string): MovementTarget | null {
 const CHIP_TONE: Record<LineState, string> = {
   nouveau: 'neutral', a_rattacher: 'warn', a_qualifier: 'warn', compte_a_rattacher: 'warn', doublon: 'gray', doublon_probable: 'info',
   semblable_importee: 'info', saisie_manuelle: 'info', mois_different: 'violet', decochee: 'gray', entree: 'green', importee: 'gray', date_hors_soldes: 'warn',
+  lie: 'info', une_face: 'neutral', complete_virement: 'info', appariement_ambigu: 'warn',
 };
 export const chipClass = (s: LineState) => `state-chip is-${CHIP_TONE[s]}`;
 
@@ -44,13 +48,20 @@ interface Props {
   imported?: boolean;
   /** The budget refused this line at the last import (RG76). */
   failed?: boolean;
+  /** All the lines of the preview: to find the other face of a linked pair and the credits a debit can be linked to (spec 0016, RG7, RG9). */
+  lines?: PreviewLine[];
+  /** Links a debit to a credit by hand / unlinks a pair (spec 0016, RG9). */
+  onLink?: (debitId: string, creditId: string) => void;
+  onUnlink?: (id: string) => void;
 }
 
-export function ImportRow({ line: l, months, onChange, imported = false, failed = false }: Props) {
+export function ImportRow({ line: l, months, onChange, imported = false, failed = false, lines = [], onLink, onUnlink }: Props) {
   const { data } = useStore();
-  // `credit`: an entry of money; `income`: one that is only shown (received transfer), never imported (spec 0015, RG17).
+  // `credit`: an entry of money, a « Revenu » or a « Virement interne » received (spec 0016).
   const credit = isIncome(l);
-  const income = isReceivedTransfer(l);
+  const partner = linkedPartner(lines, l);
+  const candidates = !credit && !partner && onLink ? linkCandidates(lines, l.id) : [];
+  const pool = canUseEnvelopesPool(data, l.nature, l.accountId);
   const problem = lineProblem(data, l);
   const account = l.accountId ? bankAccount(data, l.accountId) : undefined;
   const expense = l.nature === 'depense' || l.nature === 'externe';
@@ -69,7 +80,7 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
   const destinations = destinationAccounts(data, l.nature, l.accountId);
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
   // A withdrawal or internal transfer can stand for a budget item of its destination account; the default is proposed (spec 0019, RG15, CA23).
-  const transferChoices = (l.nature === 'retrait' || l.nature === 'interne') && l.target?.kind === 'account' ? transferItems(data, l.month).filter(i => i.toAccountId === (l.target as { id: string }).id) : [];
+  const transferChoices = (l.nature === 'retrait' || l.nature === 'interne') && l.target?.kind === 'account' && !isEnvelopesTarget(l) ? transferItems(data, l.month).filter(i => i.toAccountId === (l.target as { id: string }).id) : [];
   const attached = transferAttachment(data, l);
   const attachValue = attached ? (attached.kind === 'line' ? `line:${attached.key}` : `env:${attached.id}`) : '';
   const states = lineStates(data, l, imported ? new Set([l.id]) : undefined).filter(s => s !== 'decochee');
@@ -100,8 +111,8 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
 
   return (
     <>
-      <div className={`import-grid import-row${l.checked ? '' : ' is-off'}${!income && problem && l.accountId !== null && l.nature !== 'a_qualifier' ? ' is-blocked' : ''}${income ? ' is-income' : ''}`}>
-        <input type="checkbox" checked={l.checked} disabled={income} aria-describedby={l.receivedHint ? `hint:${l.id}` : undefined} onChange={e => onChange(x => ({ ...x, checked: e.target.checked }))} aria-label={income ? 'Virement reçu, non importable' : 'Importer cette ligne'} />
+      <div className={`import-grid import-row${l.checked ? '' : ' is-off'}${problem && l.accountId !== null && l.nature !== 'a_qualifier' ? ' is-blocked' : ''}${partner ? ' is-paired' : ''}`}>
+        <input type="checkbox" checked={l.checked} aria-describedby={l.receivedHint ? `hint:${l.id}` : undefined} onChange={e => onChange(x => ({ ...x, checked: e.target.checked }))} aria-label={partner ? 'Importer ce virement (les deux lignes)' : 'Importer cette ligne'} />
         <span className="muted">{dayLabel(l.row.date.slice(0, 7), Number(l.row.date.slice(8, 10)))}</span>
         <span className="import-label" title={[`${l.row.label} ${l.row.notes}`.trim(), l.receivedHint ? TRANSFER_HINT : ''].filter(Boolean).join('\n')}>
           <span className="ellipsis">
@@ -112,19 +123,7 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
           {l.receivedHint && <span className="sr-only" id={`hint:${l.id}`}>{TRANSFER_HINT}</span>}
         </span>
         <b className={`num import-amount${credit ? ' is-income' : ''}`}>{credit ? money(l.row.amount, true) : money(l.row.amount)}</b>
-        {income ? (
-          <>
-            <select className="su-select" value={l.nature} onChange={e => onChange(x => changeNature(data, x, e.target.value as LineNature))}>
-              {natureOptions(l).map(n => (
-                <option key={n} value={n}>
-                  {natureLabel(n)}
-                </option>
-              ))}
-            </select>
-            <span className="muted">—</span>
-            <span className="muted">{monthLabel(l.month).split(' ')[0]}</span>
-          </>
-        ) : (
+        {(
           <>
             <select className="su-select" value={l.nature} onChange={e => onChange(x => changeNature(data, x, e.target.value as LineNature))}>
               {natureOptions(l).map(n => (
@@ -135,6 +134,23 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
             </select>
             {l.nature === 'a_qualifier' ? (
               <span className="muted">—</span>
+            ) : credit && l.nature === 'recu' ? (
+              // Received transfer: where the money comes from (spec 0016, RG12, RG27). « Enveloppes (global) » is not an account.
+              <select className="su-select" value={targetValue(l.target)} aria-label="Depuis" onChange={e => onChange(x => ({ ...x, target: targetFrom(e.target.value) }))}>
+                <option value="">Depuis…</option>
+                <optgroup label="Comptes">
+                  {destinations.map(a => (
+                    <option key={a.id} value={`account:${a.id}`}>
+                      {a.name}
+                    </option>
+                  ))}
+                </optgroup>
+                {pool && (
+                  <optgroup label="Enveloppes">
+                    <option value={`account:${ENVELOPES_ID}`}>{ENVELOPES_LABEL}</option>
+                  </optgroup>
+                )}
+              </select>
             ) : credit ? (
               <select className="su-select" value={targetValue(l.target)} onChange={e => onChange(x => ({ ...x, target: targetFrom(e.target.value) }))}>
                 <option value="">Choisir…</option>
@@ -181,11 +197,15 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
                     </optgroup>
                   </>
                 ) : (
-                  destinations.map(a => (
-                    <option key={a.id} value={`account:${a.id}`}>
-                      {a.name}
-                    </option>
-                  ))
+                  <>
+                    {destinations.map(a => (
+                      <option key={a.id} value={`account:${a.id}`}>
+                        {a.name}
+                      </option>
+                    ))}
+                    {/* « Enveloppes (global) »: a choice of destination, not an account (spec 0016, RG24). */}
+                    {pool && <option value={`account:${ENVELOPES_ID}`}>{ENVELOPES_LABEL}</option>}
+                  </>
                 )}
               </select>
             )}
@@ -207,6 +227,21 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
           ))}
           {failed && <span className="state-chip is-warn">Refusée par le budget : non importée</span>}
           {l.transferHint && <span className="state-chip is-info">Virement possible vers un de vos comptes</span>}
+          {partner && onUnlink && (
+            <button type="button" className="link-btn" onClick={() => onUnlink(l.id)} title="Rendre les deux lignes indépendantes">
+              Délier
+            </button>
+          )}
+          {candidates.length > 0 && onLink && (
+            <select className="su-select" value="" aria-label="Relier à une entrée" onChange={e => e.target.value && onLink(l.id, e.target.value)}>
+              <option value="">Relier à une entrée…</option>
+              {candidates.map(c => (
+                <option key={c.id} value={c.id}>
+                  {dayLabel(c.row.date.slice(0, 7), Number(c.row.date.slice(8, 10)))} · {c.row.label} · {bankAccount(data, c.accountId ?? undefined)?.name ?? ''}
+                </option>
+              ))}
+            </select>
+          )}
           {boxAccount && boxAccount !== l.accountId && <span className="state-chip is-neutral">Compte de la box : {bankAccount(data, boxAccount)?.name ?? ''}</span>}
         </span>
       </div>
@@ -214,6 +249,12 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
         <div className="import-remember">
           <span>Nom de la nouvelle ligne de revenu</span>
           <input className="text-input" value={l.newLineName} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, newLineName: e.target.value }))} aria-label="Nom de la nouvelle ligne de revenu" />
+        </div>
+      )}
+      {l.nature === 'revenu' && l.target && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE) && (
+        <div className="import-remember">
+          <label htmlFor={`source:${l.id}`}>Source</label>
+          <input id={`source:${l.id}`} className="text-input" value={l.source ?? ''} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, source: e.target.value }))} aria-label="Source du revenu" />
         </div>
       )}
       {transferChoices.length > 0 && (
@@ -227,7 +268,7 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
           </select>
         </div>
       )}
-      {(income || (l.target && l.nature !== 'a_qualifier' && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE))) && (
+      {l.target && l.nature !== 'a_qualifier' && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE) && (
         <div className="import-remember">
           {l.remember === null ? (
             <button type="button" className="link-btn" onClick={() => onChange(x => ({ ...x, remember: x.suggestedPattern }))}>

@@ -198,7 +198,7 @@ describe('état « Importée » et filtres (RG70)', () => {
 });
 
 describe('compte traité (RG71, RG73)', () => {
-  it('CA77 / RG19a(4): traité quand ses dépenses et ses entrées « Revenu » sont importées ou déjà importées ; un « Virement reçu » n’y compte pas', () => {
+  it('CA77 / RG19a(4): traité quand ses dépenses et ses entrées « Revenu » sont importées ou déjà importées ; un « Virement interne » reçu sans compte source reste à faire', () => {
     const d = budget();
     const p = ready(d);
     const swile = keyOf(SWILE_PAIR);
@@ -207,9 +207,9 @@ describe('compte traité (RG71, RG73)', () => {
     const done = new Set(batch.importedIds);
     // L'entrée « Revenu » non importée reste une ligne restante.
     expect(accountProgress(p, swile, done)).toMatchObject({ imported: 2, remaining: 1, treated: false });
-    // Requalifiée « Virement reçu » à la main, elle n'en fait plus partie.
+    // Requalifiée « Virement interne » (reçu) à la main, elle reste à faire tant que son compte source n'est pas choisi (spec 0016).
     const recu = { ...p, lines: p.lines.map(l => (l.row.direction === 'credit' ? changeNature(d, l, 'recu') : l)) };
-    expect(accountProgress(recu, swile, done)).toMatchObject({ imported: 2, remaining: 0, treated: true });
+    expect(accountProgress(recu, swile, done)).toMatchObject({ imported: 2, remaining: 1, treated: false });
   });
 
   it('CA78: une ligne décochée volontairement laisse le compte à traiter avec « 1 ligne restante »', () => {
@@ -251,7 +251,7 @@ describe('cumul de la session et rafraîchissement (RG75, RG80)', () => {
     const totals = { expenses: totals1.expenses + b2.expenses, revenues: 0, withdrawals: 0, internalTransfers: 0 };
     expect(totals.expenses).toBe(3);
     const sum = sessionSummary(p, totals, done);
-    expect(sum).toMatchObject({ expenses: 3, incomes: 0, leftOut: 2, outsideBalances: 0, duplicatesSkipped: 0, errors: 0 }) // CANTINE et l'entrée « Revenu » restent à part;
+    expect(sum).toMatchObject({ expenses: 3, leftOut: 2, outsideBalances: 0, duplicatesSkipped: 0, errors: 0 }) // CANTINE et l'entrée « Revenu » restent à part;
     expect(d.transactions).toHaveLength(3);
   });
 
