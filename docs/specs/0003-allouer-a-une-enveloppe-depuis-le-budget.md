@@ -27,7 +27,7 @@ Exclus :
 
 - RG1. Un clic sur une tuile d'enveloppe, ailleurs que sur le nom, met en édition un champ contenant l'allocation actuelle du mois, sélectionnée. Un clic sur le nom reste l'édition du nom (comportement actuel).
 - RG2. À la validation (Entrée ou perte de focus), la valeur saisie remplace l'allocation du mois de cette enveloppe : « alloué X » devient « alloué N » (N = valeur saisie).
-- RG3. Le solde affiché en gros varie de la différence N - X (le solde inclut l'allocation du mois), à la hausse ou à la baisse. Le « Reste à placer » varie de la différence inverse, X - N (les allocations comptent dans les dépenses).
+- RG3. Le solde affiché en gros varie de la différence N - X (le solde inclut l'allocation du mois), à la hausse ou à la baisse. Le « Reste à placer » varie de la différence inverse, X - N (les allocations sont retirées du « Reste à placer »). **Amendement** : la carte « Dépenses » ne compte plus les allocations ; elles ne figurent que dans « Épargne budgétisée », de sorte que Dépenses + Épargne budgétisée = Revenus quand le « Reste à placer » est à 0 €.
 - RG4. Échap annule la saisie : rien n'est modifié.
 - RG5. Les montants négatifs sont refusés : la saisie n'est pas validée, un message d'erreur court est affiché dans la tuile (par exemple « Montant positif ou nul requis ») et le champ reste ouvert. 0 est valide : il vide l'allocation du mois. Une saisie vide ne modifie rien (ni le mois, ni le modèle).
 - RG6. Si le mois est verrouillé (année clôturée) ou non initialisé, les tuiles ne sont pas éditables (pas de curseur d'édition, pas de champ).
