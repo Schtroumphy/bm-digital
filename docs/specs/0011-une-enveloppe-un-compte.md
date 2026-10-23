@@ -185,3 +185,9 @@ Q11. Quand un compte d'enveloppe est le compte de départ d'une ligne `fix` / `c
 - D3. « Payé avec » figé aussi pour les dépenses variables (`var`) dont la ligne a un compte attribué (spec 0006, amendée) : interface désactivée sur ce compte, et `addTransaction` / `setTransactionAccount` refusent un autre compte. Une ligne en mode Espèces, sans compte attribué, ou dont le compte attribué est archivé, laisse le choix. Une dépense d'enveloppe reste sur le compte de l'enveloppe (imposé par `addTransaction`).
 - D4. La migration de données (RG15 à RG20, CA7 à CA9, CA13, CA16, CA20, bandeau, `Settings.envelopeAccountsNotice`) est supprimée : l'application n'est pas encore utilisée. Seule reste la lecture de l'historique avant l'ouverture du compte (RG16, Q5).
 - D5. Acceptés tels quels : mode pointage à la création, suppression refusée si le solde n'est pas nul (pas de transfert pour l'instant), comptes d'enveloppe absents de la carte de pointage.
+
+## Amendement — spec 0019 (implémentée)
+
+- L'allocation d'une enveloppe est un débit **fictif** (pointage) : elle ne bouge plus le solde réel des comptes. L'alimentation réelle est un **transfert** du principal vers le compte de l'enveloppe, avec la cible facultative « enveloppe ». Le transfert rattaché remplace la contrepartie fictive de l'allocation pointée dans le solde estimé.
+- Le solde propre de l'enveloppe du Ledger (`envMonth`) reste budgétaire (début + allocation − dépensé) ; le solde réel de son compte est `bankMonth`.
+- La case de pointage de l'allocation n'a plus de condition de mois « au pointage ».

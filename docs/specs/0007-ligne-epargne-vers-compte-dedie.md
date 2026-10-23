@@ -191,3 +191,7 @@ Aucune. Décisions intégrées :
 - Pas de maquette : design proposé.
 - Compte principal ou Espèces autorisés comme dédié (RG5).
 - Pas de rattachement des versements passés (RG9).
+
+## Amendement — spec 0019 (implémentée)
+
+Le versement d'une ligne d'épargne vers son compte dédié n'est plus déduit du réel de la ligne : le pointage est un débit/crédit fictif (solde estimé seulement), et le réel de la ligne est la somme des **transferts** rattachés à la ligne. Une ligne sans compte dédié n'a pas de réel (infobulle « Rattachez un compte dédié pour suivre le réel »). Le solde estimé de la ligne (budget en attente) est inchangé.

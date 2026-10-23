@@ -834,3 +834,11 @@ Numérotation : RG120 à RG125, CA119 à CA125. La spec 0007 (compte dédié d'u
 - CA123 (T). Transaction `epa` sur une ligne liée en mode pointage : sort du dédié à son jour.
 - CA124 (T). Mois au réel avec un compte dédié : crédit au 1er du mois, retraits à leur jour, Solde estimé = écran Comptes.
 - CA125 (T). Non-double-comptage (RG125) et ventilation de `flowOf` par signe (RG124).
+
+## Amendement du 2026-10-23 (10) — spec 0019 (pointage fictif et soldes réels, implémentée)
+
+- Le pointage (« reçu », « fait », versement, allocation, ligne `var` vers un compte dédié) est un débit ou crédit **fictif** : il alimente le solde estimé et les indicateurs budgétaires, jamais un solde réel.
+- `pointageStart`, les modes « au réel » / « au pointage » (RG59 à RG61, RG72, RG73) et leur réglage sont supprimés : le solde estimé est toujours calculé au pointage. L'égalité « écran Comptes = solde estimé » (CA49 et suivants) est remplacée par les propriétés de la 0019.
+- L'écart du relevé se calcule contre le **solde réel** ; la régularisation ne corrige que le solde réel.
+- RG92 (isolation des comptes hors budget) est limité aux contreparties fictives et à la liste grise ; un transfert compte toujours ses deux faces. Les anciens virements « faits » sont ignorés.
+- « Reste à sortir » et « Revenus attendus » pèsent le budget des lignes.

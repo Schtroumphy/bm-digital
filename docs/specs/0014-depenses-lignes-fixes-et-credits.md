@@ -166,3 +166,11 @@ Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes
 ## Questions ouvertes
 
 Aucune. Décisions du développeur intégrées : implémentation après la 0013 ; réel alimenté par les dépenses avec remplacement après confirmation et réel remplacé perdu à la suppression de la dernière dépense ; « Reste à sortir » inchangé (risque de marge accepté, RG13, CA13a) ; lien budget ↔ réalité renvoyé à la spec 0018. Date bancaire distincte du mois de rattachement pour toutes les écritures : spec 0015 (la 0014 garde `month`/`day`).
+
+## Amendement 1 — spec 0019 (pointage fictif et soldes réels, implémentée)
+
+La [spec 0019](0019-pointage-fictif-et-soldes-reels.md) remplace les règles « ligne portée » de cette spec :
+- Supprimés : RG9 à RG12 et CA8 à CA12 (la ligne portée n'a plus de règle propre dans les soldes), la modification de `bankMovements`, CA13a et le « risque accepté ».
+- RG5 devient « le réel est la somme des écritures » ; supprimés : RG6, RG7, CA6, CA7 et l'état d'aperçu « Réel saisi à remplacer » (CA20).
+- Conservés : cibles `line`, compte de la ligne, import, règles mémorisées, migration du `check`.
+- Une dépense sur une ligne `fix`/`cre` est une écriture réelle : elle compte dans le solde réel à sa date, jamais dans le solde estimé (la ligne y entre par son pointage). « Reste à sortir » reste budgétaire.

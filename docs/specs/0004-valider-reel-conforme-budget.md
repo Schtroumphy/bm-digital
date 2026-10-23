@@ -109,3 +109,7 @@ Hypothèses à confirmer par le développeur :
 2. RG12 : les lignes d'un compte hors budget sont incluses dans la validation.
 3. Durée du toast (5 s proposées) et comportement au changement de mois (toast retiré).
 4. Année clôturée : bouton grisé ou bandeau masqué.
+
+## Amendement — spec 0019 (abandon sur ce point)
+
+« Valider le mois » et son annulation sont supprimés par la [spec 0019](0019-pointage-fictif-et-soldes-reels.md) : le réel d'une ligne n'est plus une saisie, c'est la somme de ses écritures ; le « fait » se dit par le pointage.
