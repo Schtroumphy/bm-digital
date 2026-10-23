@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
+import { DetailInput } from '../components/DetailInput';
 import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
-import { addTransaction, deleteTransaction, deleteTransactions, setStatement } from '../../application/actions';
-import { deleteAccountMovement, updateAccountMovement } from '../../application/accountMovements';
+import { addTransaction, deleteTransaction, deleteTransactions, setStatement, setTransactionDetail } from '../../application/actions';
+import { deleteAccountMovement, setAccountMovementDetail, updateAccountMovement } from '../../application/accountMovements';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { actualReplacedBy, expenseLineBlocker, isExpenseLineBlock, lineExpensesTotal } from '../../domain/lineExpenses';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
+import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
@@ -55,6 +57,25 @@ function defaultDay(month: MonthKey) {
   return new Date(year, m + 1, 0).getDate();
 }
 
+/** Libellé d'une écriture (+ détail) : clic souris sur le libellé, et crayon (seul arrêt clavier) visible au survol/focus pour ajouter ou modifier le détail. */
+function EntryLabel({ entry, onOpen }: { entry: { id: string; label: string; detail?: string }; onOpen: (id: string, detail?: string) => void }) {
+  const open = () => onOpen(entry.id, entry.detail);
+  const editLabel = entry.detail ? 'Modifier le détail' : 'Ajouter un détail';
+  return (
+    <div className="entry-cell">
+      <div className="entry-label" title={entry.detail ? `${entry.label}\n${entry.detail}` : editLabel} onClick={open}>
+        <div className="ellipsis" style={{ fontWeight: 500 }}>
+          {entry.label}
+        </div>
+        {entry.detail && <div className="entry-detail">{entry.detail}</div>}
+      </div>
+      <button type="button" className="entry-edit" aria-label={editLabel} title={editLabel} onClick={open}>
+        <Icon name="pencil" size={12} stroke={2} />
+      </button>
+    </div>
+  );
+}
+
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <div className={`chip${on ? ' is-on' : ''}`} onClick={onClick}>
@@ -67,9 +88,18 @@ function EntryTab({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', amount: '', type: 'var', target: '', accountId: '' });
+  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '' });
   const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string }>({ q: '', type: 'all', accountId: 'all' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
+  const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
+  const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
+  const saveDetail = () => {
+    if (!editingDetail) return;
+    const { id, text } = editingDetail;
+    update(d => void setTransactionDetail(d, id, text));
+    setEditingDetail(null);
+  };
 
   const targets: [string, string][] =
     form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : form.type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, `${l.name} (${l.block === 'cre' ? 'Crédit' : 'Fixe'}, ${bankAccount(data, l.accountId)?.name ?? ''})`]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
@@ -90,11 +120,10 @@ function EntryTab({ month }: { month: MonthKey }) {
 
   const s = monthSummary(data, ledger, month);
   const txs = data.transactions.filter(t => t.month === month);
-  const q = filter.q.trim().toLowerCase();
   const shown = txs
     .filter(t => filter.type === 'all' || t.type === filter.type)
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId)
-    .filter(t => !q || t.label.toLowerCase().includes(q))
+    .filter(t => matchesEntrySearch(t, filter.q))
     .sort((a, b) => b.day - a.day);
   // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
   const picked = shown.filter(t => selected.has(t.id));
@@ -155,10 +184,10 @@ function EntryTab({ month }: { month: MonthKey }) {
     const replaced = form.type === 'fix' ? actualReplacedBy(data, month, target) : null;
     if (replaced !== null && !window.confirm(`Cette ligne a un réel saisi de ${money(replaced)}. L’enregistrer le remplacera par le montant des dépenses et il ne sera pas restauré si vous supprimez ensuite la dépense. Remplacer ?`)) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId }, { replaceActual: replaced !== null }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail }, { replaceActual: replaced !== null }),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', amount: '', accountId: '' }));
+    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -173,10 +202,14 @@ function EntryTab({ month }: { month: MonthKey }) {
     <div className="dep-layout">
       <div className="panel-lg form-card">
         <div className="form-title">Nouvelle dépense</div>
-        <div className="form-row">
+        <div className="form-row has-detail">
           <label className="field-w">
             <span className="field-label">Libellé</span>
             <input className="text-input" value={form.label} placeholder="Ex. Pharmacie" onChange={e => setForm(f => ({ ...f, label: e.target.value }))} onKeyDown={e => e.key === 'Enter' && add()} />
+          </label>
+          <label className="field-w">
+            <span className="field-label">Détail</span>
+            <DetailInput value={form.detail} onChange={detail => setForm(f => ({ ...f, detail }))} onEnter={add} />
           </label>
           <label className="field-w">
             <span className="field-label">Montant</span>
@@ -248,7 +281,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             <b>{money(txs.reduce((a, t) => a + t.amount, 0))}</b>
           </div>
           <div className="tx-filters">
-            <input className="text-input" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
+            <input className="text-input" value={filter.q} placeholder="Rechercher un libellé ou un détail" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
             <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>
               <option value="all">Tous les types</option>
               {(Object.keys(TYPE_LABEL) as TxType[]).map(t => (
@@ -289,25 +322,33 @@ function EntryTab({ month }: { month: MonthKey }) {
             <span />
           </div>
           {shown.map(t => (
-            <div key={t.id} className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
-              <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} disabled={locked} onChange={() => toggle(t.id)} />
-              <span className="muted">{dayLabel(t.month, t.day)}</span>
-              <span className="ellipsis" style={{ fontWeight: 500 }}>
-                {t.label}
-              </span>
-              <span className="tx-target">
-                <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
-                <span className="ellipsis">{targetName(t.type, t.target)}</span>
-                <span className="tx-type">{TYPE_LABEL[t.type]}</span>
-              </span>
-              <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
-              <b className="num">{money(t.amount)}</b>
-              {locked ? <span /> : (
-                <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
-                  <Icon name="close" size={14} />
+            <Fragment key={t.id}>
+              <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
+                <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} disabled={locked} onChange={() => toggle(t.id)} />
+                <span className="muted">{dayLabel(t.month, t.day)}</span>
+                <EntryLabel entry={t} onOpen={openDetail} />
+                <span className="tx-target">
+                  <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
+                  <span className="ellipsis">{targetName(t.type, t.target)}</span>
+                  <span className="tx-type">{TYPE_LABEL[t.type]}</span>
                 </span>
+                <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
+                <b className="num">{money(t.amount)}</b>
+                {locked ? <span /> : (
+                  <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
+                    <Icon name="close" size={14} />
+                  </span>
+                )}
+              </div>
+              {editingDetail?.id === t.id && (
+                <div className="detail-edit">
+                  <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: t.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />
+                  <span className="icon-btn" title="Enregistrer le détail" onClick={saveDetail}>
+                    <Icon name="check" size={14} />
+                  </span>
+                </div>
               )}
-            </div>
+            </Fragment>
           ))}
           {txs.length > 0 && shown.length === 0 && <div className="empty">Aucune dépense ne correspond aux filtres.</div>}
           {txs.length === 0 && <div className="empty">Aucune dépense saisie ce mois-ci.</div>}
@@ -322,13 +363,22 @@ function EntryTab({ month }: { month: MonthKey }) {
 /** Movements between accounts created by the import (spec 0013, RG10d): edited (label, amount) or deleted, never created here. */
 function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean }) {
   const { data, update } = useStore();
-  const [editing, setEditing] = useState<{ id: string; label: string; amount: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string } | null>(null);
+  // Detail-only editing, also on a locked month (spec 0020, RG6, RG11).
+  const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
   const movements = (data.accountMovements ?? []).filter(m => m.month === month);
   if (movements.length === 0) return null;
+  const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
+  const saveDetail = () => {
+    if (!editingDetail) return;
+    const { id, text } = editingDetail;
+    update(d => void setAccountMovementDetail(d, id, text));
+    setEditingDetail(null);
+  };
   const nameOf = (id: string) => data.accounts.find(a => a.id === id)?.name ?? 'Supprimé';
   const save = () => {
     if (!editing) return;
-    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0 }));
+    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail }));
     setEditing(null);
   };
   return (
@@ -341,40 +391,50 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
         .sort((a, b) => b.day - a.day)
         .map(m =>
           editing?.id === m.id ? (
-            <div key={m.id} className="mv-grid tx-row">
-              <span className="muted">{dayLabel(m.month, m.day)}</span>
-              <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
-              <span className="muted ellipsis">
-                {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
-              </span>
-              <input className="text-input is-amount" value={editing.amount} inputMode="decimal" onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
-              <span className="icon-btn" title="Enregistrer" onClick={save}>
-                <Icon name="check" size={14} />
-              </span>
-            </div>
-          ) : (
-            <div key={m.id} className="mv-grid tx-row">
-              <span className="muted">{dayLabel(m.month, m.day)}</span>
-              <span className="ellipsis" style={{ fontWeight: 500 }}>
-                {m.label}
-              </span>
-              <span className="muted ellipsis">
-                {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
-              </span>
-              <b className="num">{money(m.amount)}</b>
-              {locked ? (
-                <span />
-              ) : (
-                <span style={{ display: 'flex', gap: 4 }}>
-                  <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ',') })}>
-                    <span style={{ fontSize: 11 }}>Modifier</span>
-                  </span>
-                  <span className="icon-btn" title="Supprimer" onClick={() => update(d => void deleteAccountMovement(d, m.id))}>
-                    <Icon name="close" size={14} />
-                  </span>
+            <Fragment key={m.id}>
+              <div className="mv-grid tx-row">
+                <span className="muted">{dayLabel(m.month, m.day)}</span>
+                <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
+                <span className="muted ellipsis">
+                  {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                 </span>
+                <input className="text-input is-amount" value={editing.amount} inputMode="decimal" onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
+                <span className="icon-btn" title="Enregistrer" onClick={save}>
+                  <Icon name="check" size={14} />
+                </span>
+              </div>
+              <div className="detail-edit">
+                <DetailInput value={editing.detail} onChange={detail => setEditing({ ...editing, detail })} onEnter={save} />
+              </div>
+            </Fragment>
+          ) : (
+            <Fragment key={m.id}>
+              <div className="mv-grid tx-row">
+                <span className="muted">{dayLabel(m.month, m.day)}</span>
+                <EntryLabel entry={m} onOpen={openDetail} />
+                <span className="muted ellipsis">
+                  {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
+                </span>
+                <b className="num">{money(m.amount)}</b>
+                {locked ? (
+                  <span />
+                ) : (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '' })}>
+                      <span style={{ fontSize: 11 }}>Modifier</span>
+                    </span>
+                    <span className="icon-btn" title="Supprimer" onClick={() => update(d => void deleteAccountMovement(d, m.id))}>
+                      <Icon name="close" size={14} />
+                    </span>
+                  </span>
+                )}
+              </div>
+              {editingDetail?.id === m.id && (
+                <div className="detail-edit">
+                  <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: m.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />
+                </div>
               )}
-            </div>
+            </Fragment>
           ),
         )}
       <div style={{ height: 8 }} />
