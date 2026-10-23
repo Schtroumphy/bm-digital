@@ -19,7 +19,7 @@ Le développeur veut rattacher une dépense à une ligne fixe ou crédit, par sa
 Conséquences :
 - Les soldes des comptes se calculent à partir des dépenses (RG9). Le pointage et « Reste à sortir » restent des indicateurs budgétaires, non modifiés par les dépenses (RG10, RG13).
 - Le réel de la ligne est alimenté par ses dépenses ; un réel saisi est remplacé après confirmation (RG5, RG6).
-- Le lien budget ↔ réalité (pointage « confirmé par une dépense », couleur différente, indicateur de marge réelle) est renvoyé à la spec 0017.
+- Le lien budget ↔ réalité (pointage « confirmé par une dépense », couleur différente, indicateur de marge réelle) est renvoyé à la spec 0018.
 
 ## Périmètre
 
@@ -31,13 +31,15 @@ Inclus :
 - Règles mémorisées de l'import vers ces lignes.
 - Schéma : nouvelle migration additive.
 
-Exclus : lignes de revenus (`rev`, spec 0015) et d'épargne/invest (`epa`, `inv`), double pointage, rapprochement automatique et suivi des vraies sorties au niveau budget (spec 0017), lien d'une dépense avec une case de pointage (le pointage reste un statut indépendant), plusieurs comptes pour une même ligne, revue de l'affichage comptes/objectifs, bilan annuel.
+Exclus : lignes de revenus (`rev`, spec 0015) et d'épargne/invest (`epa`, `inv`), double pointage, rapprochement automatique et suivi des vraies sorties au niveau budget (spec 0018), lien d'une dépense avec une case de pointage (le pointage reste un statut indépendant), plusieurs comptes pour une même ligne, revue de l'affichage comptes/objectifs, bilan annuel.
 
 ## Règles de gestion
 
 Cible et compte
 - RG1. Une dépense peut cibler une ligne du mois de son rattachement dont le bloc est `fix` ou `cre`. Les lignes `informatif` (spec 0009, RG18) sont aussi ciblables : « informatif » ne concerne que la case et le « Reste à sortir ».
 - RG2. Compte de la dépense = compte de la ligne (`accountId`, absent = compte principal). Aucune dépense ne peut être enregistrée sur une ligne `fix`/`cre` avec un autre compte (comme pour une ligne `var` à compte attribué, spec 0006 amendée).
+- RG2a. Le compte d'une ligne `fix`/`cre` ne peut pas être changé tant qu'elle porte des dépenses : le changement est refusé avec le message « Cette ligne porte des dépenses : supprimez-les ou déplacez-les avant de changer son compte. » Sur l'écran Budget, le sélecteur de compte de la ligne est désactivé tant qu'elle porte des dépenses.
+- RG2b. Une dépense est refusée sur une ligne dont le compte est archivé : message « Le compte de cette ligne (X) est archivé : désarchivez-le pour enregistrer une dépense. » (X = nom du compte). Le bouton de saisie est désactivé dans ce cas.
 - RG3. À l'import, seules sont proposées comme cible les lignes `fix`/`cre` dont le compte est le compte résolu de la ligne importée (spec 0013, RG33). Une ligne d'un compte d'enveloppe n'accepte toujours que cette enveloppe (spec 0013 amendement 1, spec 0011 RG2) : aucune ligne `fix`/`cre` n'est proposée.
 - RG4. Une dépense sur ligne `fix`/`cre` est un montant positif (une sortie d'argent), comme les autres dépenses. Les types de dépense existants (`var`, `env`, `epa`) et leur comportement sont inchangés.
 
@@ -49,13 +51,14 @@ Réel de la ligne
 
 Ligne « portée par ses dépenses » (anti-double-compte, décision B1)
 - RG9. Dès qu'une ligne `fix`/`cre` porte au moins une dépense, ses mouvements d'argent viennent de ses dépenses, à leur date : son propre mouvement (réel du 1er du mois en mois « au réel », montant pointé à la date du pointage en mois « au pointage ») n'est plus compté dans les soldes (écran Comptes, solde estimé). Sans dépense, rien ne change.
-- RG10. Le pointage de la ligne reste possible et garde son rôle de statut (case cochée, date, badge de retard, spec 0009) mais n'a plus d'effet sur les soldes tant que la ligne porte des dépenses. L'interface l'indique (« Pointage sans effet : la ligne est portée par ses dépenses »).
+- RG10. Le pointage de la ligne reste possible et garde son rôle de statut (case cochée, date, badge de retard, spec 0009) mais n'a plus d'effet sur les soldes tant que la ligne porte des dépenses. L'interface l'indique dans l'infobulle de la ligne et de la case (« Pointage sans effet : la ligne est portée par ses dépenses »), sans rien ajouter de visible sur la ligne.
 - RG11. Une ligne pointée ET portant une dépense compte une seule fois, au montant de ses dépenses, à leur date. Pointer ou dépointer ne change aucun solde.
 - RG12. Quand la dernière dépense d'une ligne est supprimée, la ligne reprend son mouvement propre (réel vide : montant budgété à la date du pointage s'il est pointé, sinon rien).
 
 « Reste à sortir » et totaux
-- RG13. « Reste à sortir » reste un indicateur purement budgétaire : il n'est PAS modifié par les dépenses d'une ligne `fix`/`cre` (ni sortie de la ligne, ni écart budget moins dépenses). Une ligne non pointée y garde son montant (budget, ou réel si présent, spec 0009 RG76) ; une ligne pointée en sort, comme aujourd'hui. Le suivi réel est porté par les comptes et soldes.
-  - RISQUE ACCEPTÉ par le développeur : le solde estimé compte déjà la dépense (RG9) alors que « Reste à sortir » compte encore la ligne tant qu'elle n'est pas pointée ; la marge (solde estimé moins reste à sortir) compte alors deux fois la même sortie. Le décalage disparaît au pointage de la ligne. Il sera traité dans la spec 0017 (indicateur de marge réelle, lien pointage ↔ dépense). Aucun correctif dans cette spec.
+- RG13. « Reste à sortir » reste un indicateur purement budgétaire : il n'est PAS modifié par les dépenses d'une ligne `fix`/`cre` (ni sortie de la ligne, ni écart budget moins dépenses). Une ligne `fix`/`cre` non pointée et portée par ses dépenses ne pèse que son BUDGET, jamais le réel alimenté par ses dépenses : avec 60 € ou 80 € de dépense sur 62 € budgétés, elle laisse 62 € dans « Reste à sortir ». Une ligne non portée (sans dépense) avec un réel saisi garde la règle de la spec 0009 (RG76 : réel s'il existe, sinon budget). Une ligne pointée en sort, comme aujourd'hui. Le suivi réel est porté par les comptes et soldes.
+  - RISQUE ACCEPTÉ par le développeur : le solde estimé compte déjà la dépense (RG9) alors que « Reste à sortir » compte encore la ligne tant qu'elle n'est pas pointée ; la marge (solde estimé moins reste à sortir) compte alors deux fois la même sortie. Le décalage disparaît au pointage de la ligne. Il sera traité dans la spec 0018 (indicateur de marge réelle, lien pointage ↔ dépense). Aucun correctif dans cette spec.
+- RG13a. L'annulation de « Valider le mois » (spec 0004) ne vide pas le réel d'une ligne portée par ses dépenses : seul un réel recopié du budget est remis à vide.
 - RG14. Les totaux de l'écran Budget (réel, écart, bilan du mois) lisent le réel de la ligne : ils reflètent les dépenses sans changement de calcul.
 - RG15. Les mois clos ou verrouillés (spec 0004/0010) n'acceptent ni ajout ni suppression de dépense sur ces lignes, comme pour les autres. Une dépense existante d'un mois clos garde son effet sur les soldes.
 - RG16. La clôture d'année lit les soldes issus du Ledger : elle reflète les règles RG9 à RG12 sans règle propre.
@@ -80,6 +83,8 @@ Cas limites :
 - Mois clos : ajout et suppression refusés (RG15).
 - Plusieurs dépenses : somme (RG8). Montant différent du budget : accepté.
 - Ligne sur un compte différent du compte résolu de l'import : non proposée (RG3).
+- Changement du compte d'une ligne qui porte des dépenses : refusé (RG2a). Ligne dont le compte est archivé : dépense refusée (RG2b).
+- Annulation de « Valider le mois » : le réel d'une ligne portée n'est pas vidé (RG13a).
 - Ligne d'un autre mois que celui de la date (salaire/prélèvement de fin de mois) : mois de rattachement choisi, la ligne est cherchée dans ce mois.
 - Doublon à l'import : inchangé (déduplication de la 0013).
 
@@ -101,7 +106,9 @@ Nouvelle dépense
      et il ne sera pas restauré si vous supprimez ensuite la dépense. »
                                           [Annuler] [Remplacer]
 ```
-Écran Budget, ligne portant des dépenses : le réel s'affiche comme pour `var` (non éditable, infobulle « somme des dépenses »), avec un petit indicateur « n dépenses » ; la case de pointage reste visible avec la mention « sans effet sur les soldes ».
+Principe (décision du développeur) : toute nouvelle information d'une ligne de liste est dans l'infobulle, jamais ajoutée sur la ligne, pour ne pas la surcharger.
+
+Écran Budget, ligne portant des dépenses : rien de nouveau n'est visible. La ligne reste sur une seule ligne, avec les mêmes hauteur et alignement qu'une ligne sans dépense ; le réel s'affiche comme pour `var` (non éditable). L'infobulle de la ligne et celle de la case donnent : le nombre de dépenses (« n dépenses, somme des dépenses »), « Pointage sans effet : la ligne est portée par ses dépenses » et le compte imposé par la ligne. La case de pointage reste visible et toujours cochable. Pour les lecteurs d'écran, la même information est fournie par un texte visuellement masqué rattaché à la case (`aria-describedby`) et par un `aria-label` ; le sélecteur de compte de la ligne est désactivé (RG2a).
 
 Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes variables, Enveloppes, Lignes fixes, Crédits.
 ```
@@ -115,7 +122,7 @@ Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes
 - Domaine : nouveau(x) type(s) de dépense pour une ligne `fix`/`cre` (cible = clé de ligne), à côté de `var`, `env`, `epa` dans `Transaction` ; règle de compte (RG2) ; `bankMovements` : une ligne `fix`/`cre` portant au moins une dépense ne produit plus son propre mouvement (réel du 1er, mouvement du pointage, contrepartie de compte lié) ; les dépenses sont déjà comptées comme dépenses du compte, donc sans nouveau mouvement ; test de non-régression des soldes (écran Comptes = solde estimé, spec 0009, CA49 et suivants) ; `pendingLines` (« Reste à sortir ») n'est pas modifié (RG13, risque de marge accepté) ; le calcul du « réel » des totaux de l'écran Budget n'est pas modifié.
 - Application : `addTransaction` accepte les nouveaux types (refus si mois verrouillé, compte différent de celui de la ligne, ligne introuvable ou hors blocs `fix`/`cre` ; réel déjà saisi et ligne sans dépense : remplacement après confirmation explicite (RG6)) et alimente le réel (RG5) ; `deleteTransaction` retire la part du réel et le remet à vide à la dernière dépense (RG7, RG12) ; l'édition manuelle du réel est refusée si la ligne porte des dépenses ; le sélecteur de cible de la 0013 (`ImportTarget`, `targetIsValid`, `validateImport`) accepte la cible ligne fixe/crédit et applique RG3, RG6, RG20 ; les règles mémorisées (`ImportRule.target`) acceptent cette cible.
 - Infrastructure / schéma Supabase : NOUVELLE migration additive qui élargit le `check` sur `transactions.type` (aujourd'hui `('var','env','epa')`) aux nouveaux types ; la migration `init_schema` n'est pas modifiée ; adaptation de la cible des règles `import_rules` si elle est typée en base ; conversion domaine ↔ lignes (`supabaseRows`) et `database.types.ts` régénéré ; test de contrat `BudgetRepository` étendu avec une dépense sur ligne fixe.
-- Présentation : formulaire « Nouvelle dépense » (Saisie), ligne de l'écran Budget (réel non éditable, indicateur, mention du pointage), sélecteur de cible de l'aperçu d'import (`ImportWizard`).
+- Présentation : formulaire « Nouvelle dépense » (Saisie), ligne de l'écran Budget (réel non éditable, infobulle, texte masqué pour lecteurs d'écran, sans élément visible ajouté), sélecteur de cible de l'aperçu d'import (`ImportWizard`).
 - Impact sur la 0013 (écrite, à livrer telle quelle avant) : `csvImport.ts`, `ImportWizard.tsx`, cible des `ImportRule` ; les données déjà écrites (`var`, `env`) restent valides.
 - Documentation : architecture (lignes portées par leurs dépenses, anti-double-compte) ; ADR sur cette règle.
 
@@ -136,10 +143,15 @@ Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes
 - CA11. Given une ligne portant sa dernière dépense (ayant remplacé un réel saisi de 60 €), When je la supprime, Then le réel redevient vide (60 € n'est pas restauré) et le mouvement propre de la ligne (pointage ou rien) est de nouveau compté. (Auto)
 - CA12. Given une ligne avec deux dépenses, When j'en supprime une, Then le réel baisse de son montant et la ligne reste portée par l'autre. (Auto)
 - CA13. Given une ligne `fix` de 62 € non pointée sans dépense, Then elle compte 62 € dans « Reste à sortir » ; When elle reçoit une dépense de 62 €, Then « Reste à sortir » vaut toujours la même chose, la case n'est pas cochée, et seul le solde estimé baisse de 62 €. (Auto)
-- CA13a. Risque accepté, observable : Given la même ligne non pointée avec sa dépense de 62 €, When je lis la marge (solde estimé moins reste à sortir), Then elle est inférieure de 62 € à la réalité (sortie comptée deux fois) ; When je pointe la ligne, Then la ligne sort de « Reste à sortir » et la marge redevient juste. Le reviewer reconnaît ce comportement comme voulu (à traiter en spec 0017). (Auto sur le domaine, Man sur l'écran)
-- CA14. Given une ligne pointée portant une dépense, Then la case reste cochée et l'interface indique que le pointage est sans effet sur les soldes. (Man)
+- CA13a. Risque accepté, observable : Given la même ligne non pointée avec sa dépense de 62 €, When je lis la marge (solde estimé moins reste à sortir), Then elle est inférieure de 62 € à la réalité (sortie comptée deux fois) ; When je pointe la ligne, Then la ligne sort de « Reste à sortir » et la marge redevient juste. Le reviewer reconnaît ce comportement comme voulu (à traiter en spec 0018). (Auto sur le domaine, Man sur l'écran)
+- CA13b. Given une ligne `fix` de 62 € non pointée portant une dépense de 60 € (puis de 80 €), Then « Reste à sortir » compte 62 € dans les deux cas (budget, jamais le réel) ; Given une ligne sans dépense avec un réel saisi de 70 €, Then elle compte 70 € (RG76 de la spec 0009). (Auto)
+- CA13c. Given une ligne portant des dépenses, When je tente de changer son compte, Then c'est refusé avec « Cette ligne porte des dépenses : supprimez-les ou déplacez-les avant de changer son compte. » et le sélecteur de compte est désactivé sur l'écran Budget ; Given une ligne sans dépense, Then le changement reste possible. (Auto pour le refus, Man pour le sélecteur)
+- CA13d. Given une ligne dont le compte est archivé, When je tente d'y enregistrer une dépense, Then c'est refusé avec « Le compte de cette ligne (X) est archivé : désarchivez-le pour enregistrer une dépense. » et le bouton de saisie est désactivé. (Auto pour le refus, Man pour le bouton)
+- CA13e. Given une ligne portée par ses dépenses, When j'annule « Valider le mois », Then son réel n'est pas vidé ; Given une ligne dont le réel avait été recopié du budget, Then il est remis à vide. (Auto)
+- CA14. Given une ligne pointée portant une dépense, Then la case reste cochée et toujours cochable ; l'infobulle de la ligne et de la case indique le nombre de dépenses, « Pointage sans effet : la ligne est portée par ses dépenses » et le compte imposé ; la case porte un `aria-label` et un `aria-describedby` renvoyant à un texte visuellement masqué qui donne la même information. (Man)
+- CA14a. Given une ligne `fix` qui porte une dépense, Then elle ne change ni de hauteur ni d'alignement par rapport à une ligne sans dépense : une seule ligne, aucun texte ajouté visible, le nom et le réel ne débordent pas. (Man)
 - CA15. Given un mois clos, When j'ajoute ou supprime une dépense sur une ligne fixe, Then c'est refusé ; Given une dépense existante d'un mois clos, Then elle garde son effet sur les soldes. (Auto)
-- CA16. Given les soldes d'un compte sur des mois avec lignes fixes portant des dépenses, Then le solde calculé de l'écran Comptes est égal au solde estimé de l'écran de pointage. (Auto)
+- CA16. Given les soldes d'un compte sur des mois avec lignes fixes portant des dépenses, Then en mois au réel le solde calculé de l'écran Comptes est égal au solde estimé de l'écran de pointage (égalité garantie) ; Given un mois au pointage (test de non-régression), Then le solde estimé compte la dépense une seule fois et pointer ou dépointer la ligne ne le change pas. (Auto)
 - CA17. Given un budget et des dépenses sur lignes fixes, Then les totaux de l'écran Budget (réel, écart) reflètent le réel alimenté par les dépenses. (Auto sur le domaine, Man sur l'écran)
 - CA18. Given l'aperçu d'import, When je déroule le sélecteur de cible, Then les lignes `fix` et `cre` du compte résolu sont proposées par groupes, et celles d'un autre compte ne le sont pas. (Auto sur le domaine, Man sur l'écran)
 - CA19. Given une ligne importée d'un compte d'enveloppe, Then aucune ligne `fix`/`cre` n'est proposée. (Auto)
@@ -153,4 +165,4 @@ Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes
 
 ## Questions ouvertes
 
-Aucune. Décisions du développeur intégrées : implémentation après la 0013 ; réel alimenté par les dépenses avec remplacement après confirmation et réel remplacé perdu à la suppression de la dernière dépense ; « Reste à sortir » inchangé (risque de marge accepté, RG13, CA13a) ; lien budget ↔ réalité renvoyé à la spec 0017. Date bancaire distincte du mois de rattachement pour toutes les écritures : spec 0015 (la 0014 garde `month`/`day`).
+Aucune. Décisions du développeur intégrées : implémentation après la 0013 ; réel alimenté par les dépenses avec remplacement après confirmation et réel remplacé perdu à la suppression de la dernière dépense ; « Reste à sortir » inchangé (risque de marge accepté, RG13, CA13a) ; lien budget ↔ réalité renvoyé à la spec 0018. Date bancaire distincte du mois de rattachement pour toutes les écritures : spec 0015 (la 0014 garde `month`/`day`).
