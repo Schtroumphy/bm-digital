@@ -1,5 +1,5 @@
 import { envelopeCheckKey } from '../domain/bankMovements';
-import { canSetPointageStart, envelopeCheck, isEnvelopePointable, isoDate, isIsoDate, isPointable, isValidDueDay, lineCheck, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
+import { envelopeCheck, isEnvelopePointable, isoDate, isIsoDate, isPointable, isValidDueDay, lineCheck, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
 import { round2 } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import type { BudgetData, ExecMode, Line, LineCheck, MonthKey } from '../domain/types';
@@ -7,7 +7,7 @@ import type { BudgetData, ExecMode, Line, LineCheck, MonthKey } from '../domain/
 /*
  * Use cases of the pointage (spec 0009). Each one changes the data it is given and returns
  * false (changing nothing) when a rule forbids it: month not initialized or locked (RG7),
- * line without checkbox (RG3, RG4), invalid value (RG8). None of them touches an actual (RG2).
+ * line without checkbox (RG3, RG4), invalid value (RG8). None of them touches an actual (RG2) or a real balance (spec 0019, RG6).
  */
 
 function editableLine(d: BudgetData, m: MonthKey, key: string): Line | undefined {
@@ -32,22 +32,19 @@ export function checkLine(d: BudgetData, m: MonthKey, key: string, today = isoDa
   if (!l || !isPointable(d, l) || lineCheck(d, m, key) || !isValidPatch(patch)) return false;
   const md = d.months[m];
   (md.checks ??= {})[key] = { doneOn: patch.doneOn ?? today };
-  // The very first check ever made starts the pointage: from this month on, the estimate follows the checks (RG61).
-  d.settings.pointageStart ??= m;
   return true;
 }
 
 /**
  * Checks the allocation of an envelope: « the allocation was sent to its account » (spec 0011, RG6). Writes the date
  * only; the amount is the month's allocation, read each time (spec 0009, RG91).
- * Refused on a locked or not initialized month, an unknown envelope, an allocation at 0 and a month counted at the actuals.
+ * Refused on a locked or not initialized month, an unknown envelope and an allocation at 0.
  */
 export function checkEnvelope(d: BudgetData, m: MonthKey, envelopeId: string, today = isoDate(), patch: CheckPatch = {}): boolean {
   const e = d.envelopes.find(x => x.id === envelopeId);
   const md = d.months[m];
   if (!e || !md?.initialized || isMonthLocked(d, m) || !isEnvelopePointable(d, m, e) || envelopeCheck(d, m, envelopeId) || !isValidPatch(patch)) return false;
   (md.checks ??= {})[envelopeCheckKey(envelopeId)] = { doneOn: patch.doneOn ?? today };
-  d.settings.pointageStart ??= m;
   return true;
 }
 
@@ -107,7 +104,7 @@ export type BalanceDateResult = 'ok' | 'locked' | 'none' | BalanceDateError;
 /**
  * Enters the bank statement of an account for a month: the balance its bank shows, at a date in the month
  * and not in the future (RG62). One per account and month, the new one replaces the old. `null` removes it.
- * It never changes the estimated balance. Returns why it was refused, or 'ok'.
+ * It never changes a balance: it is compared with the REAL balance (spec 0019, RG4). Returns why it was refused, or 'ok'.
  */
 export function setAccountStatement(d: BudgetData, m: MonthKey, accountId: string, amount: number | null, on: string, today = isoDate()): BalanceDateResult {
   const md = d.months[m];
@@ -131,7 +128,7 @@ export type AdjustmentResult = 'ok' | 'locked' | 'none' | 'zero' | BalanceDateEr
 /**
  * Records an « écart constaté » on a bank account, dated in month `m` and not in the future (RG65). Signed,
  * never 0. Refused on a locked or not initialized month, on an unknown account (savings accounts have no
- * adjustment, RG68) and on an invalid date. It counts in the estimated balance and in the Ledger balance.
+ * adjustment, RG68) and on an invalid date. It counts in the REAL balance only (spec 0019, RG3).
  */
 export function createAdjustment(d: BudgetData, m: MonthKey, id: string, accountId: string, date: string, amount: number, today = isoDate()): AdjustmentResult {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return 'locked';
@@ -153,14 +150,5 @@ export function cancelAdjustment(d: BudgetData, id: string, today = isoDate()): 
   const m = a.date.slice(0, 7);
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return false;
   a.cancelledOn = today;
-  return true;
-}
-
-/** Sets the first month counted from the checks (null = none). Refused when it would change the mode of a locked month (RG61). */
-export function setPointageStart(d: BudgetData, start: MonthKey | null): boolean {
-  if (start !== null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(start)) return false;
-  if (!canSetPointageStart(d, start)) return false;
-  if (start === null) delete d.settings.pointageStart;
-  else d.settings.pointageStart = start;
   return true;
 }

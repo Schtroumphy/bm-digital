@@ -1,10 +1,11 @@
 import { AccountDot } from '../components/AccountPicker';
-import { lineBalanceWarning, destinationAccounts, isIncome, isLocked, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
+import { lineBalanceWarning, destinationAccounts, transferAttachment, isIncome, isLocked, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
 import { bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
 import { dayLabel, money, monthLabel } from '../../domain/format';
-import type { ImportTarget } from '../../domain/types';
+import type { ImportTarget, MovementTarget } from '../../domain/types';
 import { expenseLineAccountId } from '../../domain/lineExpenses';
+import { transferItems } from '../../domain/transfers';
 import { useStore } from '../state/store';
 
 /** One line of the import preview: checkbox, date, label, amount, nature, target, month and state chips (spec 0013). */
@@ -22,10 +23,16 @@ export function targetFrom(value: string): ImportTarget | null {
   return kind === 'var' ? { kind: 'var', key: id } : kind === 'line' ? { kind: 'line', key: id } : kind === 'env' ? { kind: 'env', id } : { kind: 'account', id };
 }
 
+/** The budget item a transfer is attached to, from a select value; null for « Aucun » (spec 0019). */
+function movementTargetFrom(value: string): MovementTarget | null {
+  const t = targetFrom(value);
+  return t?.kind === 'line' || t?.kind === 'env' ? t : null;
+}
+
 /** Colour family of a state chip: blocking (yellow), duplicate (grey), informative (blue), month (violet), entry of money (green), neutral. */
 const CHIP_TONE: Record<LineState, string> = {
   nouveau: 'neutral', a_rattacher: 'warn', a_qualifier: 'warn', compte_a_rattacher: 'warn', doublon: 'gray', doublon_probable: 'info',
-  semblable_importee: 'info', saisie_manuelle: 'info', mois_different: 'violet', decochee: 'gray', entree: 'green', importee: 'gray', reel_remplace: 'info', date_hors_soldes: 'warn',
+  semblable_importee: 'info', saisie_manuelle: 'info', mois_different: 'violet', decochee: 'gray', entree: 'green', importee: 'gray', date_hors_soldes: 'warn',
 };
 export const chipClass = (s: LineState) => `state-chip is-${CHIP_TONE[s]}`;
 
@@ -61,6 +68,10 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
   const envelopes = fromEnvelope ? data.envelopes.filter(e => e.accountId === l.accountId) : data.envelopes;
   const destinations = destinationAccounts(data, l.nature, l.accountId);
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
+  // A withdrawal or internal transfer can stand for a budget item of its destination account; the default is proposed (spec 0019, RG15, CA23).
+  const transferChoices = (l.nature === 'retrait' || l.nature === 'interne') && l.target?.kind === 'account' ? transferItems(data, l.month).filter(i => i.toAccountId === (l.target as { id: string }).id) : [];
+  const attached = transferAttachment(data, l);
+  const attachValue = attached ? (attached.kind === 'line' ? `line:${attached.key}` : `env:${attached.id}`) : '';
   const states = lineStates(data, l, imported ? new Set([l.id]) : undefined).filter(s => s !== 'decochee');
 
   // Done lines (imported in this session, or already imported before) are shown struck through and locked (spec 0013, RG82, RG83, RG88).
@@ -203,6 +214,17 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
         <div className="import-remember">
           <span>Nom de la nouvelle ligne de revenu</span>
           <input className="text-input" value={l.newLineName} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, newLineName: e.target.value }))} aria-label="Nom de la nouvelle ligne de revenu" />
+        </div>
+      )}
+      {transferChoices.length > 0 && (
+        <div className="import-remember">
+          <label htmlFor={`attach:${l.id}`}>Rattacher le transfert à</label>
+          <select id={`attach:${l.id}`} className="su-select" value={attachValue} onChange={e => onChange(x => ({ ...x, attach: movementTargetFrom(e.target.value) }))}>
+            <option value="">Aucun (transfert libre)</option>
+            {transferChoices.map(i => (
+              <option key={targetValue(i.target)} value={targetValue(i.target)}>{i.label}</option>
+            ))}
+          </select>
         </div>
       )}
       {(income || (l.target && l.nature !== 'a_qualifier' && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE))) && (

@@ -20,7 +20,7 @@ export function completeData(): BudgetData {
   d.months['2026-11'].closed = true;
   const dec = d.months['2026-12'];
   dec.lines[0] = { ...dec.lines[0], accountId: 'acc-sav', payMode: 'especes', linkedAccountId: 'acc-inv', dueDay: 5, execMode: 'prelevement' };
-  d.template.lines[0] = { ...d.template.lines[0], accountId: 'acc-sav', payMode: 'virtuel', linkedAccountId: 'acc-inv', dueDay: 28, execMode: 'informatif', actual: 12.5 };
+  d.template.lines[0] = { ...d.template.lines[0], accountId: 'acc-sav', payMode: 'virtuel', linkedAccountId: 'acc-inv', dueDay: 28, execMode: 'informatif' };
   dec.checks = { [dec.lines[0].key]: { doneOn: '2026-12-03' }, 'env:sante': { doneOn: '2026-12-01', accountId: 'acc-main' } };
   dec.accountBalances = { 'acc-main': { amount: 2345.67, on: '2026-12-15' } };
   dec.transfersDone = { bou: true, ce: false };
@@ -42,7 +42,7 @@ export function completeData(): BudgetData {
   // Spec 0015 : entrée sur une ligne de revenu, avec une date bancaire différente du mois de rattachement.
   const revLine = dec.lines.find(l => l.block === 'rev')!;
   d.transactions.push({ id: 't-rev', month: '2026-12', day: 1, label: 'Salaire', amount: 2480, type: 'rev', target: revLine.key, accountId: revLine.accountId ?? 'acc-main', bankDate: '2026-11-28' });
-  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08' }];
+  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08', target: { kind: 'env', id: 'e-vc' } }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
     { id: 'l2', accountName: 'Livret A (x1234)', connectionName: 'Banque Test', accountId: null },
@@ -115,6 +115,19 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       delete cleared.accountMovements![0].detail;
       await repo.save(cleared);
       expect(await open().load()).toEqual(cleared);
+    });
+
+    it('spec 0019 : la cible d’un transfert est conservée, les transferts sans cible restent sans cible', async () => {
+      const repo = open();
+      const data = completeData();
+      data.accountMovements!.push({ id: 'm2', month: '2026-12', day: 9, label: 'Virement libre', amount: 10, fromAccountId: 'acc-main', toAccountId: 'acc-cash' });
+      data.accountMovements!.push({ id: 'm3', month: '2026-12', day: 10, label: 'Versement', amount: 20, fromAccountId: 'acc-main', toAccountId: 'acc-inv', target: { kind: 'line', key: 'l-ep' } });
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.accountMovements!.find(m => m.id === 'm1')!.target).toEqual({ kind: 'env', id: 'e-vc' });
+      expect(loaded.accountMovements!.find(m => m.id === 'm2')).not.toHaveProperty('target');
+      expect(loaded.accountMovements!.find(m => m.id === 'm3')!.target).toEqual({ kind: 'line', key: 'l-ep' });
+      expect(loaded).toEqual(data);
     });
 
     it('des sauvegardes rapprochées s’appliquent dans l’ordre : la dernière gagne', async () => {

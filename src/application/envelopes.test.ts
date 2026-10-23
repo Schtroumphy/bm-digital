@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction } from './actions';
+import { addTransfer } from './accountMovements';
 import { addBankAccount, archiveBankAccount, archiveBlocker, renameBankAccount, setBankAccountInBudget, setBankAccountKind, setLineAccount, setTransactionAccount, unarchiveBankAccount } from './bankAccounts';
 import { checkEnvelope, uncheckEnvelope } from './checkoff';
 import { addEnvelope, deleteEnvelope, renameEnvelope } from './envelopes';
 import { activeBankAccounts, defaultBankAccounts, fixedTransactionAccountId, MAIN_ACCOUNT_ID } from '../domain/bank';
-import { bankMovements } from '../domain/bankMovements';
+import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { envelopeTooltip, isEnvelopePointable, monthBalance } from '../domain/checkoff';
 import { closingView } from '../domain/closing';
 import { emptyData } from '../domain/empty';
@@ -37,30 +38,45 @@ function started(): BudgetData {
 }
 const accountOf = (d: BudgetData, envelopeId: string) => d.envelopes.find(e => e.id === envelopeId)!.accountId;
 
-describe('l’allocation est un mouvement du principal vers le compte de l’enveloppe', () => {
-  it('CA1: en mode réel, le principal baisse et le compte de l’enveloppe monte, sans action', () => {
+/** Real funding of an envelope: a transfer from the main account to the envelope's account, attached to the envelope (spec 0019, RG10, RG14). */
+const fund = (d: BudgetData, amount: number, id = 'fund', month = M) =>
+  addTransfer(d, { id, month, day: 2, label: 'Alimentation', amount, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: accountOf(d, 'sante'), target: { kind: 'env', id: 'sante' } });
+
+describe('l’allocation est un débit fictif ; l’alimentation réelle est un transfert (spec 0019)', () => {
+  it('CA1: une allocation seule ne bouge aucun solde réel', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
-    expect(bank(d, accountOf(d, 'sante'))).toBe(50);
+    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
+    expect(bank(d, accountOf(d, 'sante'))).toBe(0);
   });
 
-  it('CA2: le total des comptes ne varie pas par une allocation', () => {
+  it('CA1bis: le transfert d’alimentation fait baisser le principal et monter le compte de l’enveloppe, dans les deux soldes', () => {
+    const d = started();
+    d.months[M].alloc = { sante: 50 };
+    expect(fund(d, 50)).toBe(true);
+    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
+    expect(bank(d, accountOf(d, 'sante'))).toBe(50);
+    expect([monthBalance(d, M, MAIN_ACCOUNT_ID)!.end, monthBalance(d, M, accountOf(d, 'sante'))!.end]).toEqual([950, 50]);
+  });
+
+  it('CA2: le total des comptes ne varie pas par une allocation ni par un transfert', () => {
     const d = started();
     const before = total(d);
     d.months[M].alloc = { sante: 50 };
+    fund(d, 50);
     expect(total(d)).toBe(before);
   });
 
   it('CA3: une dépense d’enveloppe débite son compte, pas le principal', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
+    fund(d, 50);
     expect(addTransaction(d, envTx())).toBe(true);
     expect(bank(d, accountOf(d, 'sante'))).toBe(20);
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
   });
 
-  it('CA4: le solde d’une enveloppe est le solde de son compte', () => {
+  it('CA4: le solde propre de l’enveloppe reste budgétaire (début + allocation − dépensé); le solde de son compte est réel et le rejoint avec le transfert', () => {
     const d = started();
     d.accounts.find(a => a.id === accountOf(d, 'sante'))!.openingBalance = 140;
     const l = ledger(d);
@@ -69,43 +85,55 @@ describe('l’allocation est un mouvement du principal vers le compte de l’env
     d.months[M].alloc = { sante: 50 };
     addTransaction(d, envTx());
     expect(ledger(d).envMonth('sante', M)).toMatchObject({ start: 140, alloc: 50, spent: 30, balance: 160 });
+    expect(bank(d, accountOf(d, 'sante'))).toBe(110);
+    fund(d, 50);
     expect(ledger(d).envMonth('sante', M)!.balance).toBe(bank(d, accountOf(d, 'sante')));
   });
 
-  it('CA5: en mode pointage, rien ne bouge avant le pointage; pointer déplace l’argent à la date du pointage; décocher annule', () => {
+  it('CA5: pointer l’allocation est fictif (estimé seulement), à la date du pointage; décocher annule', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
-    d.settings.pointageStart = M;
     const e = accountOf(d, 'sante');
     const balances = () => [bank(d, MAIN_ACCOUNT_ID), bank(d, e), monthBalance(d, M, MAIN_ACCOUNT_ID)!.end, monthBalance(d, M, e)!.end];
     expect(balances()).toEqual([1000, 0, 1000, 0]);
     expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(true);
     expect(checkEnvelope(d, M, 'sante', '2026-12-05')).toBe(true);
-    expect(balances()).toEqual([950, 50, 950, 50]);
-    expect(bankMovements(d, e, M, 'checks').map(x => [x.date, x.amount])).toEqual([['2026-12-05', 50]]);
+    expect(balances()).toEqual([1000, 0, 950, 50]);
+    expect(estimatedMovements(d, e, M).map(x => [x.date, x.amount])).toEqual([['2026-12-05', 50]]);
+    expect(realMovements(d, e, M)).toEqual([]);
     expect(uncheckEnvelope(d, M, 'sante')).toBe(true);
     expect(balances()).toEqual([1000, 0, 1000, 0]);
   });
 
-  it('en mode réel il n’y a pas de case à cocher, et cocher est refusé', () => {
+  it('CA6 (0019): allocation pointée puis transfert rattaché : le solde estimé baisse une seule fois, pointer ou dépointer ne le change pas', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
-    expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(false);
-    expect(checkEnvelope(d, M, 'sante', '2026-12-05')).toBe(false);
+    checkEnvelope(d, M, 'sante', '2026-12-05');
+    fund(d, 50);
+    const e = accountOf(d, 'sante');
+    const estimated = () => [monthBalance(d, M, MAIN_ACCOUNT_ID)!.end, monthBalance(d, M, e)!.end];
+    expect(estimated()).toEqual([950, 50]);
+    uncheckEnvelope(d, M, 'sante');
+    expect(estimated()).toEqual([950, 50]);
+    checkEnvelope(d, M, 'sante', '2026-12-06');
+    expect(estimated()).toEqual([950, 50]);
+    expect([bank(d, MAIN_ACCOUNT_ID), bank(d, e)]).toEqual([950, 50]);
   });
 
-  it('CA6: une allocation de 0 ne crée aucun mouvement; elle suit l’allocation à la lecture', () => {
+  it('CA6bis: une allocation de 0 ne crée aucun mouvement fictif; elle suit l’allocation à la lecture', () => {
     const d = started();
     d.months[M].alloc = { sante: 0 };
-    expect(bankMovements(d, MAIN_ACCOUNT_ID, M, 'actual')).toEqual([]);
-    expect(bankMovements(d, accountOf(d, 'sante'), M, 'actual')).toEqual([]);
+    checkEnvelope(d, M, 'sante', '2026-12-05');
+    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
     d.months[M].alloc.sante = 80;
-    expect(bankMovements(d, accountOf(d, 'sante'), M, 'actual').map(x => x.amount)).toEqual([80]);
+    checkEnvelope(d, M, 'sante', '2026-12-05');
+    expect(estimatedMovements(d, accountOf(d, 'sante'), M).map(x => x.amount)).toEqual([80]);
     d.months[M].alloc.sante = 20;
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(980);
+    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(980);
+    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
   });
 
-  it('la lecture du Solde estimé et celle de l’écran Comptes sont égales au réel', () => {
+  it('sans pointage ni transfert, le solde estimé est le solde réel', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
     for (const a of d.accounts) expect(monthBalance(d, M, a.id)?.end).toBe(bank(d, a.id));
@@ -140,7 +168,9 @@ describe('avant le mois d’ouverture du compte, l’ancien calcul reste en lect
     expect(l.envMonth('a', PREV)).toMatchObject({ start: 120, alloc: 50, balance: 170 });
     expect(l.bankMonth(MAIN_ACCOUNT_ID, PREV)!.balance).toBe(0);
     expect(l.bankMonth(accountOf(d, 'a'), PREV)).toBeNull();
-    expect(l.envMonth('a', M)!.balance).toBe(l.bankMonth(accountOf(d, 'a'), M)!.balance);
+    // Spec 0019: the envelope's own balance stays budgetary (0 + 50), its account is real (0 until the funding is recorded).
+    expect(l.envMonth('a', M)!.balance).toBe(50);
+    expect(l.bankMonth(accountOf(d, 'a'), M)!.balance).toBe(0);
   });
 });
 
@@ -176,6 +206,7 @@ describe('création, renommage, suppression', () => {
   it('CA12: une enveloppe qui contient de l’argent ne se supprime pas (Q7); son compte archivé à solde non nul reste dans la clôture', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
+    fund(d, 50);
     const id = accountOf(d, 'sante');
     const snapshot = structuredClone(d);
     expect(deleteEnvelope(d, 'sante')).toBe('not_empty');
@@ -184,6 +215,7 @@ describe('création, renommage, suppression', () => {
     d.accounts.find(a => a.id === id)!.archived = true;
     d.accounts.find(a => a.id === id)!.openingBalance = 70;
     d.months[M].alloc = {};
+    d.accountMovements = [];
     expect(closingView(d, ledger(d), 2026).groups.find(g => g.id === 'enveloppe')!.rows.map(r => [r.name, r.calc])).toEqual([['Santé', 70]]);
   });
 });
@@ -243,6 +275,8 @@ describe('supprimer une enveloppe garde l’historique du principal', () => {
     d.accounts[0].openingMonth = PREV;
     d.accounts.find(a => a.id === accountOf(d, 'sante'))!.openingMonth = PREV;
     d.months[M].alloc = { sante: 50 };
+    fund(d, 50, 'fund-prev', PREV);
+    fund(d, 50, 'fund-m', M);
     d.transactions.push(envTx({ id: 'd1', month: M, amount: 100, accountId: accountOf(d, 'sante') })); // the envelope ends at 0
     const past = (x: BudgetData) => [bank(x, MAIN_ACCOUNT_ID, PREV), bank(x, MAIN_ACCOUNT_ID, M)];
     const before = past(d);
@@ -260,6 +294,7 @@ describe('supprimer une enveloppe garde l’historique du principal', () => {
     const d = started();
     d.template.envAlloc = { sante: 50 };
     d.months['2027-01'] = { initialized: true, lines: [], alloc: { sante: 50 }, transfersDone: {} };
+    fund(d, 50, 'fund-jan', '2027-01');
     d.transactions.push(envTx({ month: '2027-01', amount: 50, accountId: accountOf(d, 'sante') })); // empty again
     expect(deleteEnvelope(d, 'sante', M)).toBe('ok');
     expect(d.template.envAlloc).toEqual({});
@@ -267,16 +302,14 @@ describe('supprimer une enveloppe garde l’historique du principal', () => {
   });
 });
 
-describe('en mode réel, aucune case de pointage de l’allocation', () => {
-  it('l’infobulle est vide aussi pour une allocation déjà pointée', () => {
+describe('infobulle de la case de pointage de l’allocation', () => {
+  it('elle existe avant et après le pointage, et dit que le débit est fictif', () => {
     const d = started();
     d.months[M].alloc = { sante: 50 };
-    d.settings.pointageStart = M;
+    expect(envelopeTooltip(d, M, d.envelopes[0])).toContain('Débit fictif');
     checkEnvelope(d, M, 'sante', '2026-12-05');
-    expect(envelopeTooltip(d, M, d.envelopes[0])).not.toBe('');
-    d.settings.pointageStart = '2027-01';
-    expect(envelopeTooltip(d, M, d.envelopes[0])).toBe('');
-    expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(false);
+    expect(envelopeTooltip(d, M, d.envelopes[0])).toContain('Allocation pointée le 05/12');
+    expect(envelopeTooltip(d, M, d.envelopes[0])).toContain('Débit fictif');
   });
 });
 

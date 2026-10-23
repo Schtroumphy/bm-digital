@@ -43,21 +43,20 @@ describe('budget model edition', () => {
   });
 });
 
-describe('actual in the budget model', () => {
-  it('stores and clears an actual', () => {
+describe('le modèle ne contient aucun réel (spec 0019, RG19)', () => {
+  it('une ligne du modèle n’a pas de réel et le mois créé depuis le modèle n’en a pas non plus', () => {
     const d = base();
-    expect(updateTemplateLine(d, 'a', { actual: 12.345 })).toBe(true);
-    expect(d.template.lines[0].actual).toBe(12.35);
-    updateTemplateLine(d, 'a', { actual: null });
-    expect(d.template.lines[0].actual).toBeNull();
+    expect(d.template.lines.every(l => !('actual' in l))).toBe(true);
+    expect(applyTemplate(d, '2026-11')).toBe(true);
+    expect(d.months['2026-11'].lines.every(l => l.actual === null)).toBe(true);
   });
 
-  it('copies it into a month created from the model, unless expenses are recorded', () => {
+  it('les écritures déjà enregistrées sur le mois alimentent le réel de la ligne créée', () => {
     const d = base();
-    updateTemplateLine(d, 'a', { actual: 900 });
-    expect(applyTemplate(d, '2026-11')).toBe(true);
-    expect(d.months['2026-11'].lines.find(l => l.key === 'a')?.actual).toBe(900);
-    expect(d.months['2026-11'].lines.find(l => l.key === 'b')?.actual).toBeNull();
+    d.transactions.push({ id: 't', month: '2026-11', day: 3, label: 'x', amount: 40, type: 'var', target: 'b', accountId: 'acc-main' });
+    d.template.lines.find(l => l.key === 'b')!.block = 'var';
+    applyTemplate(d, '2026-11');
+    expect(d.months['2026-11'].lines.find(l => l.key === 'b')?.actual).toBe(40);
   });
 });
 

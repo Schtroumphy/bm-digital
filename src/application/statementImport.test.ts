@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, updateAccountMovement } from './accountMovements';
 import { findImportAccountLink, linkableAccounts, linkedAccountOf, removeImportAccountLink, setImportAccountLink } from './accountLinks';
-import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, isReceivedTransfer, lineProblem, prepareImport, previewCounts, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, isReceivedTransfer, lineProblem, prepareImport, previewCounts, transferAttachment, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
-import { bankMovements } from '../domain/bankMovements';
+import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { monthBalance } from '../domain/checkoff';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -393,45 +393,56 @@ describe('validation de l’import', () => {
     expect(d).toEqual(before);
   });
 
-  it('CA7b: un retrait baisse le principal et monte Espèces au jour de la ligne, dans les deux modes, sans toucher au réel des lignes', () => {
-    for (const pointage of [false, true]) {
-      const d = budget();
-      if (pointage) d.settings.pointageStart = M;
-      importAll(d);
-      const main = bankMovements(d, MAIN_ACCOUNT_ID, M, pointage ? 'checks' : 'actual').filter(x => x.counterpart);
-      const cash = bankMovements(d, CASH_ACCOUNT_ID, M, pointage ? 'checks' : 'actual');
-      expect(main).toEqual([expect.objectContaining({ amount: -40, date: '2026-10-08' })]);
-      expect(cash).toEqual([expect.objectContaining({ amount: 40, date: '2026-10-08' })]);
-      expect(monthBalance(d, M, CASH_ACCOUNT_ID)!.end).toBe(40);
-      if (!pointage) {
-        const ledger = new Ledger(d, M);
-        expect(ledger.bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(40);
-        expect(ledger.bankMonth(MAIN_ACCOUNT_ID, M)!.balance).toBe(-94.2);
-      }
-      expect(d.months[M].lines.map(l => l.actual)).toEqual([54.2, null]);
-    }
+  it('CA7b: un retrait baisse le principal et monte Espèces au jour de la ligne, dans les deux soldes, sans toucher au réel des lignes', () => {
+    const d = budget();
+    importAll(d);
+    const main = realMovements(d, MAIN_ACCOUNT_ID, M).filter(x => x.counterpart);
+    const cash = realMovements(d, CASH_ACCOUNT_ID, M);
+    expect(main).toEqual([expect.objectContaining({ amount: -40, date: '2026-10-08' })]);
+    expect(cash).toEqual([expect.objectContaining({ amount: 40, date: '2026-10-08' })]);
+    expect(estimatedMovements(d, CASH_ACCOUNT_ID, M)).toEqual([expect.objectContaining({ amount: 40, date: '2026-10-08' })]);
+    expect(monthBalance(d, M, CASH_ACCOUNT_ID)!.end).toBe(40);
+    const ledger = new Ledger(d, M);
+    expect(ledger.bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(40);
+    expect(ledger.bankMonth(MAIN_ACCOUNT_ID, M)!.balance).toBe(-94.2);
+    expect(d.months[M].lines.map(l => l.actual)).toEqual([54.2, null]);
   });
 
-  it('retrait vers une enveloppe : seul le solde de son compte change (P7)', () => {
+  it('retrait vers une enveloppe (P7, 0019) : la cible par défaut est l’enveloppe ; son compte monte, le solde propre de l’enveloppe reste budgétaire', () => {
     const d = budget();
     let p = prepare(d);
     p = edit(p, byLabel(p, 'RETRAIT').id, l => ({ ...l, target: { kind: 'account', id: 'acc-env-vac' } }));
+    const line = byLabel(p, 'RETRAIT');
+    expect(transferAttachment(d, line)).toEqual({ kind: 'env', id: 'vac' });
     validateImport(d, p, newId);
     const ledger = new Ledger(d, M);
     expect(ledger.bankMonth('acc-env-vac', M)!.balance).toBe(40);
-    expect(ledger.envMonth('vac', M)).toMatchObject({ alloc: 0, balance: 40 });
+    expect(ledger.envMonth('vac', M)).toMatchObject({ alloc: 0, balance: 0 });
+    expect(d.accountMovements!.find(m => m.toAccountId === 'acc-env-vac')!.target).toEqual({ kind: 'env', id: 'vac' });
     expect(d.months[M].alloc).toEqual({});
   });
 
-  it('CA7c: un transfert interne vers un compte hors budget ne touche pas le principal', () => {
+  it('CA23 (0019) : la cible du transfert est facultative ; « aucune » choisie, le transfert est libre', () => {
+    const d = budget();
+    let p = prepare(d);
+    p = edit(p, byLabel(p, 'RETRAIT').id, l => ({ ...l, target: { kind: 'account', id: 'acc-env-vac' }, attach: null }));
+    expect(transferAttachment(d, byLabel(p, 'RETRAIT'))).toBeNull();
+    validateImport(d, p, newId);
+    expect(d.accountMovements!.find(m => m.toAccountId === 'acc-env-vac')).not.toHaveProperty('target');
+  });
+
+  it('CA7c: un transfert interne vers un compte hors budget est réel : il débite le principal et crédite le compte, dans les deux soldes (spec 0019, RG12)', () => {
     const d = budget();
     d.accounts.find(a => a.id === SWILE)!.inBudget = false;
     let p = prepare(d);
     p = edit(p, byLabel(p, 'VIREMENT').id, l => ({ ...changeNature(d, l, 'interne'), target: { kind: 'account', id: SWILE }, checked: true }));
     validateImport(d, p, newId);
     expect(d.accountMovements!.filter(m => m.toAccountId === SWILE)).toHaveLength(1);
-    expect(bankMovements(d, MAIN_ACCOUNT_ID, M, 'actual').filter(x => x.counterpart).map(x => x.amount)).toEqual([-40]);
-    expect(bankMovements(d, SWILE, M, 'actual')).toEqual([expect.objectContaining({ amount: 188.58 })]);
+    for (const list of [realMovements(d, MAIN_ACCOUNT_ID, M), estimatedMovements(d, MAIN_ACCOUNT_ID, M)]) {
+      expect(list.filter(x => x.counterpart).map(x => x.amount).sort((a, b) => a - b)).toEqual([-188.58, -40]);
+    }
+    expect(realMovements(d, SWILE, M)).toEqual([expect.objectContaining({ amount: 188.58 })]);
+    expect(estimatedMovements(d, SWILE, M)).toEqual([expect.objectContaining({ amount: 188.58 })]);
   });
 
   it('CA7d: un transfert externe crée une dépense, pas de mouvement entre comptes', () => {

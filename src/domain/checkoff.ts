@@ -1,16 +1,22 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isEnvelopeAccount, isLineInBudget, mainAccount, resolveBoxAccountId } from './bank';
+import { isItemTransferred } from './movementTargets';
 import { isMonthInBalanceRange } from './balanceRange';
-import { bankDateOf, carriedLineNote, isCarryingBlock, isLineCarried } from './lineExpenses';
-import { bankMovements, countedAmount, envelopeCheckKey, flowOf, monthMode, type BankMovement, type CountedSource, type MonthMode } from './bankMovements';
+import { lineEntriesNote } from './lineActuals';
+import { countedAmount, envelopeCheckKey, estimatedMovements, flowOf, realMovements, type BankMovement, type CountedSource } from './bankMovements';
 import { addMonths, compareMonths, money, parseMonth, round2 } from './format';
-import { closeKey, isMonthLocked, isYearClosed, monthLines, type Ledger } from './ledger';
+import { closeKey, isMonthLocked, isYearClosed, monthLines } from './ledger';
 import type { AccountBalanceEntry, BankAccount, BudgetData, ExecMode, Line, LineCheck, MonthKey } from './types';
 
 /*
  * Pointage des lignes du budget (spec 0009): « l'argent a bougé ». Pure functions only.
- * A check never changes the actual of a line (RG2); it feeds the « Reste à sortir »,
- * the estimated balance and the margin of each bank account.
+ * A check is a FICTIVE debit or credit (spec 0019, RG6): it never changes the actual of a line nor a real balance; it feeds the
+ * « Reste à sortir », the estimated balance and the margin of each bank account.
  */
+
+/** What a check means, for its tooltip and its screen-reader text (spec 0019, RG26). */
+export const FICTIVE_DEBIT = 'Débit fictif : estimation de budget, n’affecte pas les soldes réels. Enregistrez une dépense ou un transfert pour le réel.';
+export const FICTIVE_CREDIT = 'Crédit fictif : estimation de budget, n’affecte pas les soldes réels. Enregistrez une entrée d’argent pour le réel.';
+export const fictiveNote = (l: Pick<Line, 'block'>): string => (l.block === 'rev' ? FICTIVE_CREDIT : FICTIVE_DEBIT);
 
 /** Modes shown in the picker, in order (RG18); `short` is the text of the chip on the line. */
 export const EXEC_MODES: { value: ExecMode; label: string; short: string }[] = [
@@ -82,6 +88,7 @@ export function lineCounted(d: BudgetData, l: Line): { amount: number; source: C
 export function lineTooltip(d: BudgetData, m: MonthKey, l: Line, today: string): string {
   const parts: string[] = [];
   if (!isLineInBudget(d, l)) parts.push('Ligne hors budget : elle ne compte dans aucun total ni dans le reste à placer.');
+  if (isPointable(d, l) && !hasNoAmount(l)) parts.push(fictiveNote(l));
   const check = lineCheck(d, m, l.key);
   if (check) {
     const c = lineCounted(d, l);
@@ -89,8 +96,8 @@ export function lineTooltip(d: BudgetData, m: MonthKey, l: Line, today: string):
     parts.push(`Montant compté : ${money(c.amount)} (${c.source === 'actual' ? 'réel' : 'budget'})`);
     parts.push(c.source === 'actual' ? `Le réel (${money(c.amount)}) prime sur le budget (${money(l.budget)}).` : 'Pas de réel : le budget est compté.');
   }
-  const carried = carriedLineNote(d, m, l);
-  if (carried) parts.push(carried);
+  const entries = lineEntriesNote(d, m, l);
+  if (entries) parts.push(entries);
   if (l.dueDay !== undefined) parts.push(`Prévu le ${effectiveDueDay(l.dueDay, m)} du mois`);
   const mode = EXEC_MODES.find(x => x.value === l.execMode);
   if (mode) parts.push(`Mode d’exécution : ${mode.label}`);
@@ -103,15 +110,14 @@ export function lineTooltip(d: BudgetData, m: MonthKey, l: Line, today: string):
  * envelope (date once checked, otherwise what checking would do). Empty for an envelope with nothing to check.
  */
 export function envelopeTooltip(d: BudgetData, m: MonthKey, e: { id: string; name: string; accountId: string }): string {
-  // No checkbox in a month counted at the actuals: nothing to say (spec 0011, RG6).
-  if (monthMode(d, m) === 'real') return '';
   const check = envelopeCheck(d, m, e.id);
   if (!check && !isEnvelopePointable(d, m, e)) return '';
   const account = d.accounts.find(a => a.id === e.accountId);
   const alloc = d.months[m]?.alloc[e.id] ?? 0;
   const parts = [
-    check ? `Allocation virée le ${shortDate(check.doneOn)} vers ${account?.name ?? 'ce compte'}` : `Virement de l’allocation (${money(alloc)}) vers ${account?.name ?? 'ce compte'}`,
+    check ? `Allocation pointée le ${shortDate(check.doneOn)} vers ${account?.name ?? 'ce compte'}` : `Pointer l’allocation (${money(alloc)}) vers ${account?.name ?? 'ce compte'}`,
     check ? `Montant : ${money(alloc)}` : null,
+    'Débit fictif : estimation de budget, n’affecte pas les soldes réels. Enregistrez un transfert pour le réel.',
   ];
   return parts.filter(Boolean).join('\n');
 }
@@ -120,13 +126,12 @@ export function envelopeTooltip(d: BudgetData, m: MonthKey, e: { id: string; nam
 export const envelopeCheck = (d: BudgetData, m: MonthKey, envelopeId: string): LineCheck | undefined => d.months[m]?.checks?.[envelopeCheckKey(envelopeId)];
 
 /**
- * An envelope's allocation can be checked in a month counted at the checks, when the month exists, the allocation is
- * above 0 and the envelope has its own account from that month (spec 0011, RG6). In a month counted at the actuals the
- * allocation moves by itself and no checkbox is ever shown, and before the account exists there is no movement to check.
+ * An envelope's allocation can be checked when the month exists, the allocation is above 0 and the envelope has its own account
+ * from that month (spec 0011, RG6); before the account exists there is no movement to check.
  */
 export function isEnvelopePointable(d: BudgetData, m: MonthKey, e: { id: string; accountId: string }): boolean {
   const md = d.months[m];
-  return !!md?.initialized && (md.alloc[e.id] ?? 0) > 0 && monthMode(d, m) === 'pointage' && !!envelopeAccountAt(d, e, m);
+  return !!md?.initialized && (md.alloc[e.id] ?? 0) > 0 && !!envelopeAccountAt(d, e, m);
 }
 
 export const lineCheck = (d: BudgetData, m: MonthKey, key: string): LineCheck | undefined => d.months[m]?.checks?.[key];
@@ -164,23 +169,6 @@ export function balanceDateBounds(m: MonthKey, today: string): { min: string; ma
   return { min: `${m}-01`, max: last < today ? last : today };
 }
 
-export { monthMode, type MonthMode };
-
-/**
- * Can the start of the pointage become `start` (null = none)? Refused when it would change the mode of a
- * locked month: those months are frozen (RG61).
- */
-export function canSetPointageStart(d: BudgetData, start: MonthKey | null): boolean {
-  const next = { ...d, settings: { ...d.settings, pointageStart: start ?? undefined } };
-  return Object.keys(d.months).every(k => !d.months[k].initialized || !isMonthLocked(d, k) || monthMode(d, k) === monthMode(next, k));
-}
-
-/** Oldest month holding a check, or null. */
-export function oldestCheckedMonth(d: BudgetData): MonthKey | null {
-  const months = Object.keys(d.months).filter(k => Object.keys(d.months[k].checks ?? {}).length > 0).sort();
-  return months[0] ?? null;
-}
-
 /** Start and end of a month for an account, from the single starting balance (RG57, RG58). */
 export interface MonthBalance {
   start: number;
@@ -188,12 +176,11 @@ export interface MonthBalance {
 }
 
 /**
- * Estimated balance of a bank account: the opening balance of the Comptes tab, then month after month
- * start of month = end of the previous one, plus the month's movements (RG58). Same chain as the Ledger
- * (year-close carry-over `bank:<id>` included), the movements coming from the checks instead of the
- * actuals from `pointageStart` on. Null before the account's opening month (RG57).
+ * Balance of a bank account at the end of a month: the opening balance of the Comptes tab, then month after month start of month =
+ * end of the previous one, plus the month's movements (RG58). The year-close carry-over `bank:<id>` is the same for both chains.
+ * Null before the account's opening month (RG57).
  */
-export function monthBalance(d: BudgetData, m: MonthKey, accountId: string): MonthBalance | null {
+function chainedBalance(d: BudgetData, m: MonthKey, accountId: string, movementsOf: (k: MonthKey) => BankMovement[]): MonthBalance | null {
   const account = d.accounts.find(a => a.id === accountId);
   if (!account || d.firstMonth === null || !isMonthInBalanceRange(d, account, m)) return null;
   let balance: number | undefined;
@@ -203,12 +190,18 @@ export function monthBalance(d: BudgetData, m: MonthKey, accountId: string): Mon
     const { year, month } = parseMonth(k);
     const prevClose = month === 0 && isYearClosed(d, year - 1) ? d.closes[year - 1] : null;
     const start = prevClose?.overrides[closeKey('bank', accountId)] ?? (compareMonths(k, account.openingMonth) === 0 ? undefined : balance) ?? account.openingBalance;
-    const flow = flowOf(bankMovements(d, accountId, k, monthMode(d, k) === 'pointage' ? 'checks' : 'actual'));
+    const flow = flowOf(movementsOf(k));
     balance = round2(start + flow.in - flow.out);
     result = { start, end: balance };
   }
   return result;
 }
+
+/** Estimated balance (budget): the checks and the estimated entries, always counted at the checks (spec 0019, RG8). */
+export const monthBalance = (d: BudgetData, m: MonthKey, accountId: string): MonthBalance | null => chainedBalance(d, m, accountId, k => estimatedMovements(d, accountId, k));
+
+/** Real balance: real entries only (spec 0019, RG1). The same figure as the Ledger's `bankMonth`, computed without it. */
+export const realMonthBalance = (d: BudgetData, m: MonthKey, accountId: string): MonthBalance | null => chainedBalance(d, m, accountId, k => realMovements(d, accountId, k));
 
 /** One line of the detail of an account: a signed movement, counted or not in the estimated balance. */
 export interface Movement {
@@ -218,8 +211,10 @@ export interface Movement {
   /** Positive = money in, negative = money out. */
   amount: number;
   kind: BankMovement['kind'];
-  /** False for a cancelled adjustment and for a check without effect (month counted at the actuals, RG72). */
+  /** False for a cancelled adjustment. */
   counted: boolean;
+  /** A check (fictive): shown in the estimated view only, softened, « fictif » in its tooltip (spec 0019, RG27). */
+  fictive?: boolean;
   /** Explanation shown next to a movement that is not counted. */
   note?: string;
   /** Month of the budget the entry is attached to when it differs from its bank date's month (tooltip, spec 0015, RG4). */
@@ -241,19 +236,22 @@ export interface PendingLine {
 
 export interface AccountPointage {
   account: BankAccount;
-  mode: MonthMode;
-  /** Start of the month = end of the previous one (RG58); null before the opening month. */
-  start: number | null;
-  /** End of the month; null before the opening month (« — »). */
+  /** Real balance (start and end of the month): real entries only. Null before the opening month (spec 0019, RG1). */
+  real: MonthBalance | null;
+  /** Estimated balance (budget): checks and estimated entries. Null before the opening month. */
+  estimatedBalance: MonthBalance | null;
+  /** End of the estimated balance, null before the opening month (« — »). */
   estimated: number | null;
-  /** Balance of the Comptes screen for the same month, to show when it differs (RG69). */
-  ledgerBalance: number | null;
-  /** Statement of the month and its gap with the estimate at the statement date (RG62, RG63). */
+  /** Real minus estimated at the end of the month; null when one of them is missing (spec 0019, RG27). */
+  difference: number | null;
+  /** Statement of the month and its gap with the REAL balance at the statement date (RG4). */
   statement: AccountBalanceEntry | null;
   gap: number | null;
-  /** All movements of the month sorted by date, including cancelled adjustments (RG66) and checks without effect (RG72). */
-  movements: Movement[];
-  /** Grey lines of the main account's detail: counterparts ignored because the other account is out of the budget. Never summed (RG101). */
+  /** Real entries of the month sorted by date, cancelled adjustments included (struck through) (RG27). */
+  realMovements: Movement[];
+  /** Estimated movements of the month sorted by date: checks (fictive), expenses, transfers (RG27). */
+  estimatedMovements: Movement[];
+  /** Grey lines of the main account's detail: fictive counterparts ignored because the other account is out of the budget. Never summed (RG101). */
   ignored: IgnoredMovement[];
   inflow: number;
   outflow: number;
@@ -285,9 +283,8 @@ function pendingLines(d: BudgetData, m: MonthKey, accountId: string, today: stri
       }
     } else {
       if (lineCheck(d, m, l.key)) continue;
-      // « Reste à sortir » stays budgetary: a fixed/credit line carried by its expenses weighs its budget, never the actual they feed (spec 0014, RG13).
-      if (isCarryingBlock(l.block) && isLineCarried(d, m, l.key)) ({ amount, source } = { amount: l.budget, source: 'budget' });
-      else ({ amount, source } = countedAmount(l));
+      // « Reste à sortir » stays purely budgetary: a line weighs its budget, never the actual its entries feed (spec 0019, RG7).
+      amount = l.budget;
     }
     out.push({ line: l, amount, source, late: isLate(d, m, l, today) });
   }
@@ -298,8 +295,8 @@ function pendingLines(d: BudgetData, m: MonthKey, accountId: string, today: stri
 function expectedLines(d: BudgetData, m: MonthKey, accountId: string, today: string): PendingLine[] {
   return monthLines(d, m)
     .filter(l => l.block === 'rev' && l.execMode !== 'informatif' && accountIdOf(d, l.accountId) === accountId && !lineCheck(d, m, l.key))
-    // « Revenus attendus » stays budgetary: a revenue line carried by its entries weighs its budget, never the actual they feed (spec 0015, RG14).
-    .map(l => ({ line: l, ...(isLineCarried(d, m, l.key) ? { amount: l.budget, source: 'budget' as const } : countedAmount(l)), late: isLate(d, m, l, today) }));
+    // « Revenus attendus » stays purely budgetary: a revenue line weighs its budget, never the actual its entries feed (spec 0019, RG7).
+    .map(l => ({ line: l, amount: l.budget, source: 'budget' as const, late: isLate(d, m, l, today) }));
 }
 
 /** Why a counterpart is not counted by the main account (RG101). */
@@ -315,8 +312,8 @@ export interface IgnoredMovement {
 }
 
 /**
- * Counterparts that do not touch the main account because the other account is really out of the budget (RG92, RG100):
- * a checked variable line, a checked envelope allocation, an old transfer marked « fait ». Pure and separate from
+ * Fictive counterparts that do not touch the main account because the other account is really out of the budget (RG92, RG100; spec 0019, RG12):
+ * a checked variable line, a checked envelope allocation. A transfer is real and always counts, so it is never listed here. Pure and separate from
  * `bankMovements` on purpose: it is never summed, so it cannot change a balance, an entry/exit total, a statement gap
  * or the Ledger (RG101, RG104). Empty for any account but the main one (the out-of-budget account records its own side).
  */
@@ -330,76 +327,57 @@ export function ignoredMovements(d: BudgetData, accountId: string, m: MonthKey):
   for (const l of md.lines) {
     const c = md.checks?.[l.key];
     const to = l.block === 'var' && c ? varAccountId(d, l) : null;
-    if (c && to && outOfBudget(to) && l.budget !== 0) out.push({ date: c.doneOn, label: `${l.name} → ${nameOf(to)} (pointé)`, amount: -l.budget, reason: IGNORED_REASON });
+    if (c && to && outOfBudget(to) && l.budget !== 0 && !isItemTransferred(d, m, { kind: 'line', key: l.key })) out.push({ date: c.doneOn, label: `${l.name} → ${nameOf(to)} (pointé)`, amount: -l.budget, reason: IGNORED_REASON });
   }
   for (const e of d.envelopes) {
     const c = md.checks?.[envelopeCheckKey(e.id)];
     const amount = md.alloc[e.id] ?? 0;
     // From the month its own account exists, an envelope never leaves the budget (spec 0011, RG4): only older checks are concerned.
-    if (!envelopeAccountAt(d, e, m) && c?.accountId && outOfBudget(c.accountId) && amount !== 0) out.push({ date: c.doneOn, label: `Allocation ${e.name} → ${nameOf(c.accountId)} (pointée)`, amount: -amount, reason: IGNORED_REASON });
-  }
-  for (const t of d.transfers) {
-    if (!md.transfersDone[t.id] || t.to?.kind !== 'bank' || t.amount === 0) continue;
-    if (t.to.id === main && outOfBudget(t.fromAccountId)) out.push({ date: `${m}-01`, label: `${t.name} (virement)`, amount: t.amount, reason: IGNORED_REASON });
-    if (t.fromAccountId === main && outOfBudget(t.to.id)) out.push({ date: `${m}-01`, label: `${t.name} (virement)`, amount: -t.amount, reason: IGNORED_REASON });
-  }
-  for (const mv of d.accountMovements ?? []) {
-    const date = bankDateOf(mv);
-    if (!date.startsWith(m) || mv.amount === 0) continue;
-    if (mv.fromAccountId === main && outOfBudget(mv.toAccountId)) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (mouvement)`, amount: -mv.amount, reason: IGNORED_REASON });
-    if (mv.toAccountId === main && outOfBudget(mv.fromAccountId)) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (mouvement)`, amount: mv.amount, reason: IGNORED_REASON });
+    if (!envelopeAccountAt(d, e, m) && c?.accountId && outOfBudget(c.accountId) && amount !== 0 && !isItemTransferred(d, m, { kind: 'env', id: e.id })) out.push({ date: c.doneOn, label: `Allocation ${e.name} → ${nameOf(c.accountId)} (pointée)`, amount: -amount, reason: IGNORED_REASON });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Movements shown in the detail of an account for a month (RG28, RG65, RG66, RG72). */
-function detailMovements(d: BudgetData, m: MonthKey, accountId: string): Movement[] {
-  const mode = monthMode(d, m);
-  const active = bankMovements(d, accountId, m, mode === 'pointage' ? 'checks' : 'actual').map((x): Movement => ({ ...x, counted: true }));
+/** The movements of a view as detail lines, with the adjustments' dates of creation (RG27). */
+function detailOf(d: BudgetData, list: BankMovement[]): Movement[] {
   const adjustments = new Map((d.adjustments ?? []).map(a => [a.id, a]));
-  for (const x of active) if (x.adjustmentId) Object.assign(x, { createdOn: adjustments.get(x.adjustmentId)?.createdOn });
-  const extra: Movement[] = [];
+  return list.map((x): Movement => ({ ...x, counted: true, ...(x.adjustmentId ? { createdOn: adjustments.get(x.adjustmentId)?.createdOn } : {}) }));
+}
+
+/** Reste à sortir, real and estimated balances, statement gap and margin of one account for a month (RG4, RG11, RG58, RG63; spec 0019). */
+export function accountPointage(d: BudgetData, m: MonthKey, accountId: string, today: string): AccountPointage | null {
+  const account = d.accounts.find(a => a.id === accountId);
+  if (!account) return null;
+  const est = monthBalance(d, m, accountId);
+  const real = realMonthBalance(d, m, accountId);
+  const realList = detailOf(d, realMovements(d, accountId, m));
   // Cancelled adjustments stay listed, struck through, and no longer count (RG66).
   for (const a of d.adjustments ?? []) {
     if (a.accountId === accountId && a.cancelledOn && a.date.startsWith(m)) {
-      extra.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', counted: false, adjustmentId: a.id, cancelledOn: a.cancelledOn, createdOn: a.createdOn });
+      realList.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', counted: false, adjustmentId: a.id, cancelledOn: a.cancelledOn, createdOn: a.createdOn });
     }
   }
-  // In a month counted at the actuals, a check has no effect on the estimate, except the budget sent to a dedicated account, which the Ledger counts (RG72).
-  if (mode === 'real') {
-    for (const x of bankMovements(d, accountId, m, 'checks')) {
-      if (x.kind === 'check' && !x.counterpart) {
-        extra.push({ ...x, counted: false, note: 'pointé, sans effet sur le Solde estimé (mois compté au réel)' });
-      }
-    }
-  }
-  return [...active, ...extra].sort((a, b) => a.date.localeCompare(b.date));
-}
-
-/** Reste à sortir, estimated balance, statement gap and margin of one account for a month (RG11, RG58, RG63). */
-export function accountPointage(d: BudgetData, m: MonthKey, accountId: string, today: string, ledger?: Ledger): AccountPointage | null {
-  const account = d.accounts.find(a => a.id === accountId);
-  if (!account) return null;
-  const bal = monthBalance(d, m, accountId);
-  const movements = detailMovements(d, m, accountId);
-  const counted = movements.filter(x => x.counted);
-  const flow = flowOf(counted);
+  const estList = detailOf(d, estimatedMovements(d, accountId, m));
+  const byDate = (a: Movement, b: Movement) => a.date.localeCompare(b.date);
+  realList.sort(byDate);
+  estList.sort(byDate);
+  const flow = flowOf(realList.filter(x => x.counted));
   const pending = pendingLines(d, m, accountId, today);
   const remaining = round2(pending.reduce((s, p) => s + p.amount, 0));
-  const estimated = bal ? bal.end : null;
+  const estimated = est ? est.end : null;
   const statement = d.months[m]?.accountBalances?.[accountId] ?? null;
   const expectedL = expectedLines(d, m, accountId, today);
-  // Gap: statement − estimate at the statement date, that day included (RG63).
+  // Gap: statement − REAL balance at the statement date, that day included (RG4, RG63).
   let gap: number | null = null;
-  if (statement && bal) {
-    const upTo = flowOf(counted.filter(x => x.date <= statement.on));
-    gap = round2(statement.amount - round2(bal.start + upTo.in - upTo.out));
+  if (statement && real) {
+    const upTo = flowOf(realList.filter(x => x.counted && x.date <= statement.on));
+    gap = round2(statement.amount - round2(real.start + upTo.in - upTo.out));
   }
   return {
-    account, mode: monthMode(d, m), start: bal ? bal.start : null, estimated,
-    ledgerBalance: ledger?.bankMonth(accountId, m)?.balance ?? null,
+    account, real, estimatedBalance: est, estimated,
+    difference: real && est ? round2(real.end - est.end) : null,
     statement, gap,
-    movements, ignored: ignoredMovements(d, accountId, m), inflow: flow.in, outflow: flow.out, remaining,
+    realMovements: realList, estimatedMovements: estList, ignored: ignoredMovements(d, accountId, m), inflow: flow.in, outflow: flow.out, remaining,
     margin: estimated === null ? null : round2(estimated - remaining), pending,
     expectedLines: expectedL, expected: round2(expectedL.reduce((s, p) => s + p.amount, 0)),
   };
@@ -421,6 +399,6 @@ export function pointageAccounts(d: BudgetData, m: MonthKey): BankAccount[] {
     if (isEnvelopeAccount(a)) return false;
     if (withLine.has(a.id)) return true;
     if (a.archived) return false;
-    return a.id === main || !!d.months[m]?.accountBalances?.[a.id] || bankMovements(d, a.id, m, monthMode(d, m) === 'pointage' ? 'checks' : 'actual').length > 0;
+    return a.id === main || !!d.months[m]?.accountBalances?.[a.id] || realMovements(d, a.id, m).length + estimatedMovements(d, a.id, m).length > 0;
   });
 }

@@ -1,6 +1,6 @@
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, newEnvelopeAccount } from './bank';
 import { addMonths, monthKey, round2 } from './format';
-import type { BlockKey, BudgetData, EnvHistory, Line, LineCheck, MonthKey, Transaction, TxType } from './types';
+import type { AccountMovement, BlockKey, BudgetData, EnvHistory, Line, LineCheck, MonthKey, Transaction, TxType } from './types';
 
 /*
  * Sample data from the design prototype. December 2026 is the showcase month:
@@ -146,6 +146,16 @@ export function seedData(): BudgetData {
   }
   for (const [day, label, amount, type, target, source] of DEC_TX) tx('2026-12', day, label, amount, type, target, source);
 
+  // Since spec 0019 an allocation only moves money when the funding is recorded: each month's allocation is a real transfer from the main
+  // account to the envelope's account, attached to the envelope, on the 1st.
+  const accountMovements: AccountMovement[] = [];
+  for (const m of ['2026-10', '2026-11', '2026-12']) {
+    for (const e of ENVELOPES) {
+      const amount = months[m].alloc[e.id] ?? 0;
+      if (amount > 0) accountMovements.push({ id: `fund-${m}-${e.id}`, month: m, day: 1, label: `Alimentation ${e.name}`, amount, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: envelopeAccountId(e.id), target: { kind: 'env', id: e.id } });
+    }
+  }
+
   return {
     version: 1,
     firstMonth: '2026-10',
@@ -157,6 +167,7 @@ export function seedData(): BudgetData {
     envHistory,
     statements,
     transactions,
+    accountMovements,
     transfers: [
       { id: 'bou', name: 'Boursorama', amount: 360 }, { id: 'ce', name: 'Caisse d’épargne', amount: 400 }, { id: 'lyd', name: 'Lydia', amount: 100 },
       { id: 'ram', name: 'Ramify', amount: 100 }, { id: 'icm', name: 'Interne CM', amount: 0 }, { id: 'bd', name: 'Bourse Direct', amount: 0 },
@@ -164,6 +175,6 @@ export function seedData(): BudgetData {
     ].map(t => ({ ...t, fromAccountId: MAIN_ACCOUNT_ID })),
     planned: PLANNED.map(([month, label, amount, envelopeId], i) => ({ id: `p${i}`, year: 2026, month, label, amount, envelopeId })),
     closes: { 2026: { closed: false, overrides: { 'acc:e-vc': 300 } } },
-    settings: { pointageStart: '2026-12', emergencyAccounts: ['e-la', 'e-ld'], emergencyTarget: 22950, investTarget: 20000, savingsRateTarget: 60 },
+    settings: { emergencyAccounts: ['e-la', 'e-ld'], emergencyTarget: 22950, investTarget: 20000, savingsRateTarget: 60 },
   };
 }

@@ -1,22 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
-import { Toast } from '../components/Toast';
 import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
-import { carriedAccountRefusal, carriedLineNote, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
+import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
+import { lineEntriesNote } from '../../domain/lineActuals';
+import { LineQuickEntry } from '../components/LineQuickEntry';
 import { LineCheckBox, LineCheckMeta } from '../components/LineCheck';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
 import { addEnvelope, renameEnvelope } from '../../application/envelopes';
 import { setLinePayment } from '../../application/payment';
-import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, undoValidateMonth, updateLine, validateMonth, type ValidatedLine } from '../../application/actions';
+import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, updateLine } from '../../application/actions';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
-import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, linesWithoutActual, monthSummary } from '../../domain/budget';
+import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, Line, MonthKey } from '../../domain/types';
@@ -45,7 +46,7 @@ export function BudgetActions({ month }: { month: MonthKey }) {
   const md = data.months[month];
   const locked = isMonthLocked(data, month);
   const prevReady = !!data.months[addMonths(month, -1)]?.initialized;
-  const confirmReplace = () => !md?.initialized || window.confirm(`Remplacer les lignes de ${monthLabel(month)} ? Les montants réels saisis seront effacés.`);
+  const confirmReplace = () => !md?.initialized || window.confirm(`Remplacer les lignes de ${monthLabel(month)} ? Les pointages des lignes remplacées seront effacés.`);
 
   const exportCsv = () => {
     const blob = new Blob([monthCsv(monthLines(data, month), BLOCK_TITLES, l => !isLineInBudget(data, l))], { type: 'text/csv;charset=utf-8' });
@@ -154,26 +155,8 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
   const s = monthSummary(data, ledger, month);
   const st = data.settings;
   const emergencyPct = st.emergencyTarget ? (s.emergency / st.emergencyTarget) * 100 : 0;
-  const missing = linesWithoutActual(data, month).length;
-  // Lines just validated, kept only in memory so the user can undo (not saved).
-  const [validated, setValidated] = useState<ValidatedLine[] | null>(null);
-  useEffect(() => setValidated(null), [month]);
-  const closeToast = useCallback(() => setValidated(null), []);
-  const monthClosed = isMonthClosed(data, month);
-  // A closed month can no longer be validated: the undo toast goes away (RG30).
-  useEffect(() => {
-    if (monthClosed) setValidated(null);
-  }, [monthClosed]);
   // Why « Clôturer le mois » was refused, recomputed live: it disappears once the month can be closed (RG28).
   const closeTexts = closeAttempt ? closeBlockers(data, month).map(closeBlockerText).filter((t): t is string => t !== null) : [];
-  const validate = () => {
-    // The lines about to be filled, read from the current data (same rule as validateMonth).
-    const filled = linesWithoutActual(data, month).map(l => ({ key: l.key, value: l.budget }));
-    if (!filled.length) return;
-    update(d => void validateMonth(d, month));
-    setValidated(filled);
-  };
-
   return (
     <>
       {uninit && (
@@ -211,31 +194,6 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
             <Icon name="close" size={15} />
           </div>
         </div>
-      )}
-      {!uninit && missing > 0 && (
-        <div className="banner">
-          <div className="banner-icon">
-            <Icon name="check" size={18} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div className="banner-title">{missing} {missing > 1 ? 'lignes sans réel saisi' : 'ligne sans réel saisi'}</div>
-            <div className="banner-text">Considère le réel conforme au budget pour ces lignes. Les réels déjà saisis ne sont pas modifiés.</div>
-          </div>
-          <div className={`btn-dark${locked ? ' is-disabled' : ''}`} onClick={locked ? undefined : validate}>
-            Valider le mois
-          </div>
-        </div>
-      )}
-      {validated && (
-        <Toast
-          message={`${validated.length} ${validated.length > 1 ? 'lignes validées' : 'ligne validée'}`}
-          actionLabel="Annuler"
-          onAction={() => {
-            update(d => undoValidateMonth(d, month, validated));
-            setValidated(null);
-          }}
-          onClose={closeToast}
-        />
       )}
       <div className={uninit ? 'is-preview' : undefined}>
         <div className="summary">
@@ -289,7 +247,7 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
             <BlockCard block="inv" month={month} locked={locked || uninit} today={today} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
           </div>
           <div className="budget-col">
-            <EnvelopesCompact month={month} locked={locked || uninit} />
+            <EnvelopesCompact month={month} locked={locked || !data.months[month]?.initialized} />
             <PointageCard month={month} locked={locked || uninit} today={today} />
           </div>
         </div>
@@ -348,7 +306,7 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
     const rest = totals.budget - totals.actual;
     strip = { label: 'Restant', value: money(rest), color: rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)' };
   }
-  // Number of expenses carried by a fixed/credit line (spec 0014): its actual is their sum, not editable, and its pointage no longer moves balances.
+  // Number of entries on a fixed/credit/revenue line: with entries, the account of the line can no longer change (spec 0014, 0015).
   const carriedBy = (l: Line) => (isCarryingBlock(l.block) ? lineExpenses(data, month, l.key).length : 0);
   const set = (key: string, patch: Partial<Line>) => update(d => updateLine(d, month, key, patch));
   const add = (section?: string) => {
@@ -416,6 +374,7 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                     {l.name}
                   </EditableText>
                   {block !== 'var' && <LineCheckMeta month={month} line={l} locked={locked} today={today} />}
+                  <LineQuickEntry month={month} line={l} locked={locked || !data.months[month]?.initialized} />
                 </div>
                 <div className="rel">
                   <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked}>
@@ -423,25 +382,12 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                   </EditableAmount>
                 </div>
                 <div className="rel">
-                  <EditableAmount
-                    id={`r:${l.key}`}
-                    value={l.actual}
-                    allowEmpty
-                    onCommit={v => set(l.key, { actual: v })}
-                    className="cell"
-                    style={{ color: l.actual === null ? MUTED : undefined }}
-                    inputClassName="cell-input"
-                    hint="right"
-                    disabled={locked || carriedBy(l) > 0}
-                  >
+                  {/* Read only (spec 0019, RG19, RG24): the actual is the sum of the entries of the line. Its count is in the tooltip of the row;
+                      screen readers get the same text through a visually hidden span (no layout effect). */}
+                  <div className="cell is-readonly" style={{ color: l.actual === null ? MUTED : undefined }} aria-describedby={`entries:${l.key}`}>
                     {l.actual === null ? '—' : money(l.actual)}
-                  </EditableAmount>
-                  {/* Read by screen readers only (no layout effect): the same information as the tooltip of the line (spec 0014). */}
-                  {carriedBy(l) > 0 && (
-                    <span className="sr-only" id={`carried:${l.key}`}>
-                      {carriedLineNote(data, month, l)}
-                    </span>
-                  )}
+                  </div>
+                  <span className="sr-only" id={`entries:${l.key}`}>{lineEntriesNote(data, month, l)}</span>
                 </div>
                 {isSavings ? (
                   <div className="num gap" style={{ color: est && est.value < 0 ? BAD : undefined }} title={gap === null ? undefined : `Écart : ${gap === 0 ? money(0) : money(gap, true)}`}>

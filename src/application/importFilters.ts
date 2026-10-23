@@ -1,4 +1,3 @@
-import { actualReplacedBy } from '../domain/lineExpenses';
 import { normalizeLabel, fullLabelOf } from '../domain/statement';
 import type { BudgetData, ImportTarget, MonthKey } from '../domain/types';
 import { changeMonth, changeNature, isImportMonth, isIncome, isLocked, isReceivedTransfer, lineBalanceWarning, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
@@ -11,7 +10,7 @@ import { changeMonth, changeNature, isImportMonth, isIncome, isLocked, isReceive
 /** States of a line, shown as chips and used as a filter (RG47). A line can have several. */
 export type LineState =
   | 'nouveau' | 'a_rattacher' | 'a_qualifier' | 'compte_a_rattacher' | 'doublon' | 'doublon_probable'
-  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'reel_remplace' | 'date_hors_soldes';
+  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'date_hors_soldes';
 
 const NONE: ReadonlySet<string> = new Set();
 
@@ -28,11 +27,10 @@ export const STATE_LABEL: Record<LineState, string> = {
   decochee: 'Décochée',
   entree: 'Entrée d’argent',
   importee: 'Importée',
-  reel_remplace: 'Réel saisi à remplacer',
   date_hors_soldes: 'Date hors soldes',
 };
 
-export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'reel_remplace', 'date_hors_soldes'];
+export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'date_hors_soldes'];
 
 /**
  * States of a line. « Nouveau » is a line with nothing left to do that is not already imported; « Décochée » is a debit unchecked by choice; « Déjà importée » (`doublon`) is a locked line, which has no other state (RG87);
@@ -51,7 +49,6 @@ export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<stri
   else if (problem) out.push('a_rattacher');
   else if (!isIncome(l)) out.push('nouveau');
   // The target is a fixed/credit line whose typed actual the first expense would replace (spec 0014, RG6): informative, not blocking.
-  if (l.target?.kind === 'line' && actualReplacedBy(d, l.month, l.target.key) !== null) out.push('reel_remplace');
   // The bank date is outside what the balances cover: informative, the line stays importable (spec 0015, RG6).
   if (lineBalanceWarning(d, l) !== null) out.push('date_hors_soldes');
   if (l.similarImported === 'probable') out.push('doublon_probable');

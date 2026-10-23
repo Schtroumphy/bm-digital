@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { addTransaction, deleteTransaction, undoValidateMonth, updateLine, validateMonth } from './actions';
+import { addTransaction, deleteTransaction, updateLine } from './actions';
 import { archiveBankAccount, setLineAccount } from './bankAccounts';
 import { checkLine, uncheckLine } from './checkoff';
 import { lineStates } from './importFilters';
-import { NEW_REVENUE_LINE, changeNature, lineBalanceWarning, lineProblem, prepareImport, replacedActuals, validateImport, type PreviewLine } from './statementImport';
+import { lineEntriesNote } from '../domain/lineActuals';
+import { NEW_REVENUE_LINE, changeNature, lineBalanceWarning, lineProblem, prepareImport, validateImport, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { availableReal, blockTotals } from '../domain/budget';
-import { bankMovements } from '../domain/bankMovements';
+import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { accountPointage, monthBalance } from '../domain/checkoff';
 import { emptyData } from '../domain/empty';
 import { balanceDateWarning, balanceRangeEnd } from '../domain/balanceRange';
 import { Ledger } from '../domain/ledger';
-import { bankDateOf, carriedAccountRefusal, carriedLineNote, expenseLineBlocker } from '../domain/lineExpenses';
+import { bankDateOf, carriedAccountRefusal, expenseLineBlocker } from '../domain/lineExpenses';
 import { fingerprintOf, type StatementRow } from '../domain/statement';
 import type { BlockKey, BudgetData, Line, Transaction } from '../domain/types';
 
@@ -58,8 +59,8 @@ describe('date bancaire (spec 0015, RG1 à RG6)', () => {
     addTransaction(d, { id: 't', month: OCT, day: 1, label: 'x', amount: 30, type: 'var', target: 'courses', bankDate: '2026-09-30' });
     expect(balance(d, SEP)).toBe(970);
     expect(balance(d, OCT)).toBe(970);
-    expect(bankMovements(d, MAIN_ACCOUNT_ID, OCT, 'actual')).toEqual([]);
-    expect(bankMovements(d, MAIN_ACCOUNT_ID, SEP, 'actual')[0]).toMatchObject({ date: '2026-09-30', attachedMonth: OCT });
+    expect(realMovements(d, MAIN_ACCOUNT_ID, OCT)).toEqual([]);
+    expect(realMovements(d, MAIN_ACCOUNT_ID, SEP)[0]).toMatchObject({ date: '2026-09-30', attachedMonth: OCT });
     expect(d.months[OCT].lines[0].actual).toBe(30);
     expect(d.months[SEP].lines[0].actual).toBeNull();
   });
@@ -68,14 +69,14 @@ describe('date bancaire (spec 0015, RG1 à RG6)', () => {
     const d = budget([ln('courses', 'var', 100)]);
     addTransaction(d, { id: 't', month: OCT, day: 3, label: 'x', amount: 30, type: 'var', target: 'courses' });
     expect(balance(d, SEP)).toBe(1000);
-    expect(bankMovements(d, MAIN_ACCOUNT_ID, OCT, 'actual')[0].date).toBe('2026-10-03');
+    expect(realMovements(d, MAIN_ACCOUNT_ID, OCT)[0].date).toBe('2026-10-03');
   });
 
   it('un mouvement entre comptes suit aussi sa date bancaire', () => {
     const d = budget();
     d.accountMovements = [{ id: 'm', month: OCT, day: 2, label: 'Retrait', amount: 40, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ACCOUNT_ID, bankDate: '2026-09-30' }];
-    expect(bankMovements(d, CASH_ACCOUNT_ID, SEP, 'actual').map(m => m.amount)).toEqual([40]);
-    expect(bankMovements(d, CASH_ACCOUNT_ID, OCT, 'actual')).toEqual([]);
+    expect(realMovements(d, CASH_ACCOUNT_ID, SEP).map(m => m.amount)).toEqual([40]);
+    expect(realMovements(d, CASH_ACCOUNT_ID, OCT)).toEqual([]);
   });
 });
 
@@ -91,42 +92,41 @@ describe('entrée sur une ligne de revenu (spec 0015, RG7 à RG16)', () => {
     expect(blockTotals(d.months[SEP].lines, 'rev').actual).toBe(0);
   });
 
-  it('CA5: la ligne portée ne compte qu’une fois ; sans écriture son propre mouvement reste compté', () => {
+  it('CA4 (0019) : un revenu pointé « reçu » sans écriture ne change pas le solde réel ; l’entrée importée l’augmente à la date bancaire', () => {
     const d = budget();
-    d.months[OCT].lines[0].actual = 2400;
-    expect(balance(d, OCT)).toBe(3400);
-    d.months[OCT].lines[0].actual = null;
-    expect(addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'))).toBe(true);
+    checkLine(d, OCT, 'salaire', '2026-10-02');
+    expect(balance(d, OCT)).toBe(1000);
+    expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(3400);
+    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire', { bankDate: '2026-09-28' }));
+    expect(balance(d, SEP)).toBe(3480);
+    expect(realMovements(d, MAIN_ACCOUNT_ID, SEP)[0]).toMatchObject({ date: '2026-09-28', amount: 2480 });
+  });
+
+  it('CA17 (0019) : une ligne rev et deux entrées rattachées : son réel est leur somme', () => {
+    const d = budget();
+    addTransaction(d, rv('a', OCT, 5, 2000, 'salaire'));
+    addTransaction(d, rv('b', OCT, 6, 480, 'salaire'));
+    expect(d.months[OCT].lines[0].actual).toBe(2480);
     expect(balance(d, OCT)).toBe(3480);
   });
 
-  it('CA6 / CA7: pointer ou dépointer ne change aucun solde, dans les deux modes', () => {
-    for (const pointage of [false, true]) {
-      const d = budget();
-      if (pointage) d.settings.pointageStart = OCT;
-      addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
-      const before = monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end;
-      checkLine(d, OCT, 'salaire', '2026-10-03');
-      expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(before);
-      uncheckLine(d, OCT, 'salaire');
-      expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(before);
-      expect(bankMovements(d, MAIN_ACCOUNT_ID, OCT, pointage ? 'checks' : 'actual').map(m => [m.date, m.amount])).toEqual([['2026-10-05', 2480]]);
-    }
-  });
-
-  it('CA8: un réel saisi n’est remplacé qu’avec la confirmation', () => {
+  it('CA6 / CA7 (0019) : pointer ou dépointer ne change pas le solde réel ; l’estimé compte la ligne par son pointage (au montant compté), jamais l’entrée', () => {
     const d = budget();
-    d.months[OCT].lines[0].actual = 2400;
-    expect(addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'))).toBe(false);
-    expect(d.months[OCT].lines[0].actual).toBe(2400);
-    expect(addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'), { replaceActual: true })).toBe(true);
-    expect(d.months[OCT].lines[0].actual).toBe(2480);
+    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
+    const real = balance(d, OCT);
+    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, OCT)).toEqual([]);
+    checkLine(d, OCT, 'salaire', '2026-10-03');
+    expect(balance(d, OCT)).toBe(real);
+    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, OCT).map(m => [m.date, m.amount])).toEqual([['2026-10-03', 2480]]);
+    uncheckLine(d, OCT, 'salaire');
+    expect(balance(d, OCT)).toBe(real);
+    expect(realMovements(d, MAIN_ACCOUNT_ID, OCT).map(m => [m.date, m.amount])).toEqual([['2026-10-05', 2480]]);
   });
 
   it('CA9: réel et compte non modifiables tant que la ligne est portée ; la dernière suppression remet le réel à vide', () => {
     const d = budget();
     addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
-    expect(updateLine(d, OCT, 'salaire', { actual: 1 })).toBe(false);
+    expect(updateLine(d, OCT, 'salaire', { name: 'Paie' })).toBe(true);
     expect(setLineAccount(d, OCT, 'salaire', SWILE)).toBe(false);
     expect(carriedAccountRefusal('rev')).toMatch(/porte des écritures/);
     expect(deleteTransaction(d, 'a')).toBe(true);
@@ -141,7 +141,7 @@ describe('entrée sur une ligne de revenu (spec 0015, RG7 à RG16)', () => {
     expect(d.months[OCT].lines[0].actual).toBe(2480);
     deleteTransaction(d, 'b');
     expect(d.months[OCT].lines[0].actual).toBe(2000);
-    expect(carriedLineNote(d, OCT, d.months[OCT].lines[0])).toMatch(/1 entrée : le réel est leur somme.*portée par ses écritures/s);
+    expect(lineEntriesNote(d, OCT, d.months[OCT].lines[0])).toBe('1 écriture, réel = somme des écritures');
   });
 
   it('CA11: refusée sur une ligne qui n’est pas rev, sur un autre compte, ou un compte archivé', () => {
@@ -172,35 +172,27 @@ describe('entrée sur une ligne de revenu (spec 0015, RG7 à RG16)', () => {
     expect(availableReal(d, OCT)).toBe(before + 80);
   });
 
-  it('CA19: au réel, l’écran Comptes égale le solde estimé ; au pointage, l’entrée compte une fois', () => {
-    const d = budget([ln('salaire', 'rev', 2400), ln('edf', 'fix', 62, { actual: 62 })]);
+  it('CA19 (0019) : l’entrée est réelle seulement ; l’estimé la compte par le pointage de la ligne, une fois', () => {
+    const d = budget([ln('salaire', 'rev', 2400), ln('edf', 'fix', 62)]);
     addTransaction(d, rv('a', OCT, 5, 2480, 'salaire', { bankDate: '2026-09-28' }));
-    for (const m of [SEP, OCT]) expect(monthBalance(d, m, MAIN_ACCOUNT_ID)!.end).toBe(balance(d, m));
-    d.settings.pointageStart = OCT;
+    expect(balance(d, SEP)).toBe(3480);
+    expect(monthBalance(d, SEP, MAIN_ACCOUNT_ID)!.end).toBe(1000);
     checkLine(d, OCT, 'salaire', '2026-10-02');
     const est = monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end;
+    expect(est).toBe(1000 + 2480);
     uncheckLine(d, OCT, 'salaire');
-    expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(est);
+    expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(1000);
   });
 
-  it('CA20: « Revenus attendus » reste budgétaire : 2 400 € budgétés avec une entrée de 2 480 €, réel saisi 2 450 € compté, ligne pointée sortie', () => {
+  it('CA20: « Revenus attendus » reste budgétaire : 2 400 € budgétés avec une entrée de 2 480 € comme avec un réel de 2 450 €, ligne pointée sortie', () => {
     const d = budget();
     addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
     expect(accountPointage(d, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(2400);
     const e = budget();
     e.months[OCT].lines[0].actual = 2450;
-    expect(accountPointage(e, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(2450);
+    expect(accountPointage(e, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(2400); // budgétaire, quel que soit le réel
     checkLine(d, OCT, 'salaire', '2026-10-06');
     expect(accountPointage(d, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(0);
-  });
-
-  it('CA21: annuler « Valider le mois » ne vide pas une ligne rev portée', () => {
-    const d = budget();
-    const filled = validateMonth(d, OCT);
-    d.months[OCT].lines[0].actual = null;
-    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
-    undoValidateMonth(d, OCT, filled);
-    expect(d.months[OCT].lines[0].actual).toBe(2480);
   });
 
   it('une entrée n’est jamais additionnée comme une dépense (var restant, enveloppes)', () => {
@@ -258,16 +250,12 @@ describe('import des entrées d’argent (spec 0015)', () => {
     expect(none.revenues).toBe(0);
   });
 
-  it('CA8 import: « Réel saisi à remplacer » et confirmation unique', () => {
+  it('CA20 (0019) : plus de « Réel saisi à remplacer » ; les entrées importées additionnent leur montant dans le réel de la ligne', () => {
     const d = budget();
-    d.months[OCT].lines[0].actual = 2400;
     const p0 = prep(d, [credit('REMBOURSEMENT A', 5), credit('REMBOURSEMENT B', 7)]);
     const p = { ...p0, lines: p0.lines.map(toRev('salaire')) };
-    expect(lineStates(d, p.lines[0])).toContain('reel_remplace');
-    expect(replacedActuals(d, p, new Set(p.lines.map(l => l.id)))).toEqual([{ month: OCT, key: 'salaire', name: 'salaire', actual: 2400 }]);
-    expect(validateImport(d, p, newId).failedIds).toHaveLength(2);
-    expect(d.months[OCT].lines[0].actual).toBe(2400);
-    const done = validateImport(d, p, newId, { replaceActual: true });
+    expect(lineStates(d, p.lines[0])).not.toContain('reel_remplace');
+    const done = validateImport(d, p, newId);
     expect(done.revenues).toBe(2);
     expect(d.months[OCT].lines[0].actual).toBe(12);
   });

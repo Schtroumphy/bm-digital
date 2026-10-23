@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, applyTemplate, deleteTransaction } from './actions';
 import { addEnvelope } from './envelopes';
-import { addBankAccount, setBankAccountInBudget, setTransactionAccount } from './bankAccounts';
+import { setBankAccountInBudget, setTransactionAccount } from './bankAccounts';
 import { availableReal, lineRemaining, monthSummary } from '../domain/budget';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
-import { realignVariableActuals } from '../domain/migrate';
 import type { BudgetData, Line, Transaction } from '../domain/types';
 
 /*
@@ -117,62 +116,5 @@ describe('restant d’une ligne variable (0008)', () => {
 
   it('CA9: sans réel, le restant est le budget entier', () => {
     expect(lineRemaining(ln('a', 'var', 400))).toBe(400);
-  });
-});
-
-describe('remise en phase au chargement (0008, RG18)', () => {
-  const withLeftOut = () => {
-    const d = started();
-    d.months[M].lines.push(ln('loi', 'var', 100, 70));
-    // Avant la 0008 : le réel de « ali » ne contenait que les dépenses dans le budget (ici aucune).
-    d.transactions.push(tx({ id: 'old', amount: 40 }), tx({ id: 'ok', amount: 30, target: 'loi', accountId: MAIN_ACCOUNT_ID }));
-    return d;
-  };
-  const setReal = (d: BudgetData, key: string, v: number | null) => void (d.months[M].lines.find(l => l.key === key)!.actual = v);
-
-  it('CA11: un réel vide devient la somme de toutes les dépenses, les autres lignes ne sont pas touchées, idempotent', () => {
-    const d = withLeftOut();
-    const next = realignVariableActuals(d);
-    expect(real(next)).toBe(40);
-    expect(real(next, 'loi')).toBe(70);
-    expect(next.version).toBe(1);
-    expect(realignVariableActuals(next)).toEqual(next);
-    expect(real(d)).toBeNull(); // l’argument n’est pas modifié
-  });
-
-  it('un réel égal à l’ancien calcul (dépenses dans le budget seules) est corrigé', () => {
-    const d = withLeftOut();
-    d.transactions.push(tx({ id: 'in', amount: 25, accountId: MAIN_ACCOUNT_ID }));
-    setReal(d, 'ali', 25);
-    expect(real(realignVariableActuals(d))).toBe(65);
-  });
-
-  it('un réel saisi à la main (différent de l’ancien calcul) est conservé, même après plusieurs chargements', () => {
-    const d = withLeftOut();
-    setReal(d, 'ali', 50);
-    const once = realignVariableActuals(d);
-    expect(real(once)).toBe(50);
-    expect(real(realignVariableActuals(realignVariableActuals(once)))).toBe(50);
-  });
-
-  it('saisie manuelle après un premier passage : elle survit aux chargements suivants', () => {
-    const first = realignVariableActuals(withLeftOut());
-    expect(real(first)).toBe(40);
-    const edited = structuredClone(first);
-    setReal(edited, 'ali', 55);
-    expect(real(realignVariableActuals(edited))).toBe(55);
-  });
-
-  it('les mois verrouillés sont remis en phase aussi', () => {
-    const d = withLeftOut();
-    d.closes[2027] = { closed: true, overrides: {} };
-    expect(real(realignVariableActuals(d))).toBe(40);
-  });
-
-  it('sans dépense hors budget, les données sont rendues telles quelles', () => {
-    const d = started();
-    addBankAccount(d, 'x');
-    d.transactions.push(tx({ accountId: MAIN_ACCOUNT_ID }));
-    expect(realignVariableActuals(d)).toBe(d);
   });
 });

@@ -11,7 +11,7 @@ import { newId, useStore } from '../state/store';
 
 /** « Pointage par compte » (spec 0009): Reste à sortir, Solde estimé, Marge, relevé et écart of each account, with a detail that unfolds on click. */
 export function PointageCard({ month, locked, today }: { month: MonthKey; locked: boolean; today: string }) {
-  const { data, ledger } = useStore();
+  const { data } = useStore();
   const [openId, setOpenId] = useState<string | null>(null);
   const late = lateCount(data, month, today);
   const accounts = pointageAccounts(data, month);
@@ -32,7 +32,7 @@ export function PointageCard({ month, locked, today }: { month: MonthKey; locked
       </div>
       <div className="pointage">
         {accounts.map(a => {
-          const p = accountPointage(data, month, a.id, today, ledger);
+          const p = accountPointage(data, month, a.id, today);
           if (!p) return null;
           const open = openId === a.id;
           return (
@@ -41,8 +41,10 @@ export function PointageCard({ month, locked, today }: { month: MonthKey; locked
                 <Icon name={open ? 'chevronDown' : 'chevronRight'} size={13} />
                 <AccountDot account={a} />
                 <span className="pt-name">{a.name}</span>
-                <span className="pt-est-label">Solde estimé</span>
-                <b>{p.estimated === null ? '—' : money(p.estimated)}</b>
+                <span className="pt-est-label">Solde réel</span>
+                <b>{p.real === null ? '—' : money(p.real.end)}</b>
+                <span className="pt-est-label" title="Budget et pointages fictifs, plus les transferts. Informatif.">Estimé (budget)</span>
+                <span>{p.estimated === null ? '—' : money(p.estimated)}</span>
               </div>
               {open && <AccountBody p={p} month={month} locked={locked} today={today} />}
             </div>
@@ -62,7 +64,7 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
   const id = p.account.id;
   const bounds = balanceDateBounds(month, today);
   // Nothing can be dated in a future month (RG32).
-  const canWrite = !locked && bounds.min <= bounds.max && p.estimated !== null;
+  const canWrite = !locked && bounds.min <= bounds.max && p.real !== null;
   // Date of the statement being edited, why the last attempt was refused, adjustment form, adjustment being cancelled.
   const [editingDate, setEditingDate] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,12 +99,26 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
   };
 
   // The grey lines come from a separate list and are only interleaved by date for display: they join no total (RG101).
-  const rows = [...p.movements, ...p.ignored].sort((a, b) => a.date.localeCompare(b.date));
+  // Two views of the same month (spec 0019, RG27): the real entries, or the estimate (checks marked fictive, transfers, expenses).
+  const [view, setView] = useState<'real' | 'estimated'>('real');
+  const list = view === 'real' ? p.realMovements : p.estimatedMovements;
+  const rows = view === 'real' ? list : [...list, ...p.ignored].sort((a, b) => a.date.localeCompare(b.date));
+  const balance = view === 'real' ? p.real : p.estimatedBalance;
   const prevMonth = monthName(parseMonth(addMonths(month, -1)).month).toLowerCase();
-  const ledgerDiffers = p.ledgerBalance !== null && p.estimated !== null && p.ledgerBalance !== p.estimated;
 
   return (
     <div className="pt-body">
+      <div className="pt-line">
+        <b>Solde réel</b>
+        <b>{p.real === null ? '—' : money(p.real.end)}</b>
+      </div>
+      <div className="pt-line">
+        <span>Solde estimé (budget)</span>
+        <span>
+          {p.estimated === null ? '—' : money(p.estimated)}
+          {p.difference !== null && p.difference !== 0 && <span className="pt-maj" title="Écart : solde réel moins solde estimé"> écart {money(p.difference, true)}</span>}
+        </span>
+      </div>
       <div className="pt-line">
         <span>Reste à sortir</span>
         <b>{money(p.remaining)}</b>
@@ -118,7 +134,7 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
         <b style={{ color: gapColor(p.margin) }}>{p.margin === null ? '—' : money(p.margin, true)}</b>
       </div>
       <div className="pt-line">
-        <span>Solde relevé</span>
+        <span title="Comparé au solde réel à la date du relevé">Solde relevé</span>
         <span className="pt-balance">
           <div className="rel">
             <EditableAmount
@@ -165,7 +181,7 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
       </div>
       {p.gap !== null && (
         <div className="pt-line">
-          <span>Écart</span>
+          <span title="Relevé moins solde réel">Écart</span>
           <span className="pt-balance">
             <b style={{ color: p.gap === 0 ? GOOD : BAD }}>{money(p.gap, true)}</b>
             {p.gap !== 0 && canWrite && (
@@ -193,11 +209,14 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
 
       <div className="pt-detail">
         <div className="pt-detail-title">Détail de {monthName(parseMonth(month).month).toLowerCase()}</div>
-        {p.mode === 'real' && <div className="pt-row is-sub"><span>Mois compté au réel (avant le pointage)</span></div>}
-        {p.start !== null && (
+        <div className="pt-views" role="group" aria-label="Vue du détail">
+          <button type="button" className={`pt-view${view === 'real' ? ' is-on' : ''}`} aria-pressed={view === 'real'} onClick={() => setView('real')}>Réel</button>
+          <button type="button" className={`pt-view${view === 'estimated' ? ' is-on' : ''}`} aria-pressed={view === 'estimated'} onClick={() => setView('estimated')}>Estimé (budget)</button>
+        </div>
+        {balance !== null && (
           <div className="pt-row">
             <span>Début de mois (fin {prevMonth})</span>
-            <span>{money(p.start)}</span>
+            <span>{money(balance.start)}</span>
           </div>
         )}
         {rows.map((x, i) => 'reason' in x ? (
@@ -209,7 +228,7 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
             <span>{money(x.amount, true)}</span>
           </div>
         ) : (
-          <div key={i} className={`pt-row${x.counted ? '' : ' is-grey'}`} title={x.attachedMonth ? `Rattachée à ${monthLabel(x.attachedMonth).toLowerCase()}` : undefined}>
+          <div key={i} className={`pt-row${x.counted ? '' : ' is-grey'}${x.fictive ? ' is-fictive' : ''}`} title={x.fictive ? 'Pointage fictif : estimation de budget, n’affecte pas les soldes réels.' : x.attachedMonth ? `Rattachée à ${monthLabel(x.attachedMonth).toLowerCase()}` : undefined}>
             <span style={x.cancelledOn ? { textDecoration: 'line-through' } : undefined}>
               {shortDate(x.date)} {x.label}
               {x.adjustmentId && ` (régularisation, créée le ${shortDate(x.createdOn ?? x.date)})`}
@@ -230,15 +249,15 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
             <span style={{ color: x.counted && x.amount > 0 ? 'oklch(0.48 0.13 150)' : undefined, textDecoration: x.cancelledOn ? 'line-through' : undefined }}>{money(x.amount, true)}</span>
           </div>
         ))}
-        {p.estimated !== null && (
+        {balance !== null && (
           <div className="pt-row is-total">
-            <span>= Solde estimé</span>
-            <span>{money(p.estimated)}</span>
+            <span>= {view === 'real' ? 'Solde réel' : 'Solde estimé (budget)'}</span>
+            <span>{money(balance.end)}</span>
           </div>
         )}
-        {ledgerDiffers && (
-          <div className="pt-row is-grey">
-            <span>Solde de l’écran Comptes : {money(p.ledgerBalance!)}</span>
+        {p.difference !== null && (
+          <div className="pt-row is-grey" title="Information : solde réel moins solde estimé à la fin du mois">
+            <span>Écart réel − estimé : {money(p.difference, true)}</span>
           </div>
         )}
         {p.expectedLines.length > 0 && (

@@ -23,6 +23,10 @@ export interface Line extends PaymentSetting {
   section: string;
   name: string;
   budget: number;
+  /**
+   * Sum of the entries recorded on the line in the month, null when there is none (spec 0019, RG20). Never typed: it is a cache
+   * recomputed by `syncLineActuals` (domain/lineActuals) after every change of an entry.
+   */
   actual: number | null;
   /** `epa`/`inv` lines only: bank account that receives the line's payments (spec 0007); absent = no dedicated account. */
   linkedAccountId?: string;
@@ -34,8 +38,8 @@ export interface Line extends PaymentSetting {
   // For a `var` line it is the account assigned to the box, and `payMode` its mode (spec 0006).
 }
 
-/** A line of the budget model. `actual` is optional: when entered in the model, it is copied into a month created from it. */
-export type TemplateLine = Omit<Line, 'actual'> & { actual?: number | null };
+/** A line of the budget model. It carries no actual: the actual of a line is the sum of its entries, never typed (spec 0019, RG19). */
+export type TemplateLine = Omit<Line, 'actual'>;
 
 export interface Template {
   lines: TemplateLine[];
@@ -127,8 +131,15 @@ export interface Transaction {
 }
 
 /**
- * Money that moves from one of the user's accounts to another (withdrawal, internal transfer), created by the CSV import (spec 0013, RG10a).
- * Debits the source account and credits the destination on its day, in both month modes. Not a `Transaction`: it touches no line and no allocation.
+ * The budget item a transfer stands for (spec 0019, RG10, RG14): a savings/investment line or a `var` line of a dedicated account
+ * (`line`, by key), or an envelope (`env`, by id). Absent = a transfer with no budget item (cash withdrawal, plain transfer).
+ */
+export type MovementTarget = { kind: 'line'; key: string } | { kind: 'env'; id: string };
+
+/**
+ * « Transfert » (spec 0019): money that moves from one of the user's accounts to another (withdrawal, internal transfer, savings
+ * payment, envelope funding), created by the CSV import (spec 0013, RG10a) or typed in the Saisie screen. A real entry: it debits
+ * the source account and credits the destination on its day, in the real balance AND in the estimated one. Not a `Transaction`.
  */
 export interface AccountMovement {
   id: string;
@@ -147,6 +158,8 @@ export interface AccountMovement {
   detail?: string;
   /** Real date at the bank (spec 0015, RG1); absent = `month`/`day`. */
   bankDate?: string;
+  /** Budget item this transfer stands for, in `month` (spec 0019, RG10): it then replaces the item's pointed counterpart in the estimated balance. */
+  target?: MovementTarget;
 }
 
 /**
@@ -250,8 +263,6 @@ export interface Adjustment {
 }
 
 export interface Settings {
-  /** First month counted from the checks instead of the actuals (spec 0009, RG61). Absent = every month is counted from the actuals. */
-  pointageStart?: MonthKey;
   emergencyAccounts: string[];
   emergencyTarget: number;
   investTarget: number;

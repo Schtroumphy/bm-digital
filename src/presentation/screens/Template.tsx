@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
-import { BAD, GOOD, MUTED, tone, toneVars } from '../components/tone';
+import { BAD, GOOD, tone, toneVars } from '../components/tone';
 import { applyTemplate, saveAsTemplate } from '../../application/actions';
 import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, updateTemplateLine } from '../../application/template';
 import { isLineInBudget } from '../../domain/bank';
@@ -109,7 +109,6 @@ export function TemplateScreen({ month }: { month: MonthKey }) {
               <div className="line-grid line-head is-tpl">
                 <span>Nom</span>
                 <span className="num pad">Budget</span>
-                <span className="num pad">Réel</span>
               </div>
               {sections.map(sec => (
                 <div key={sec.label}>
@@ -127,18 +126,6 @@ export function TemplateScreen({ month }: { month: MonthKey }) {
                         </EditableText>
                         <EditableAmount id={`tb:${key}`} value={l.budget} onCommit={v => update(d => void updateTemplateLine(d, key, { budget: v ?? 0 }))} className="cell" inputClassName="cell-input" hint="right">
                           {money(l.budget)}
-                        </EditableAmount>
-                        <EditableAmount
-                          id={`tr:${key}`}
-                          value={l.actual ?? null}
-                          allowEmpty
-                          onCommit={v => update(d => void updateTemplateLine(d, key, { actual: v }))}
-                          className="cell"
-                          style={{ color: l.actual == null ? MUTED : undefined }}
-                          inputClassName="cell-input"
-                          hint="right"
-                        >
-                          {l.actual == null ? '—' : money(l.actual)}
                         </EditableAmount>
                       </div>
                     );

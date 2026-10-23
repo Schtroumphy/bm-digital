@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { addTransfer } from './accountMovements';
 import { addTransaction, applyTemplate, createFirstMonth, duplicatePrevious, saveAsTemplate, setStatement } from './actions';
 import { addBankAccount, archiveBankAccount, setBankAccountInBudget, setBankAccountOpening, setLineAccount, setLineLinkedAccount, setTransactionAccount } from './bankAccounts';
 import { emptyDraft, type SetupRow } from './setup';
@@ -30,6 +31,11 @@ function started(lines: Line[]): BudgetData {
   d.accounts.find(a => a.id === LIVRET)!.openingBalance = 1000;
   d.months[M] = { initialized: true, lines, alloc: {}, transfersDone: {} };
   d.template.lines = lines.map(({ actual: _a, ...l }) => l);
+  // Since spec 0019 the actual of a savings line is the sum of the transfers attached to it (RG16): a line given with an actual and a dedicated
+  // account gets the matching transfer, on the 1st. Without a dedicated account no transfer is possible, the actual moves no balance.
+  d.accountMovements = lines
+    .filter(l => (l.block === 'epa' || l.block === 'inv') && l.actual && l.linkedAccountId)
+    .map(l => ({ id: `auto-${l.key}`, month: M, day: 1, label: l.name, amount: l.actual!, fromAccountId: l.accountId ?? MAIN_ACCOUNT_ID, toAccountId: l.linkedAccountId!, target: { kind: 'line' as const, key: l.key } }));
   return d;
 }
 
@@ -50,7 +56,7 @@ describe('soldes des comptes bancaires avec un compte dédié', () => {
   it('CA2: sans lien, le compte bancaire ne bouge pas', () => {
     const d = started([line('livret', 'epa', 200, 200)]);
     expect(bal(d, LIVRET)).toBe(1000);
-    expect(bal(d, MAIN_ACCOUNT_ID)).toBe(4800);
+    expect(bal(d, MAIN_ACCOUNT_ID)).toBe(5000);
   });
 
   it('CA3: un investissement lié crédite le compte dédié', () => {
@@ -77,10 +83,10 @@ describe('soldes des comptes bancaires avec un compte dédié', () => {
     expect(bal(d, LIVRET)).toBe(1150);
   });
 
-  it('CA8: retirer le lien enlève les versements du dédié, la ligne ne change pas', () => {
+  it('CA8 (0019): retirer le lien ne défait pas les transferts réels déjà enregistrés; la ligne ne change pas', () => {
     const d = started([line('livret', 'epa', 200, 200, { linkedAccountId: LIVRET })]);
     expect(setLineLinkedAccount(d, M, 'livret', undefined)).toBe(true);
-    expect(bal(d, LIVRET)).toBe(1000);
+    expect(bal(d, LIVRET)).toBe(1200);
     expect(d.months[M].lines[0]).toMatchObject({ budget: 200, actual: 200 });
     expect('linkedAccountId' in d.months[M].lines[0]).toBe(false);
   });
@@ -93,17 +99,17 @@ describe('soldes des comptes bancaires avec un compte dédié', () => {
     expect('linkedAccountId' in d.template.lines[0]).toBe(false);
     expect(d.months['2027-02'].lines[0].linkedAccountId).toBe(LIVRET);
     const ledger = new Ledger(d, '2027-02');
-    expect(ledger.bankMonth(LIVRET, M)?.balance).toBe(1000);
-    expect(ledger.bankMonth(LIVRET, '2027-02')?.balance).toBe(1100);
+    expect(ledger.bankMonth(LIVRET, M)?.balance).toBe(1200);
+    expect(ledger.bankMonth(LIVRET, '2027-02')?.balance).toBe(1200); // février n'a aucun transfert : le réel saisi à la main ne compte plus
   });
 
-  it('CA9: un versement antérieur au mois de départ du dédié ne compte pas', () => {
+  it('CA9: un transfert antérieur au mois de départ du dédié ne compte pas', () => {
     const d = started([line('livret', 'epa', 200, 200, { linkedAccountId: LIVRET })]);
     setBankAccountOpening(d, LIVRET, { month: '2027-02' });
     d.months['2027-02'] = { initialized: true, lines: [line('livret', 'epa', 200, 100, { linkedAccountId: LIVRET })], alloc: {}, transfersDone: {} };
     const ledger = new Ledger(d, '2027-02');
     expect(ledger.bankMonth(LIVRET, M)).toBeNull();
-    expect(ledger.bankMonth(LIVRET, '2027-02')?.balance).toBe(1100);
+    expect(ledger.bankMonth(LIVRET, '2027-02')?.balance).toBe(1000);
   });
 
   it('CA13: un relevé saisi sur la ligne ne modifie pas le dédié', () => {
@@ -149,8 +155,7 @@ describe('refus du lien (RG2, RG7)', () => {
   });
 
   it('un dédié archivé garde son lien et ses soldes', () => {
-    const d = started([line('livret', 'epa', 200, 200)]);
-    setLineLinkedAccount(d, M, 'livret', LIVRET);
+    const d = started([line('livret', 'epa', 200, 200, { linkedAccountId: LIVRET })]);
     archiveBankAccount(d, LIVRET);
     expect(d.months[M].lines[0].linkedAccountId).toBe(LIVRET);
     expect(bal(d, LIVRET)).toBe(1200);
@@ -205,7 +210,9 @@ describe('solde estimé (RG20 à RG24)', () => {
   it('CA18: le budget en attente du réel, puis le réel le remplace', () => {
     const d = started([line('livret', 'epa', 200, null, { linkedAccountId: LIVRET })]);
     expect(est(d, 'livret')).toBe(1200);
-    d.months[M].lines[0].actual = 150;
+    // Le réel est la somme des transferts rattachés (spec 0019, RG16) : il remplace le budget du mois.
+    expect(addTransfer(d, { id: 'v', month: M, day: 4, label: 'Versement', amount: 150, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: LIVRET, target: { kind: 'line', key: 'livret' } })).toBe(true);
+    expect(d.months[M].lines[0].actual).toBe(150);
     expect(est(d, 'livret')).toBe(1150);
   });
 
@@ -305,6 +312,9 @@ describe('solde estimé cumulé sur les mois (RG20 à RG22ter)', () => {
     d.accounts.find(a => a.id === LIVRET)!.openingBalance = 1000;
     d.months[NOV] = month(nov);
     d.months[DEC] = month(dec);
+    // A line given with an actual and a dedicated account gets the matching transfer (spec 0019, RG16).
+    d.accountMovements = [[NOV, nov] as const, [DEC, dec] as const].flatMap(([m, ls]) =>
+      ls.filter(l => l.actual && l.linkedAccountId).map(l => ({ id: `auto-${m}-${l.key}`, month: m, day: 1, label: l.name, amount: l.actual!, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: l.linkedAccountId!, target: { kind: 'line' as const, key: l.key } })));
     return d;
   }
   const at = (d: BudgetData, m: string, key = 'livret') => {

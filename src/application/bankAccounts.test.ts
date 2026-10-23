@@ -37,6 +37,13 @@ function started(lines: Line[] = []): BudgetData {
   d.accounts = defaultBankAccounts(M);
   d.accounts[0].openingBalance = 100;
   d.months[M] = { initialized: true, lines, alloc: {}, transfersDone: {} };
+  // Since spec 0019 the actual of a line is the sum of its entries: a line given with an actual gets the matching entry (an expense on a
+  // `fix`/`cre`/`var` line, an entry of money on a `rev` line). A savings line has no entry without a dedicated account (RG16).
+  const entryType = { rev: 'rev', fix: 'fix', cre: 'fix', var: 'var' } as const;
+  for (const l of lines) {
+    const type = entryType[l.block as keyof typeof entryType];
+    if (type && l.actual) d.transactions.push({ id: `auto-${l.key}`, month: M, day: 1, label: l.key, amount: l.actual, type, target: l.key, ...(l.accountId ? { accountId: l.accountId } : {}) });
+  }
   return d;
 }
 
@@ -95,10 +102,14 @@ describe('soldes des comptes bancaires', () => {
     expect(bal(d, CASH_ACCOUNT_ID)).toBe(0);
   });
 
-  it('CA8: les versements réels vers une épargne ou un placement débitent le compte', () => {
+  it('CA8 (0019, RG16): le réel d’une ligne d’épargne ne débite aucun compte; seul un transfert le fait', () => {
     const d = started([ln('livret', 'epa', 300), ln('pea', 'inv', 50, CASH_ACCOUNT_ID)]);
+    expect(bal(d, MAIN_ACCOUNT_ID)).toBe(100);
+    expect(bal(d, CASH_ACCOUNT_ID)).toBe(0);
+    addBankAccount(d, 'ep', 'Livret', 'epargne');
+    d.accountMovements = [{ id: 'm', month: M, day: 4, label: 'Versement', amount: 300, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'ep' }];
     expect(bal(d, MAIN_ACCOUNT_ID)).toBe(-200);
-    expect(bal(d, CASH_ACCOUNT_ID)).toBe(-50);
+    expect(bal(d, 'ep')).toBe(300);
   });
 
   it('CA9: une sortie d’épargne sans compte crédite le principal', () => {
@@ -114,13 +125,14 @@ describe('soldes des comptes bancaires', () => {
     expect(bal(d, MAIN_ACCOUNT_ID)).toBe(75);
   });
 
-  it('CA6: un virement entre deux comptes ne bouge les soldes qu’une fois « fait »', () => {
+  it('CA6 (0019, RG1): un ancien virement « fait » est ignoré; un transfert bouge les deux soldes', () => {
     const d = started();
     addBankAccount(d, 'swile');
     d.transfers.push({ id: 'v', name: 'Vers Swile', amount: 150, fromAccountId: MAIN_ACCOUNT_ID, to: { kind: 'bank', id: 'swile' } });
+    d.months[M].transfersDone.v = true;
     expect(bal(d, MAIN_ACCOUNT_ID)).toBe(100);
     expect(bal(d, 'swile')).toBe(0);
-    d.months[M].transfersDone.v = true;
+    d.accountMovements = [{ id: 'm', month: M, day: 2, label: 'Vers Swile', amount: 150, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'swile' }];
     expect(bal(d, MAIN_ACCOUNT_ID)).toBe(-50);
     expect(bal(d, 'swile')).toBe(150);
   });
@@ -330,7 +342,7 @@ describe('assistant : étape Comptes', () => {
 
 describe('mois verrouillé', () => {
   it('le compte d’une ligne ou d’une transaction n’est pas modifiable', () => {
-    const d = started([ln('sal', 'rev', 100)]);
+    const d = started([ln('sal', 'rev', null, undefined, 100)]);
     addBankAccount(d, 'swile');
     addTransaction(d, { id: 't', month: M, day: 3, label: 'x', amount: 5, type: 'env', target: 'e' });
     d.closes[2027] = { closed: true, overrides: {} };
@@ -338,7 +350,7 @@ describe('mois verrouillé', () => {
     expect(setTransactionAccount(d, 't', 'swile')).toBe(false);
     expect(d.months[M].lines[0].accountId).toBeUndefined();
     // addTransaction wrote the resolved account (main): the refused change left it there.
-    expect(d.transactions[0].accountId).toBe(MAIN_ACCOUNT_ID);
+    expect(d.transactions.find(t => t.id === 't')!.accountId).toBe(MAIN_ACCOUNT_ID);
     d.closes[2027].closed = false;
     expect(setLineAccount(d, M, 'sal', 'swile')).toBe(true);
   });

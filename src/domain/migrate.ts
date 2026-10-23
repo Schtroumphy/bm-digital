@@ -1,8 +1,7 @@
-import { defaultBankAccounts, isTransactionInBudget, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
-import { varActualFromTx } from './budget';
-import { oldestCheckedMonth } from './checkoff';
-import { currentMonthKey, round2 } from './format';
-import type { BudgetData, Transaction, Transfer } from './types';
+import { defaultBankAccounts, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
+import { currentMonthKey } from './format';
+import { hasStaleActuals, manualActualCount, syncLineActuals } from './lineActuals';
+import type { BudgetData, TemplateLine, Transaction, Transfer } from './types';
 
 /** Shapes of the data saved before bank accounts existed. */
 type LegacyTransaction = Omit<Transaction, 'accountId'> & { source?: 'vir' | 'esp' };
@@ -35,43 +34,18 @@ export function migrateBankAccounts(raw: BudgetData | LegacyData): BudgetData {
 }
 
 /**
- * Brings the actual of variable lines in line with spec 0008 (RG18). A line with at least one
- * `var` expense paid from an out-of-budget account had left it out of its actual. Its actual
- * becomes the sum of all its expenses only when it is detectably stale: empty, or equal to the
- * sum of the in-budget expenses alone (the old computation). Any other actual is a manual
- * entry and is kept. Locked months are included (a correction, not an entry).
- * Pure and idempotent: the data given is returned untouched when nothing has to change,
- * and it is never mutated.
+ * Spec 0019, RG22: the actual of a line is the sum of its entries, never typed. Rewrites every line's actual from its entries, which
+ * empties the ones typed by hand (and drops the actuals of the budget model), and tells how many typed actuals no longer count.
+ * Pure and idempotent: the data given is returned untouched when nothing has to change, and it is never mutated. No entry is invented.
  */
-export function realignVariableActuals(d: BudgetData): BudgetData {
-  const leftOut = d.transactions.filter(t => t.type === 'var' && !isTransactionInBudget(d, t));
-  if (!leftOut.length) return d;
-  const months = { ...d.months };
-  let changed = false;
-  for (const [m, md] of Object.entries(d.months)) {
-    if (!md.initialized) continue;
-    const lines = md.lines.map(l => {
-      if (l.block !== 'var' || !leftOut.some(t => t.month === m && t.target === l.key)) return l;
-      const inBudget = d.transactions.filter(t => t.month === m && t.type === 'var' && t.target === l.key && isTransactionInBudget(d, t));
-      const old = inBudget.length ? round2(inBudget.reduce((s, t) => s + t.amount, 0)) : null;
-      if (l.actual !== null && l.actual !== old) return l;
-      changed = true;
-      return { ...l, actual: varActualFromTx(d, m, l.key) };
-    });
-    months[m] = { ...md, lines };
-  }
-  return changed ? { ...d, months } : d;
-}
-
-/**
- * Spec 0009, RG73: data with checks but no start of the pointage gets one, at the oldest month holding a check.
- * Statements (`accountBalances`) are kept as they are. Pure and idempotent: the data given is returned untouched
- * when nothing has to change.
- */
-export function migratePointageStart(d: BudgetData): BudgetData {
-  if (d.settings.pointageStart !== undefined) return d;
-  const oldest = oldestCheckedMonth(d);
-  return oldest === null ? d : { ...d, settings: { ...d.settings, pointageStart: oldest } };
+export function clearManualActuals(d: BudgetData): { data: BudgetData; cleared: number } {
+  const cleared = manualActualCount(d);
+  const modelHasActual = d.template.lines.some(l => 'actual' in l);
+  if (!hasStaleActuals(d) && !modelHasActual) return { data: d, cleared: 0 };
+  const next = structuredClone(d);
+  syncLineActuals(next);
+  next.template.lines = next.template.lines.map(({ actual: _actual, ...l }: TemplateLine & { actual?: unknown }) => l);
+  return { data: next, cleared };
 }
 
 /**
