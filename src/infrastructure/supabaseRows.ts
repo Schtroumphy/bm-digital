@@ -137,6 +137,7 @@ export function toRows(d: BudgetData): TableRows {
       fingerprint: orNull(t.fingerprint),
       rank: orNull(t.rank),
       category: orNull(t.category),
+      detail: orNull(t.detail),
       position,
     }),
   );
@@ -154,6 +155,7 @@ export function toRows(d: BudgetData): TableRows {
       fingerprint: orNull(m.fingerprint),
       rank: orNull(m.rank),
       category: orNull(m.category),
+      detail: orNull(m.detail),
       position,
     }),
   );
@@ -318,6 +320,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       fingerprint: orUndefined(r.fingerprint),
       rank: orUndefined(r.rank),
       category: orUndefined(r.category),
+      detail: orUndefined(r.detail),
     }),
   );
 
@@ -334,6 +337,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       fingerprint: orUndefined(r.fingerprint),
       rank: orUndefined(r.rank),
       category: orUndefined(r.category),
+      detail: orUndefined(r.detail),
     }),
   );
 

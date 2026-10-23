@@ -51,6 +51,7 @@ export type Database = {
           amount: number
           category: string | null
           day: number
+          detail: string | null
           fingerprint: string | null
           from_account_id: string
           id: string
@@ -66,6 +67,7 @@ export type Database = {
           amount: number
           category?: string | null
           day: number
+          detail?: string | null
           fingerprint?: string | null
           from_account_id: string
           id: string
@@ -81,6 +83,7 @@ export type Database = {
           amount?: number
           category?: string | null
           day?: number
+          detail?: string | null
           fingerprint?: string | null
           from_account_id?: string
           id?: string
@@ -567,6 +570,7 @@ export type Database = {
           category: string | null
           created_at: string
           day: number
+          detail: string | null
           fingerprint: string | null
           id: string
           import_account_id: string | null
@@ -584,6 +588,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           day: number
+          detail?: string | null
           fingerprint?: string | null
           id: string
           import_account_id?: string | null
@@ -601,6 +606,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           day?: number
+          detail?: string | null
           fingerprint?: string | null
           id?: string
           import_account_id?: string | null
