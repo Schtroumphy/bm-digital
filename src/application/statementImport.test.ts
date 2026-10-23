@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, updateAccountMovement } from './accountMovements';
 import { findImportAccountLink, linkableAccounts, linkedAccountOf, removeImportAccountLink, setImportAccountLink } from './accountLinks';
-import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, isReceivedTransfer, lineProblem, prepareImport, previewCounts, transferAttachment, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, lineProblem, prepareImport, previewCounts, transferAttachment, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { monthBalance } from '../domain/checkoff';
@@ -378,7 +378,7 @@ describe('validation de l’import', () => {
   it('crée une dépense var et un retrait, ignore le virement à qualifier', () => {
     const d = budget();
     const { summary } = importAll(d);
-    expect(summary).toEqual({ outsideBalances: 0, expenses: 1, revenues: 0, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, incomes: 0, accountsSkipped: 0, leftOut: 3, errors: 0 });
+    expect(summary).toEqual({ outsideBalances: 0, expenses: 1, revenues: 0, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, accountsSkipped: 0, leftOut: 3, errors: 0 });
     expect(d.transactions[0]).toMatchObject({ month: M, day: 3, label: 'CARREFOUR MARKET', amount: 54.2, type: 'var', target: 'courses', accountId: MAIN_ACCOUNT_ID, importAccountId: MAIN_ACCOUNT_ID, rank: 1, category: 'Alimentation' });
     expect(d.transactions[0].fingerprint).toContain('2026-10-03|54.20|carrefour market paiement par carte');
     expect(d.accountMovements).toHaveLength(1);
@@ -478,7 +478,7 @@ describe('validation de l’import', () => {
     expect(d.transactions).toHaveLength(1);
     expect(p.lines.filter(isLocked).map(l => l.row.label)).toEqual(['CARREFOUR MARKET', 'RETRAIT DAB']);
     expect(previewCounts(d, p).toImport).toBe(0);
-    expect(sessionSummary(p, { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0 }, new Set()).leftOut).toBe(p.lines.filter(l => !isReceivedTransfer(l) && !l.duplicate).length);
+    expect(sessionSummary(p, { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0 }, new Set()).leftOut).toBe(p.lines.filter(l => !l.duplicate).length);
     // Même transmise cochée, la ligne verrouillée n'est pas écrite (RG85).
     p = edit(p, byLabel(p, 'CARREFOUR').id, l => ({ ...l, checked: true }));
     expect(importableIds(d, p).size).toBe(0);

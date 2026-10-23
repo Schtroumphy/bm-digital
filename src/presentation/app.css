@@ -711,7 +711,8 @@ input, button { font-family: inherit; }
 .import-bulk .su-select { width: 150px; }
 .import-group-head { display: flex; align-items: center; gap: 8px; padding: 10px 0 6px; border-top: 2px solid rgba(32, 30, 29, 0.08); margin-top: 8px; }
 .import-row.is-blocked { background: oklch(0.985 0.025 90); }
-.import-row.is-income { opacity: 0.8; }
+/* The two faces of a linked internal transfer (spec 0016, RG7): same tint and a bar on the left. */
+.import-row.is-paired { background: oklch(0.975 0.02 245); box-shadow: inset 3px 0 0 oklch(0.7 0.1 245); }
 .import-label { display: flex; flex-direction: column; min-width: 0; padding: 3px 0; }
 .import-notes { font-size: 11px; color: rgba(32, 30, 29, 0.5); }
 .import-amount { font-variant-numeric: tabular-nums; }

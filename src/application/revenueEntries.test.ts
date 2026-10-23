@@ -244,8 +244,10 @@ describe('import des entrées d’argent (spec 0015)', () => {
     expect(lineProblem(d, toRev('cant')(l))).toBe('À rattacher');
     expect(lineProblem(d, toRev(NEW_REVENUE_LINE)(l))).toBeNull();
     const env = prep(d, [credit('REMBOURSEMENT', 5, { pair: ENV_PAIR })]).lines[0];
-    expect(lineProblem(d, toRev('salaire')(env))).toBe('À rattacher');
-    expect(lineProblem(d, toRev(NEW_REVENUE_LINE)(env))).toBe('À rattacher');
+    // Une entrée sur le compte d'une enveloppe est proposée « Virement interne » depuis « Enveloppes (global) » (spec 0016, RG27) ; en « Revenu », aucune ligne ne convient.
+    expect(env).toMatchObject({ nature: 'recu', target: { kind: 'account', id: 'enveloppes' } });
+    expect(lineProblem(d, { ...toRev('salaire')(env), nature: 'revenu' })).toBe('À rattacher');
+    expect(lineProblem(d, { ...toRev(NEW_REVENUE_LINE)(env), nature: 'revenu' })).toBe('À rattacher');
     const none = validateImport(d, { ...prep(d, [credit('REMBOURSEMENT', 5)]) }, newId);
     expect(none.revenues).toBe(0);
   });
@@ -292,18 +294,24 @@ describe('import des entrées d’argent (spec 0015)', () => {
     expect(d.importRules?.map(r => [r.pattern, r.nature])).toEqual([['paie acme', 'revenu']]);
   });
 
-  it('CA16: un virement reçu n’écrit rien ; requalifié « Revenu » et rattaché, il est importé', () => {
+  it('CA16 (amendé par la 0016) : un virement reçu est un « Virement interne » importable (compte source choisi) ; requalifié « Revenu » et rattaché, il devient un revenu', () => {
     const d = budget();
     const p = prep(d, [credit('VIREMENT EN VOTRE FAVEUR', 100)]);
     expect(p.lines[0]).toMatchObject({ nature: 'revenu', receivedHint: true });
-    // Requalifiée explicitement « Virement reçu » (RG19) : rien n'est écrit, même cochée et rattachée.
     const recu = changeNature(d, p.lines[0], 'recu');
-    expect(recu).toMatchObject({ nature: 'recu', checked: false });
-    expect(lineProblem(d, recu)).toBe('Virement reçu');
-    expect(validateImport(d, { ...p, lines: [recu].map(l => ({ ...l, target: { kind: 'line', key: 'salaire' } as const, checked: true })) }, newId).revenues).toBe(0);
+    expect(recu).toMatchObject({ nature: 'recu', checked: false, target: null });
+    // Sans compte source, la ligne est incomplète ; avec un compte source et cochée, elle écrit un mouvement entre comptes, jamais un revenu.
+    expect(lineProblem(d, recu)).toBe('Choisir le compte source');
+    const ready = { ...recu, target: { kind: 'account', id: SWILE } as const, checked: true };
+    expect(lineProblem(d, ready)).toBeNull();
+    const batch = validateImport(d, { ...p, lines: [ready] }, newId);
+    expect(batch).toMatchObject({ revenues: 0, internalTransfers: 1 });
     expect(d.transactions).toEqual([]);
-    const l = changeNature(d, recu, 'revenu');
-    expect(validateImport(d, { ...p, lines: [toRev('salaire')(l)] }, newId).revenues).toBe(1);
+    expect(d.accountMovements).toHaveLength(1);
+    // Sur un budget neuf (la ligne du fichier n'est pas encore importée), la même entrée requalifiée « Revenu » est un revenu.
+    const fresh = budget();
+    const l = changeNature(fresh, recu, 'revenu');
+    expect(validateImport(fresh, { ...p, lines: [toRev('salaire')(l)] }, newId).revenues).toBe(1);
   });
 
   it('un débit ne devient jamais « Revenu », une entrée jamais « Dépense »', () => {

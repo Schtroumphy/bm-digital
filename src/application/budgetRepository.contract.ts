@@ -117,6 +117,25 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(await open().load()).toEqual(cleared);
     });
 
+    it('spec 0016 : un virement lié (deux traces), un crédit seul, un débit « vers enveloppes » et la source d’un revenu sont conservés', async () => {
+      const repo = open();
+      const data = completeData();
+      data.accountMovements!.push(
+        { id: 'm-lie', month: '2026-12', day: 28, label: 'Virement livret', amount: 300, fromAccountId: 'acc-main', toAccountId: 'acc-sav', importAccountId: 'acc-main', fingerprint: '2026-12-28|300.00|virement', rank: 1, bankDate: '2026-12-28', creditTrace: { importAccountId: 'acc-sav', fingerprint: '+2026-12-29|300.00|virement', rank: 1, bankDate: '2026-12-29' } },
+        { id: 'm-credit', month: '2026-12', day: 22, label: 'Cagnotte', amount: 50, fromAccountId: 'enveloppes', toAccountId: 'acc-sav', bankDate: '2026-12-22', creditTrace: { importAccountId: 'acc-sav', fingerprint: '+2026-12-22|50.00|cagnotte', rank: 1, bankDate: '2026-12-22' } },
+        { id: 'm-pool', month: '2026-12', day: 2, label: 'Lydia', amount: 300, fromAccountId: 'acc-main', toAccountId: 'enveloppes', importAccountId: 'acc-main', fingerprint: '2026-12-02|300.00|lydia', rank: 1, bankDate: '2026-12-02' },
+      );
+      data.transactions.push({ id: 't-src', month: '2026-12', day: 1, label: 'Salaire', amount: 2480, type: 'rev', target: 'r-sal', source: 'ACME' });
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.accountMovements!.find(m => m.id === 'm-lie')!.creditTrace).toEqual({ importAccountId: 'acc-sav', fingerprint: '+2026-12-29|300.00|virement', rank: 1, bankDate: '2026-12-29' });
+      expect(loaded.accountMovements!.find(m => m.id === 'm-credit')).not.toHaveProperty('fingerprint');
+      expect(loaded.accountMovements!.find(m => m.id === 'm-pool')!.toAccountId).toBe('enveloppes');
+      expect(loaded.accountMovements!.find(m => m.id === 'm1')).not.toHaveProperty('creditTrace');
+      expect(loaded.transactions.find(t => t.id === 't-src')!.source).toBe('ACME');
+      expect(loaded).toEqual(data);
+    });
+
     it('spec 0019 : la cible d’un transfert est conservée, les transferts sans cible restent sans cible', async () => {
       const repo = open();
       const data = completeData();
