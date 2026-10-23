@@ -80,16 +80,16 @@ describe('import par lots (RG68, RG77)', () => {
     expect(d.transactions).toHaveLength(1);
   });
 
-  it('un doublon forcé n’est écrit qu’une fois grâce à la session', () => {
+  it('CA90: une ligne déjà importée transmise cochée n’est jamais écrite (plus de doublon forcé)', () => {
     const d = budget();
     const first = ready(d, [row('2026-10-02', 'ACHAT A', 5)]);
     validateImport(d, first, newId);
     const again = ready(d, [row('2026-10-02', 'ACHAT A', 5)]);
     const forced = { ...again, lines: again.lines.map(l => ({ ...l, checked: true })) };
+    expect(forced.lines.every(l => l.duplicate && l.checked)).toBe(true);
     const b1 = validateImport(d, forced, newId);
-    expect(b1.expenses).toBe(1);
-    expect(validateImport(d, forced, newId, { done: new Set(b1.importedIds) }).expenses).toBe(0);
-    expect(d.transactions).toHaveLength(2);
+    expect(b1).toMatchObject({ expenses: 0, importedIds: [], failedIds: [] });
+    expect(d.transactions).toHaveLength(1);
   });
 
   it('CA83: une ligne dont le mois est clos n’est pas écrite ni marquée importée', () => {

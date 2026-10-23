@@ -46,7 +46,7 @@ export interface PreviewLine {
   fingerprint: string;
   /** Rank among the lines of the same account and fingerprint (RG21, RG34). */
   rank: number;
-  /** (account, fingerprint, rank) already imported (RG22). */
+  /** (account, fingerprint, rank) already imported: the line is « déjà importée » and locked (RG22, RG82, RG83). */
   duplicate: boolean;
   /** A hand-typed transaction has the same account, amount and day (RG23). */
   similarManual: boolean;
@@ -92,6 +92,9 @@ export interface ImportPreview {
   choices: PairChoices;
   errors: StatementError[];
 }
+
+/** A line already imported in an earlier session: shown as done, unchecked and locked, it can never be imported again (spec 0013, RG83). */
+export const isLocked = (l: PreviewLine): boolean => l.duplicate;
 
 /** An entry of money (credit of the file). It is imported only as a « Revenu » on a revenue line (spec 0015); a received transfer is never imported. */
 export const isIncome = (l: Pick<PreviewLine, 'row'>): boolean => l.row.direction === 'credit';
@@ -281,7 +284,8 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     };
     const old = before.get(fresh.id);
     // The corrections already made on an unchanged line (same account, same rank) are kept.
-    lines.push(old && old.accountId === accountId && old.rank === rank ? { ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked, remember: old.remember, newLineName: old.newLineName } : fresh);
+    // A locked line stays unchecked whatever the old state was (RG83).
+    lines.push(old && old.accountId === accountId && old.rank === rank ? { ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName } : fresh);
   });
   // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
   lines.sort((a, b) => a.row.date.localeCompare(b.row.date) || Number(a.id) - Number(b.id));
@@ -352,9 +356,9 @@ export interface ImportScope {
   marked?: ReadonlySet<string>;
 }
 
-/** Ids of the lines an import would write: checked, complete, not already imported, not in a marked account (RG68, RG77). */
+/** Ids of the lines an import would write: checked, complete, not already imported (before or in the session), not in a marked account (RG68, RG77). */
 export function importableIds(d: BudgetData, preview: ImportPreview, scope: ImportScope = {}): Set<string> {
-  return new Set(preview.lines.filter(l => l.checked && !lineProblem(d, l) && !scope.done?.has(l.id) && !scope.marked?.has(l.pairKey)).map(l => l.id));
+  return new Set(preview.lines.filter(l => l.checked && !isLocked(l) && !lineProblem(d, l) && !scope.done?.has(l.id) && !scope.marked?.has(l.pairKey)).map(l => l.id));
 }
 
 export function previewCounts(d: BudgetData, preview: ImportPreview, scope: ImportScope = {}): PreviewCounts {
@@ -362,7 +366,7 @@ export function previewCounts(d: BudgetData, preview: ImportPreview, scope: Impo
   return {
     toImport: importableIds(d, preview, scope).size,
     duplicates: open.filter(l => l.duplicate).length,
-    incomplete: open.filter(l => !isReceivedTransfer(l) && !scope.marked?.has(l.pairKey) && lineProblem(d, l)).length,
+    incomplete: open.filter(l => !isReceivedTransfer(l) && !isLocked(l) && !scope.marked?.has(l.pairKey) && lineProblem(d, l)).length,
     incomes: preview.lines.filter(isIncome).length,
     pairsToLink: preview.pairs.filter(p => !p.known && !(p.key in preview.choices)).length,
   };
@@ -371,7 +375,7 @@ export function previewCounts(d: BudgetData, preview: ImportPreview, scope: Impo
 /** Progress of one account of the file: what is left to do on it (RG71). A received transfer, never imported, never keeps an account « à traiter ». */
 export interface AccountProgress {
   imported: number;
-  /** Already imported before (a duplicate that is not forced). */
+  /** Already imported before: the locked lines (RG83, RG87). */
   alreadyImported: number;
   remaining: number;
   /** Nothing left to do: every debit line is imported here or before. A file account with no debit line is not « traité ». */
@@ -381,7 +385,7 @@ export interface AccountProgress {
 export function accountProgress(preview: ImportPreview, pairKey: string, done: ReadonlySet<string> = new Set()): AccountProgress {
   const debits = preview.lines.filter(l => l.pairKey === pairKey && !isReceivedTransfer(l));
   const imported = debits.filter(l => done.has(l.id)).length;
-  const alreadyImported = debits.filter(l => !done.has(l.id) && l.duplicate && !l.checked).length;
+  const alreadyImported = debits.filter(l => !done.has(l.id) && isLocked(l)).length;
   const remaining = debits.length - imported - alreadyImported;
   return { imported, alreadyImported, remaining, treated: debits.length > 0 && remaining === 0 };
 }
@@ -406,13 +410,13 @@ export interface ImportSummary {
   revenues: number;
   withdrawals: number;
   internalTransfers: number;
-  /** Duplicates left out (not forced). */
+  /** Lines already imported before, not imported again (« Déjà importées », RG87). */
   duplicatesSkipped: number;
   /** Received transfers of the preview, shown and not imported (spec 0015, RG17). */
   incomes: number;
   /** Lines of accounts matched to « Ne pas importer » (RG32). */
   accountsSkipped: number;
-  /** Lines unchecked by the user, or checked but still incomplete. */
+  /** Lines unchecked by the user, or checked but still incomplete; locked lines are not in it (RG87). */
   leftOut: number;
   /** Unreadable records, and lines the budget refused to record. */
   errors: number;
@@ -439,10 +443,10 @@ export function sessionSummary(preview: ImportPreview, totals: SessionTotals, do
     revenues: totals.revenues,
     withdrawals: totals.withdrawals,
     internalTransfers: totals.internalTransfers,
-    duplicatesSkipped: open.filter(l => l.duplicate).length,
+    duplicatesSkipped: open.filter(isLocked).length,
     incomes: open.filter(isReceivedTransfer).length,
     accountsSkipped: preview.skipped,
-    leftOut: open.filter(l => !isReceivedTransfer(l) && !l.duplicate).length,
+    leftOut: open.filter(l => !isReceivedTransfer(l) && !isLocked(l)).length,
     errors: preview.errors.length + open.filter(l => failed.has(l.id)).length,
   };
 }
@@ -470,7 +474,7 @@ export interface ReplacedActual {
 export function replacedActuals(d: BudgetData, preview: ImportPreview, ids: ReadonlySet<string>, scope: ImportScope = {}): ReplacedActual[] {
   const out = new Map<string, ReplacedActual>();
   for (const l of preview.lines) {
-    if (!ids.has(l.id) || !l.checked || lineProblem(d, l) || scope.done?.has(l.id) || scope.marked?.has(l.pairKey)) continue;
+    if (!ids.has(l.id) || !l.checked || isLocked(l) || lineProblem(d, l) || scope.done?.has(l.id) || scope.marked?.has(l.pairKey)) continue;
     if ((!isExpenseNature(l.nature) && l.nature !== 'revenu') || l.target?.kind !== 'line') continue;
     const actual = actualReplacedBy(d, l.month, l.target.key);
     const line = expenseLine(d, l.month, l.target.key) ?? revenueLine(d, l.month, l.target.key);
@@ -482,45 +486,31 @@ export function replacedActuals(d: BudgetData, preview: ImportPreview, ids: Read
 /**
  * Writes the chosen lines: `Transaction`s for expenses and external transfers, `AccountMovement`s for withdrawals and internal
  * transfers (RG26), the remembered rules of the lines written (RG18, RG74) and the account matches of the pairs that had a line
- * written (RG74). A line already imported in the session, or not forced and whose (account, fingerprint, rank) is already stored,
- * is skipped, so a replayed batch writes nothing more (RG77). A duplicate that the user forced takes the next free rank of its
- * fingerprint, so the uniqueness (account, fingerprint, rank) holds (ADR 0010). A `var` expense goes on the account assigned to its
+ * written (RG74). A line already imported in the session, or whose (account, fingerprint, rank) is already stored,
+ * is skipped, so a replayed batch writes nothing more (RG77). A line already imported (`duplicate`) is never written, even
+ * when it arrives checked: there is no forced duplicate any more (RG85), so the uniqueness (account, fingerprint, rank)
+ * holds (ADR 0010). A `var` expense goes on the account assigned to its
  * box when there is one (spec 0006), else on the account of its line (ADR 0012).
  */
 export function validateImport(d: BudgetData, preview: ImportPreview, newId: (prefix: string) => string, options: ImportOptions = {}): ImportBatch {
-  // Ranks taken per (account, fingerprint): the stored ones, then the new ones. Forced duplicates come last and go after them.
-  const used = new Map<string, Set<number>>();
-  const usedKey = (accountId: string, fingerprint: string) => `${accountId}\u0001${fingerprint}`;
-  const take = (accountId: string, fingerprint: string, rank: number) => {
-    const k = usedKey(accountId, fingerprint);
-    used.set(k, (used.get(k) ?? new Set()).add(rank));
-  };
-  for (const x of [...d.transactions, ...(d.accountMovements ?? [])]) if (x.importAccountId && x.fingerprint && x.rank) take(x.importAccountId, x.fingerprint, x.rank);
+  // (account, fingerprint, rank) already stored: a line with the same key is skipped (RG77).
+  const usedKey = (accountId: string, fingerprint: string, rank: number) => `${accountId}\u0001${fingerprint}\u0001${rank}`;
+  const used = new Set<string>();
+  for (const x of [...d.transactions, ...(d.accountMovements ?? [])]) if (x.importAccountId && x.fingerprint && x.rank) used.add(usedKey(x.importAccountId, x.fingerprint, x.rank));
 
   const chosen = preview.lines.filter(
     l =>
-      l.checked && !lineProblem(d, l) && (!options.ids || options.ids.has(l.id)) && !options.done?.has(l.id) && !options.marked?.has(l.pairKey) &&
-      (l.duplicate || !used.get(usedKey(l.accountId!, l.fingerprint))?.has(l.rank)),
+      l.checked && !isLocked(l) && !lineProblem(d, l) && (!options.ids || options.ids.has(l.id)) && !options.done?.has(l.id) && !options.marked?.has(l.pairKey) &&
+      !used.has(usedKey(l.accountId!, l.fingerprint, l.rank)),
   );
   const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, importedIds: [], failedIds: [] };
-
-  const ranks = new Map<PreviewLine, number>();
-  for (const l of chosen.filter(l => !l.duplicate)) {
-    take(l.accountId!, l.fingerprint, l.rank);
-    ranks.set(l, l.rank);
-  }
-  for (const l of chosen.filter(l => l.duplicate)) {
-    const rank = Math.max(0, ...(used.get(usedKey(l.accountId!, l.fingerprint)) ?? [])) + 1;
-    take(l.accountId!, l.fingerprint, rank);
-    ranks.set(l, rank);
-  }
 
   const imported: PreviewLine[] = [];
   for (const l of chosen) {
     const sourceId = l.accountId!;
     const base = {
       month: l.month, day: Number(l.row.date.slice(8, 10)), label: l.row.label, amount: l.row.amount,
-      importAccountId: sourceId, fingerprint: l.fingerprint, rank: ranks.get(l)!, bankDate: l.row.date, ...(l.row.category ? { category: l.row.category } : {}),
+      importAccountId: sourceId, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date, ...(l.row.category ? { category: l.row.category } : {}),
     };
     const t = l.target!;
     const targetId = t.kind === 'var' || t.kind === 'line' ? t.key : t.id;

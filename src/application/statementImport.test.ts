@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, updateAccountMovement } from './accountMovements';
 import { findImportAccountLink, linkableAccounts, linkedAccountOf, removeImportAccountLink, setImportAccountLink } from './accountLinks';
-import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, isIncome, lineProblem, prepareImport, previewCounts, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, isReceivedTransfer, lineProblem, prepareImport, previewCounts, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { bankMovements } from '../domain/bankMovements';
 import { monthBalance } from '../domain/checkoff';
@@ -455,7 +455,7 @@ describe('validation de l’import', () => {
     expect(d.accountMovements!.every(m => m.toAccountId !== MAIN_ACCOUNT_ID)).toBe(true);
   });
 
-  it('CA7e / CA8: le même fichier réimporté donne des doublons décochés, forçables au prochain rang libre', () => {
+  it('CA7e / CA8 / CA91: le même fichier réimporté donne des lignes verrouillées, non importables même cochées', () => {
     const d = budget();
     importAll(d);
     let p = prepare(d);
@@ -465,9 +465,14 @@ describe('validation de l’import', () => {
     p = edit(p, byLabel(p, 'CARREFOUR').id, toCourses);
     expect(runImport(d, p)).toMatchObject({ expenses: 0, duplicatesSkipped: 2 });
     expect(d.transactions).toHaveLength(1);
+    expect(p.lines.filter(isLocked).map(l => l.row.label)).toEqual(['CARREFOUR MARKET', 'RETRAIT DAB']);
+    expect(previewCounts(d, p).toImport).toBe(0);
+    expect(sessionSummary(p, { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0 }, new Set()).leftOut).toBe(p.lines.filter(l => !isReceivedTransfer(l) && !l.duplicate).length);
+    // Même transmise cochée, la ligne verrouillée n'est pas écrite (RG85).
     p = edit(p, byLabel(p, 'CARREFOUR').id, l => ({ ...l, checked: true }));
-    validateImport(d, p, newId);
-    expect(d.transactions.map(t => t.rank)).toEqual([1, 2]);
+    expect(importableIds(d, p).size).toBe(0);
+    expect(validateImport(d, p, newId).expenses).toBe(0);
+    expect(d.transactions.map(t => t.rank)).toEqual([1]);
   });
 
   it('CA9: deux achats identiques le même jour donnent deux transactions, et deux doublons au réimport', () => {

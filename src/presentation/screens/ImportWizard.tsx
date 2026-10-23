@@ -265,7 +265,7 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
   if (summary) {
     const groups: [string, [string, number][]][] = [
       ['Importées', [['Dépenses', summary.expenses], ['Entrées d’argent (revenus)', summary.revenues], ['Retraits', summary.withdrawals], ['Transferts internes', summary.internalTransfers]]],
-      ['Ignorées', [['Doublons', summary.duplicatesSkipped], ['Virements reçus (non importés)', summary.incomes], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
+      ['Ignorées', [['Déjà importées (non réimportées)', summary.duplicatesSkipped], ['Virements reçus (non importés)', summary.incomes], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
       ['À vérifier', [['Lignes en erreur', summary.errors], ['Importées avec une date hors soldes', summary.outsideBalances]]],
     ];
     const total = summary.expenses + summary.revenues + summary.withdrawals + summary.internalTransfers;
@@ -508,7 +508,7 @@ function PreviewPane(p: PaneProps) {
       <div className="import-head-line">
         <b>Aperçu</b>
         <span className="muted">
-          {preview.lines.length} lignes · {counts.duplicates} doublons · {counts.incomes} entrées d’argent{counts.incomes > 0 ? ` (${money(incomeTotal, true)})` : ''} · {preview.skipped} lignes de comptes ignorés · {counts.incomplete} à compléter · {preview.errors.length} erreurs
+          {preview.lines.length} lignes · {counts.duplicates} déjà importées · {counts.incomes} entrées d’argent{counts.incomes > 0 ? ` (${money(incomeTotal, true)})` : ''} · {preview.skipped} lignes de comptes ignorés · {counts.incomplete} à compléter · {preview.errors.length} erreurs
         </span>
       </div>
       {preview.errors.map(e => (
@@ -673,7 +673,7 @@ function PreviewPane(p: PaneProps) {
       <div className="import-footer">
         <div className="import-footer-info">
           <span>
-            <b>{counts.toImport}</b> lignes prêtes · {counts.duplicates} doublons · {counts.incomes} entrées d’argent · {counts.incomplete} à compléter
+            <b>{counts.toImport}</b> lignes prêtes · {counts.duplicates} déjà importées · {counts.incomes} entrées d’argent · {counts.incomplete} à compléter
           </span>
           {filterOn && K > 0 && (
             <span className="import-hidden">

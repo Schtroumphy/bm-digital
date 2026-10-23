@@ -1,7 +1,7 @@
 import { actualReplacedBy } from '../domain/lineExpenses';
 import { normalizeLabel, fullLabelOf } from '../domain/statement';
 import type { BudgetData, ImportTarget, MonthKey } from '../domain/types';
-import { changeMonth, changeNature, isImportMonth, isIncome, isReceivedTransfer, lineBalanceWarning, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, isImportMonth, isIncome, isLocked, isReceivedTransfer, lineBalanceWarning, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
 
 /*
  * States, filters and bulk actions of the import preview (spec 0013, amendments 3 and 4). Pure functions on the lines of
@@ -20,7 +20,7 @@ export const STATE_LABEL: Record<LineState, string> = {
   a_rattacher: 'À rattacher',
   a_qualifier: 'À qualifier',
   compte_a_rattacher: 'Compte à rattacher',
-  doublon: 'Doublon',
+  doublon: 'Déjà importée',
   doublon_probable: 'Doublon probable',
   semblable_importee: 'Semblable déjà importée',
   saisie_manuelle: 'Saisie manuelle semblable',
@@ -35,22 +35,23 @@ export const STATE_LABEL: Record<LineState, string> = {
 export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'reel_remplace', 'date_hors_soldes'];
 
 /**
- * States of a line. « Nouveau » is a line with nothing left to do that is not already imported; « Décochée » is an unchecked debit;
+ * States of a line. « Nouveau » is a line with nothing left to do that is not already imported; « Décochée » is a debit unchecked by choice; « Déjà importée » (`doublon`) is a locked line, which has no other state (RG87);
  * « Importée » is a line written during this session (`done`), which has no other state (RG70).
  */
 export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<string> = NONE): LineState[] {
   if (done.has(l.id)) return ['importee'];
   // A received transfer is only shown (spec 0015, RG17); an entry of money to import is an ordinary line that also carries « Entrée d'argent ».
   if (isReceivedTransfer(l)) return l.accountId === null ? ['entree', 'compte_a_rattacher'] : ['entree'];
+  // A line already imported before is « déjà traitée »: locked, with no other state, not even « Décochée » (RG83, RG87).
+  if (isLocked(l)) return ['doublon'];
   const out: LineState[] = isIncome(l) ? ['entree'] : [];
   const problem = lineProblem(d, l);
   if (l.accountId === null) out.push('compte_a_rattacher');
   else if (l.nature === 'a_qualifier') out.push('a_qualifier');
   else if (problem) out.push('a_rattacher');
-  else if (!l.duplicate && !isIncome(l)) out.push('nouveau');
-  if (l.duplicate) out.push('doublon');
+  else if (!isIncome(l)) out.push('nouveau');
   // The target is a fixed/credit line whose typed actual the first expense would replace (spec 0014, RG6): informative, not blocking.
-  if (l.target?.kind === 'line' && !l.duplicate && actualReplacedBy(d, l.month, l.target.key) !== null) out.push('reel_remplace');
+  if (l.target?.kind === 'line' && actualReplacedBy(d, l.month, l.target.key) !== null) out.push('reel_remplace');
   // The bank date is outside what the balances cover: informative, the line stays importable (spec 0015, RG6).
   if (lineBalanceWarning(d, l) !== null) out.push('date_hors_soldes');
   if (l.similarImported === 'probable') out.push('doublon_probable');
@@ -140,9 +141,9 @@ export function pruneFilters(f: PreviewFilters, lines: PreviewLine[]): PreviewFi
   };
 }
 
-/** Checks or unchecks the given lines. An entry of money is never touched; a checked incomplete line stays not importable (RG56, RG60). */
+/** Checks or unchecks the given lines. An entry of money and a locked line are never touched; a checked incomplete line stays not importable (RG56, RG60). */
 export function setChecked(lines: PreviewLine[], ids: ReadonlySet<string>, checked: boolean, done: ReadonlySet<string> = NONE): PreviewLine[] {
-  return lines.map(l => (ids.has(l.id) && !isReceivedTransfer(l) && !done.has(l.id) ? { ...l, checked } : l));
+  return lines.map(l => (ids.has(l.id) && !isReceivedTransfer(l) && !isLocked(l) && !done.has(l.id) ? { ...l, checked } : l));
 }
 
 export interface BulkChange {
@@ -167,7 +168,7 @@ export function applyBulk(d: BudgetData, lines: PreviewLine[], ids: ReadonlySet<
   let unchanged = 0;
   const out = lines.map(l => {
     if (!ids.has(l.id)) return l;
-    if (isReceivedTransfer(l) || done.has(l.id) || l.accountId === null || change.nature === 'a_qualifier') {
+    if (isReceivedTransfer(l) || isLocked(l) || done.has(l.id) || l.accountId === null || change.nature === 'a_qualifier') {
       unchanged++;
       return l;
     }

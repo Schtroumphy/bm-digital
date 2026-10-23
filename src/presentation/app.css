@@ -726,7 +726,9 @@ input, button { font-family: inherit; }
 .import-session { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-radius: 10px; background: oklch(0.95 0.04 245); color: oklch(0.38 0.1 245); font-size: 13px; font-weight: 600; }
 .import-treated-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
 .import-group-head.is-treated { color: rgba(32, 30, 29, 0.6); }
-.import-row.is-imported { color: rgba(32, 30, 29, 0.5); }
+.import-row.is-done { color: #5f5a56; cursor: default; }
+.import-row.is-done .muted { color: #5f5a56; }
+.import-row.is-done s { text-decoration: line-through; text-decoration-thickness: 1px; }
 
 /* Texte réservé aux lecteurs d'écran : hors flux, aucun effet sur la mise en page */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

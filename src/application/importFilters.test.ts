@@ -66,7 +66,8 @@ describe('états d’une ligne', () => {
     const { d, lines } = setup();
     const moved = { ...byLabel(lines, 'RETRAIT'), month: '2026-11' };
     expect(lineStates(d, moved)).toEqual(['nouveau', 'mois_different']);
-    expect(lineStates(d, { ...moved, duplicate: true, checked: false })).toEqual(['doublon', 'mois_different', 'decochee']);
+    // RG87 : une ligne verrouillée n'a que l'état « Déjà importée » (ni « Décochée », ni indices).
+    expect(lineStates(d, { ...moved, duplicate: true, checked: false })).toEqual(['doublon']);
   });
 });
 
@@ -210,5 +211,47 @@ describe('traitement en masse', () => {
     expect(r.unchanged).toBe(p.lines.length);
     expect(r.lines).toEqual(p.lines);
     expect(lines.length).toBe(7);
+  });
+
+  // Amendement 6 : lignes déjà importées, verrouillées (RG82 à RG88).
+  describe('lignes verrouillées (déjà importées)', () => {
+    const imported = () => {
+      const d = budget();
+      const p = prepareImport(d, { rows: [row('2026-10-05', 'ACHAT A', 5), row('2026-10-06', 'ACHAT B', 7)], errors: [] }, {});
+      const complete = p.lines.slice(0, 1).map(l => ({ ...l, checked: true, nature: 'depense' as const, target: { kind: 'var' as const, key: 'courses' } }));
+      expect(validateImport(d, { ...p, lines: complete }, newId).expenses).toBe(1);
+      const again = prepareImport(d, { rows: [row('2026-10-05', 'ACHAT A', 5), row('2026-10-06', 'ACHAT B', 7)], errors: [] }, {});
+      return { d, lines: again.lines };
+    };
+
+    it('CA87 / CA89 : « Tout cocher » et l\u2019action en masse ne touchent pas la ligne verrouillée', () => {
+      const { d, lines } = imported();
+      const a = byLabel(lines, 'ACHAT A');
+      expect(a).toMatchObject({ duplicate: true, checked: false });
+      const ids = new Set(lines.map(l => l.id));
+      expect(setChecked(lines, ids, true).find(l => l.id === a.id)!.checked).toBe(false);
+      const bulk = applyBulk(d, lines, new Set([a.id]), { month: '2026-11' });
+      expect(bulk).toMatchObject({ changed: 0, unchanged: 1 });
+      expect(bulk.lines.find(l => l.id === a.id)).toBe(a);
+    });
+
+    it('CA93 : filtre « Déjà importée » exact, sans l\u2019état « Décochée »', () => {
+      const { d, lines } = imported();
+      const f: PreviewFilters = { ...emptyFilters(), states: ['doublon'] };
+      expect(filterLines(d, lines, f).map(l => l.row.label)).toEqual(['ACHAT A']);
+      const c = filterCounts(d, lines);
+      expect(c.states.doublon).toBe(1);
+      expect(c.states.decochee).toBe(0);
+    });
+
+    it('CA92 : un indice « semblable » ne verrouille ni ne décoche la ligne', () => {
+      const d = budget();
+      const p = prepareImport(d, { rows: [row('2026-10-05', 'ACHAT A', 5)], errors: [] }, {});
+      const complete = p.lines.map(l => ({ ...l, checked: true, nature: 'depense' as const, target: { kind: 'var' as const, key: 'courses' } }));
+      validateImport(d, { ...p, lines: complete }, newId);
+      const near = prepareImport(d, { rows: [row('2026-10-05', 'AUTRE LIBELLE', 5)], errors: [] }, {}).lines[0];
+      expect(near).toMatchObject({ similarImported: 'semblable', duplicate: false, checked: true });
+      expect(lineStates(d, near)).toContain('semblable_importee');
+    });
   });
 });
