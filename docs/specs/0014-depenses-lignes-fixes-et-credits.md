@@ -19,7 +19,7 @@ Le développeur veut rattacher une dépense à une ligne fixe ou crédit, par sa
 Conséquences :
 - Les soldes des comptes se calculent à partir des dépenses (RG9). Le pointage et « Reste à sortir » restent des indicateurs budgétaires, non modifiés par les dépenses (RG10, RG13).
 - Le réel de la ligne est alimenté par ses dépenses ; un réel saisi est remplacé après confirmation (RG5, RG6).
-- Le lien budget ↔ réalité (pointage « confirmé par une dépense », couleur différente, indicateur de marge réelle) est renvoyé à la spec 0015.
+- Le lien budget ↔ réalité (pointage « confirmé par une dépense », couleur différente, indicateur de marge réelle) est renvoyé à la spec 0017.
 
 ## Périmètre
 
@@ -31,7 +31,7 @@ Inclus :
 - Règles mémorisées de l'import vers ces lignes.
 - Schéma : nouvelle migration additive.
 
-Exclus : lignes de revenus (`rev`) et d'épargne/invest (`epa`, `inv`), double pointage, rapprochement automatique et suivi des vraies sorties au niveau budget (spec 0015), lien d'une dépense avec une case de pointage (le pointage reste un statut indépendant), plusieurs comptes pour une même ligne, revue de l'affichage comptes/objectifs, bilan annuel.
+Exclus : lignes de revenus (`rev`, spec 0015) et d'épargne/invest (`epa`, `inv`), double pointage, rapprochement automatique et suivi des vraies sorties au niveau budget (spec 0017), lien d'une dépense avec une case de pointage (le pointage reste un statut indépendant), plusieurs comptes pour une même ligne, revue de l'affichage comptes/objectifs, bilan annuel.
 
 ## Règles de gestion
 
@@ -55,7 +55,7 @@ Ligne « portée par ses dépenses » (anti-double-compte, décision B1)
 
 « Reste à sortir » et totaux
 - RG13. « Reste à sortir » reste un indicateur purement budgétaire : il n'est PAS modifié par les dépenses d'une ligne `fix`/`cre` (ni sortie de la ligne, ni écart budget moins dépenses). Une ligne non pointée y garde son montant (budget, ou réel si présent, spec 0009 RG76) ; une ligne pointée en sort, comme aujourd'hui. Le suivi réel est porté par les comptes et soldes.
-  - RISQUE ACCEPTÉ par le développeur : le solde estimé compte déjà la dépense (RG9) alors que « Reste à sortir » compte encore la ligne tant qu'elle n'est pas pointée ; la marge (solde estimé moins reste à sortir) compte alors deux fois la même sortie. Le décalage disparaît au pointage de la ligne. Il sera traité dans la spec 0015 (indicateur de marge réelle, lien pointage ↔ dépense). Aucun correctif dans cette spec.
+  - RISQUE ACCEPTÉ par le développeur : le solde estimé compte déjà la dépense (RG9) alors que « Reste à sortir » compte encore la ligne tant qu'elle n'est pas pointée ; la marge (solde estimé moins reste à sortir) compte alors deux fois la même sortie. Le décalage disparaît au pointage de la ligne. Il sera traité dans la spec 0017 (indicateur de marge réelle, lien pointage ↔ dépense). Aucun correctif dans cette spec.
 - RG14. Les totaux de l'écran Budget (réel, écart, bilan du mois) lisent le réel de la ligne : ils reflètent les dépenses sans changement de calcul.
 - RG15. Les mois clos ou verrouillés (spec 0004/0010) n'acceptent ni ajout ni suppression de dépense sur ces lignes, comme pour les autres. Une dépense existante d'un mois clos garde son effet sur les soldes.
 - RG16. La clôture d'année lit les soldes issus du Ledger : elle reflète les règles RG9 à RG12 sans règle propre.
@@ -136,7 +136,7 @@ Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes
 - CA11. Given une ligne portant sa dernière dépense (ayant remplacé un réel saisi de 60 €), When je la supprime, Then le réel redevient vide (60 € n'est pas restauré) et le mouvement propre de la ligne (pointage ou rien) est de nouveau compté. (Auto)
 - CA12. Given une ligne avec deux dépenses, When j'en supprime une, Then le réel baisse de son montant et la ligne reste portée par l'autre. (Auto)
 - CA13. Given une ligne `fix` de 62 € non pointée sans dépense, Then elle compte 62 € dans « Reste à sortir » ; When elle reçoit une dépense de 62 €, Then « Reste à sortir » vaut toujours la même chose, la case n'est pas cochée, et seul le solde estimé baisse de 62 €. (Auto)
-- CA13a. Risque accepté, observable : Given la même ligne non pointée avec sa dépense de 62 €, When je lis la marge (solde estimé moins reste à sortir), Then elle est inférieure de 62 € à la réalité (sortie comptée deux fois) ; When je pointe la ligne, Then la ligne sort de « Reste à sortir » et la marge redevient juste. Le reviewer reconnaît ce comportement comme voulu (à traiter en spec 0015). (Auto sur le domaine, Man sur l'écran)
+- CA13a. Risque accepté, observable : Given la même ligne non pointée avec sa dépense de 62 €, When je lis la marge (solde estimé moins reste à sortir), Then elle est inférieure de 62 € à la réalité (sortie comptée deux fois) ; When je pointe la ligne, Then la ligne sort de « Reste à sortir » et la marge redevient juste. Le reviewer reconnaît ce comportement comme voulu (à traiter en spec 0017). (Auto sur le domaine, Man sur l'écran)
 - CA14. Given une ligne pointée portant une dépense, Then la case reste cochée et l'interface indique que le pointage est sans effet sur les soldes. (Man)
 - CA15. Given un mois clos, When j'ajoute ou supprime une dépense sur une ligne fixe, Then c'est refusé ; Given une dépense existante d'un mois clos, Then elle garde son effet sur les soldes. (Auto)
 - CA16. Given les soldes d'un compte sur des mois avec lignes fixes portant des dépenses, Then le solde calculé de l'écran Comptes est égal au solde estimé de l'écran de pointage. (Auto)
@@ -153,4 +153,4 @@ Aperçu de l'import (spec 0013) : colonne « Rattacher à » avec groupes Lignes
 
 ## Questions ouvertes
 
-Aucune. Décisions du développeur intégrées : implémentation après la 0013 ; réel alimenté par les dépenses avec remplacement après confirmation et réel remplacé perdu à la suppression de la dernière dépense ; « Reste à sortir » inchangé (risque de marge accepté, RG13, CA13a) ; lien budget ↔ réalité renvoyé à la spec 0015.
+Aucune. Décisions du développeur intégrées : implémentation après la 0013 ; réel alimenté par les dépenses avec remplacement après confirmation et réel remplacé perdu à la suppression de la dernière dépense ; « Reste à sortir » inchangé (risque de marge accepté, RG13, CA13a) ; lien budget ↔ réalité renvoyé à la spec 0017. Date bancaire distincte du mois de rattachement pour toutes les écritures : spec 0015 (la 0014 garde `month`/`day`).
