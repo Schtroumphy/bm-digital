@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, updateAccountMovement } from './accountMovements';
 import { findImportAccountLink, linkableAccounts, linkedAccountOf, removeImportAccountLink, setImportAccountLink } from './accountLinks';
-import { changeMonth, changeNature, choosePairAccount, importMonths, lineProblem, prepareImport, previewCounts, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, choosePairAccount, importMonths, isIncome, lineProblem, prepareImport, previewCounts, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { bankMovements } from '../domain/bankMovements';
 import { monthBalance } from '../domain/checkoff';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
-import { accountPairKey, suggestedPattern, type StatementReading, type StatementRow } from '../domain/statement';
+import { lineStates } from './importFilters';
+import { accountPairKey, isTransferReceived, suggestedPattern, type StatementReading, type StatementRow } from '../domain/statement';
 import type { BudgetData, Line } from '../domain/types';
 
 const M = '2026-10';
@@ -56,17 +57,60 @@ function budget(): BudgetData {
   return d;
 }
 
+/** One batch of every chosen line, and the summary of the session it makes up. */
+function runImport(d: BudgetData, p: ImportPreview) {
+  const batch = validateImport(d, p, newId);
+  return sessionSummary(p, batch, new Set(batch.importedIds), new Set(batch.failedIds));
+}
 const prepare = (d: BudgetData, rows = SAMPLE, choices: PairChoices = {}) => prepareImport(d, reading(rows), choices);
 const byLabel = (p: ImportPreview, s: string) => p.lines.find(l => l.row.label.includes(s))!;
 const edit = (p: ImportPreview, id: string, fn: (l: PreviewLine) => PreviewLine): ImportPreview => ({ ...p, lines: p.lines.map(l => (l.id === id ? fn(l) : l)) });
 const toCourses = (l: PreviewLine): PreviewLine => ({ ...l, target: { kind: 'var', key: 'courses' } });
 
 describe('aperçu de l’import', () => {
-  it('CA6: les crédits sont comptés ignorés et jamais proposés', () => {
-    const p = prepare(budget());
-    expect(p.ignoredCredits).toBe(2);
-    expect(p.lines).toHaveLength(3);
-    expect(p.lines.every(l => l.row.direction === 'debit')).toBe(true);
+  it('CA63: les crédits sont des lignes « Entrée d’argent » : décochées, sans nature ni cible, jamais importables', () => {
+    const d = budget();
+    const p = prepare(d);
+    expect(p.lines).toHaveLength(5);
+    const incomes = p.lines.filter(isIncome);
+    expect(incomes.map(l => l.row.amount)).toEqual([1234.56, 12]);
+    for (const l of incomes) {
+      expect(l).toMatchObject({ checked: false, duplicate: false, rank: 0, fingerprint: '', target: null });
+      expect(lineProblem(d, l)).toBe('Entrée d’argent');
+      expect(lineStates(d, l)).toEqual(['entree']);
+    }
+    expect(previewCounts(d, p)).toMatchObject({ incomes: 2, incomplete: 2, toImport: 1 });
+    // Triées par date avec les débits.
+    expect(p.lines.map(l => l.row.date)).toEqual([...p.lines.map(l => l.row.date)].sort());
+  });
+
+  it('CA67: l’indice « virement reçu » ne s’affiche que sur une entrée dont le libellé évoque un virement', () => {
+    const d = budget();
+    const p = prepare(d, [row('2026-10-02', 'VIREMENT EN VOTRE FAVEUR', 100, { direction: 'credit' }), row('2026-10-02', 'CAGNOTTE', 10, { direction: 'credit', notes: 'VIR SEPA AMI' }), row('2026-10-02', 'REMBOURSEMENT', 5, { direction: 'credit' })]);
+    expect(p.lines.map(l => l.receivedHint)).toEqual([true, true, false]);
+    expect(isTransferReceived({ label: 'Envoi', notes: '' })).toBe(false);
+  });
+
+  it('CA68: les entrées d’un compte « Ne pas importer » ne sont pas listées ; celles d’un compte non rattaché le sont, sans bloquer les autres lignes', () => {
+    const d = budget();
+    d.importAccountLinks![1].accountId = null;
+    const rows = [row('2026-10-03', 'ACHAT', 5), row('2026-10-03', 'SALAIRE', 900, { pair: SWILE_PAIR, direction: 'credit' }), row('2026-10-04', 'PAIE', 50, { pair: SAV_PAIR, direction: 'credit' })];
+    const p = prepare(d, rows);
+    expect(p.lines.map(l => l.row.label)).toEqual(['ACHAT', 'PAIE']);
+    expect(p.skipped).toBe(1);
+    expect(lineStates(d, p.lines[1])).toEqual(['entree', 'compte_a_rattacher']);
+    expect(lineProblem(d, toCourses(p.lines[0]))).toBeNull();
+    expect(previewCounts(d, { ...p, lines: p.lines.map(l => (isIncome(l) ? l : toCourses(l))) }).toImport).toBe(1);
+  });
+
+  it('CA70: au réimport, les entrées restent listées sans « Doublon » et rien n’est écrit pour elles', () => {
+    const d = budget();
+    const rows = [row('2026-10-03', 'ACHAT', 5), row('2026-10-01', 'SALAIRE', 1000, { direction: 'credit' })];
+    const p = prepare(d, rows);
+    validateImport(d, { ...p, lines: p.lines.map(toCourses) }, newId);
+    expect(d.transactions).toHaveLength(1);
+    const again = prepare(d, rows);
+    expect(again.lines.map(l => [l.row.label, l.duplicate])).toEqual([['SALAIRE', false], ['ACHAT', true]]);
   });
 
   it('CA32: sans mot-clé reconnu, un débit est une dépense à rattacher ; « retrait » donne Retrait vers Espèces ; « virement emis » À qualifier', () => {
@@ -160,7 +204,7 @@ describe('correspondance des comptes du fichier (RG32)', () => {
     let p = prepare(d, twoPairs);
     p = { ...p, lines: p.lines.map(l => ({ ...toCourses(l), checked: true })) };
     expect(previewCounts(d, p).toImport).toBe(0);
-    const s = validateImport(d, p, newId);
+    const s = runImport(d, p);
     expect(s.expenses).toBe(0);
     expect(d.transactions).toEqual([]);
     expect(s.leftOut).toBe(2);
@@ -209,7 +253,7 @@ describe('correspondance des comptes du fichier (RG32)', () => {
     const p = prepare(d, twoPairs);
     expect(p.lines.map(l => l.row.label)).toEqual(['ACHAT A']);
     expect(p.skipped).toBe(1);
-    const s = validateImport(d, edit(p, '0', toCourses), newId);
+    const s = runImport(d, edit(p, '0', toCourses));
     expect(s.accountsSkipped).toBe(1);
   });
 
@@ -314,14 +358,14 @@ describe('validation de l’import', () => {
   function importAll(d: BudgetData, rows = SAMPLE) {
     let p = prepare(d, rows);
     p = edit(p, byLabel(p, 'CARREFOUR').id, toCourses);
-    const summary = validateImport(d, p, newId);
+    const summary = runImport(d, p);
     return { p, summary };
   }
 
   it('crée une dépense var et un retrait, ignore le virement à qualifier', () => {
     const d = budget();
     const { summary } = importAll(d);
-    expect(summary).toEqual({ expenses: 1, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, creditsIgnored: 2, accountsSkipped: 0, leftOut: 1, errors: 0 });
+    expect(summary).toEqual({ expenses: 1, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, incomes: 2, accountsSkipped: 0, leftOut: 1, errors: 0 });
     expect(d.transactions[0]).toMatchObject({ month: M, day: 3, label: 'CARREFOUR MARKET', amount: 54.2, type: 'var', target: 'courses', accountId: MAIN_ACCOUNT_ID, importAccountId: MAIN_ACCOUNT_ID, rank: 1, category: 'Alimentation' });
     expect(d.transactions[0].fingerprint).toContain('2026-10-03|54.20|carrefour market paiement par carte');
     expect(d.accountMovements).toHaveLength(1);
@@ -381,16 +425,20 @@ describe('validation de l’import', () => {
     const d = budget();
     let p = prepare(d);
     p = edit(p, byLabel(p, 'VIREMENT').id, l => ({ ...changeNature(d, l, 'externe'), target: { kind: 'var', key: 'frais' }, checked: true }));
-    const s = validateImport(d, p, newId);
+    const s = runImport(d, p);
     expect(s.expenses).toBe(1);
     expect((d.accountMovements ?? []).every(m => m.amount !== 188.58)).toBe(true);
     expect(d.transactions[0]).toMatchObject({ amount: 188.58, target: 'frais', type: 'var' });
   });
 
-  it('CA7f / RG36: les crédits restent ignorés, rien n’est crédité deux fois', () => {
+  it('CA64 / CA7f / RG36: aucune entrée n’est écrite ni comptée dans « Importer N », rien n’est crédité deux fois', () => {
     const d = budget();
+    const forced = prepare(d);
+    // Même cochées de force, les entrées ne comptent pas.
+    expect(previewCounts(d, { ...forced, lines: forced.lines.map(l => ({ ...toCourses(l), checked: true })) }).toImport).toBe(1);
     importAll(d);
-    expect(prepare(d).ignoredCredits).toBe(2);
+    expect(d.transactions).toHaveLength(1);
+    expect(prepare(d).lines.filter(isIncome)).toHaveLength(2);
     expect(d.accountMovements!.every(m => m.toAccountId !== MAIN_ACCOUNT_ID)).toBe(true);
   });
 
@@ -402,7 +450,7 @@ describe('validation de l’import', () => {
     expect(p.lines.filter(l => l.duplicate).every(l => !l.checked)).toBe(true);
     expect(previewCounts(d, p).duplicates).toBe(2);
     p = edit(p, byLabel(p, 'CARREFOUR').id, toCourses);
-    expect(validateImport(d, p, newId)).toMatchObject({ expenses: 0, duplicatesSkipped: 2 });
+    expect(runImport(d, p)).toMatchObject({ expenses: 0, duplicatesSkipped: 2 });
     expect(d.transactions).toHaveLength(1);
     p = edit(p, byLabel(p, 'CARREFOUR').id, l => ({ ...l, checked: true }));
     validateImport(d, p, newId);
@@ -569,5 +617,58 @@ describe('mouvements entre comptes après import', () => {
     expect(deleteAccountMovement(d, 'm1')).toBe(true);
     expect(d.accountMovements).toEqual([]);
     expect(deleteAccountMovement(d, 'm1')).toBe(false);
+  });
+});
+
+describe('rafraîchissement de l’aperçu après la liste des correspondances (RG43)', () => {
+  const rows = [row('2026-10-03', 'ACHAT A', 5), row('2026-10-04', 'ACHAT B', 6, { pair: SWILE_PAIR }), row('2026-10-05', 'ACHAT C', 7, { pair: SWILE_PAIR })];
+
+  it('CA41: un couple rattaché à un autre compte repart des propositions, les autres corrections sont conservées', () => {
+    const d = budget();
+    let p = prepare(d, rows);
+    p = edit(p, '0', l => ({ ...toCourses(l), remember: 'achat' }));
+    p = edit(p, '1', l => ({ ...toCourses(l), checked: false }));
+    setImportAccountLink(d, SWILE_PAIR[0], SWILE_PAIR[1], SAV, newId);
+    const next = refreshPreview(d, reading(rows), p);
+    expect(next.lines[0]).toMatchObject({ target: { kind: 'var', key: 'courses' }, remember: 'achat' });
+    expect(next.lines[1]).toMatchObject({ accountId: SAV, target: null, checked: true });
+    expect(next.lines[2].accountId).toBe(SAV);
+  });
+
+  it('CA42: un couple passé à « Ne pas importer » disparaît de l’aperçu et est compté', () => {
+    const d = budget();
+    const p = prepare(d, rows);
+    setImportAccountLink(d, SWILE_PAIR[0], SWILE_PAIR[1], null, newId);
+    const next = refreshPreview(d, reading(rows), p);
+    expect(next.lines).toHaveLength(1);
+    expect(next.skipped).toBe(2);
+  });
+
+  it('CA43: un couple dont la correspondance est supprimée revient dans la bannière, ses lignes non importables', () => {
+    const d = budget();
+    const p = prepare(d, rows);
+    removeImportAccountLink(d, findImportAccountLink(d, SWILE_PAIR[0], SWILE_PAIR[1])!.id);
+    const next = refreshPreview(d, reading(rows), p);
+    expect(next.pairs.find(x => x.key === keyOf(SWILE_PAIR))!.known).toBe(false);
+    expect(next.lines.filter(l => l.pairKey === keyOf(SWILE_PAIR)).every(l => l.accountId === null && lineProblem(d, l) === 'Compte à rattacher')).toBe(true);
+  });
+
+  it('CA44: une correspondance enregistrée dans la liste l’emporte sur le choix non validé de la bannière', () => {
+    const d = budget();
+    d.importAccountLinks = [d.importAccountLinks![0]];
+    let p = prepare(d, rows);
+    p = choosePairAccount(d, reading(rows), p, keyOf(SWILE_PAIR), SAV);
+    expect(p.lines[1].accountId).toBe(SAV);
+    setImportAccountLink(d, SWILE_PAIR[0], SWILE_PAIR[1], SWILE, newId);
+    const next = refreshPreview(d, reading(rows), p);
+    expect(next.lines[1].accountId).toBe(SWILE);
+    expect(next.choices).toEqual({});
+  });
+
+  it('CA45: sans changement, le rafraîchissement redonne les mêmes lignes, corrections comprises', () => {
+    const d = budget();
+    let p = prepare(d, rows);
+    p = edit(p, '0', l => ({ ...toCourses(l), checked: false, remember: 'x' }));
+    expect(refreshPreview(d, reading(rows), p).lines).toEqual(p.lines);
   });
 });
