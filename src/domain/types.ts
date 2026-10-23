@@ -99,8 +99,9 @@ export interface EnvHistory {
  * - `env`: spent from an envelope (target = envelope id)
  * - `epa`: withdrawal from a savings/investment account (target = line key)
  * - `fix`: expense on a fixed or credit line (target = line key, spec 0014); on the account of the line
+ * - `rev`: money coming in on a revenue line (target = line key, spec 0015); an ENTRY, never to be added up as an expense
  */
-export type TxType = 'var' | 'env' | 'epa' | 'fix';
+export type TxType = 'var' | 'env' | 'epa' | 'fix' | 'rev';
 
 export interface Transaction {
   id: string;
@@ -121,6 +122,8 @@ export interface Transaction {
   category?: string;
   /** Free context shown under the label (spec 0020): at most 200 characters, trimmed, absent when empty. Not part of the fingerprint. */
   detail?: string;
+  /** Real date at the bank, `YYYY-MM-DD` (imported entries): balances rank and date the entry by it; the budget follows `month`. Absent = `month`/`day` (spec 0015, RG1, RG2). */
+  bankDate?: string;
 }
 
 /**
@@ -142,6 +145,8 @@ export interface AccountMovement {
   category?: string;
   /** Free context shown under the label (spec 0020), same rule as `Transaction.detail`. */
   detail?: string;
+  /** Real date at the bank (spec 0015, RG1); absent = `month`/`day`. */
+  bankDate?: string;
 }
 
 /**
@@ -159,14 +164,15 @@ export interface ImportAccountLink {
 export type ImportTarget = { kind: 'var'; key: string } | { kind: 'line'; key: string } | { kind: 'env'; id: string } | { kind: 'account'; id: string };
 
 /** What an imported debit is: `depense` and `externe` become a `Transaction`, `retrait` and `interne` an `AccountMovement` (spec 0013, RG9). */
-export type ImportNature = 'depense' | 'retrait' | 'interne' | 'externe';
+export type ImportNature = 'depense' | 'retrait' | 'interne' | 'externe' | 'revenu' | 'recu';
 
 /** Remembered rule « label contains X → nature and target » (spec 0013, RG18). `pattern` is stored normalized. */
 export interface ImportRule {
   id: string;
   pattern: string;
   nature: ImportNature;
-  target: ImportTarget;
+  /** Absent for a rule « Virement reçu » (`recu`): it only presets the nature (spec 0015, RG19a). */
+  target?: ImportTarget;
 }
 
 /**

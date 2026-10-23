@@ -1,6 +1,6 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, mainAccount, resolveBoxAccountId } from './bank';
 import { compareMonths, round2 } from './format';
-import { isExpenseLineBlock, isLineCarried } from './lineExpenses';
+import { bankDateOf, isCarryingBlock, isLineCarried } from './lineExpenses';
 import type { BudgetData, MonthKey } from './types';
 
 /*
@@ -22,6 +22,8 @@ export interface BankMovement {
   /** Key of the line, for a line or a check. */
   lineKey?: string;
   adjustmentId?: string;
+  /** The month of the budget the entry is attached to, when it differs from the month of its bank date (spec 0015, RG4): for the tooltip. */
+  attachedMonth?: MonthKey;
   /** A counterpart between two accounts (checked allocation or variable line): it moves money in both modes (RG72, RG90). */
   counterpart?: boolean;
 }
@@ -46,8 +48,6 @@ export const monthMode = (d: BudgetData, m: MonthKey): MonthMode => (d.settings.
 /** Key of an envelope's allocation check in `MonthData.checks` (a line key never contains a colon). */
 export const envelopeCheckKey = (envelopeId: string) => `env:${envelopeId}`;
 
-const pad2 = (n: number) => String(n).padStart(2, '0');
-
 /** Active movements of an account in a month. A cancelled adjustment is not one. */
 export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: MovementSource): BankMovement[] {
   const out: BankMovement[] = [];
@@ -61,7 +61,7 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
   for (const l of lines) {
     if (l.block === 'var') continue; // variable lines move money through their transactions only
     // A fixed/credit line carrying expenses moves money through them, at their date: its own movement is not counted (spec 0014, RG9).
-    if (isExpenseLineBlock(l.block) && isLineCarried(d, m, l.key)) continue;
+    if (isCarryingBlock(l.block) && isLineCarried(d, m, l.key)) continue;
     if (!mine(l.accountId)) continue;
     const sign = l.block === 'rev' ? 1 : -1;
     if (source === 'actual') {
@@ -84,8 +84,8 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
     }
   }
   for (const t of d.transactions) {
-    if (t.month === m && t.type === 'epa' && linked.some(l => l.key === t.target)) {
-      out.push({ date: `${m}-${pad2(t.day)}`, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
+    if (bankDateOf(t).startsWith(m) && t.type === 'epa' && linked.some(l => l.key === t.target)) {
+      out.push({ date: bankDateOf(t), label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
     }
   }
   // Counterparts: money leaving the main account for another one, once checked, in both modes (RG9, RG90).
@@ -124,9 +124,12 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
     }
   }
   for (const t of d.transactions) {
-    if (t.month !== m || !mine(t.accountId)) continue;
-    // A withdrawal from savings is money in; variable and envelope expenses are money out.
-    out.push({ date: `${m}-${pad2(t.day)}`, label: `${t.label} (${t.type === 'epa' ? 'retrait' : 'dépense'})`, amount: t.type === 'epa' ? t.amount : -t.amount, kind: 'expense' });
+    // Balances rank an entry by its date at the bank, not by its month of attachment (spec 0015, RG2).
+    if (!bankDateOf(t).startsWith(m) || !mine(t.accountId)) continue;
+    // A withdrawal from savings and a revenue entry are money in; variable, envelope and line expenses are money out.
+    const income = t.type === 'epa' || t.type === 'rev';
+    const attached = bankDateOf(t).slice(0, 7) !== t.month ? t.month : undefined;
+    out.push({ date: bankDateOf(t), label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: income ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
   }
   // Old transfers marked « fait »: inert since spec 0009 but still part of the balances (RG15, RG60).
   for (const t of d.transfers) {
@@ -138,8 +141,8 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
   // Movements between accounts created by the import (spec 0013, RG10b): a fact, so counted in both modes. The main account
   // is not touched when the other side is out of the budget (spec 0009, RG92).
   for (const mv of d.accountMovements ?? []) {
-    if (mv.month !== m || mv.amount === 0) continue;
-    const date = `${m}-${pad2(mv.day)}`;
+    const date = bankDateOf(mv);
+    if (!date.startsWith(m) || mv.amount === 0) continue;
     if (mv.fromAccountId === id && !(id === main && !isAccountInBudget(d, mv.toAccountId))) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (mouvement)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
     if (mv.toAccountId === id && !(id === main && !isAccountInBudget(d, mv.fromAccountId))) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (mouvement)`, amount: mv.amount, kind: 'transfer', counterpart: true });
   }

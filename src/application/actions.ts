@@ -2,7 +2,7 @@ import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAcco
 import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual, varActualFromTx } from '../domain/budget';
-import { expenseLineBlocker, expenseLine, expenseLineAccountId, isLineCarried, lineExpensesTotal } from '../domain/lineExpenses';
+import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId, isLineCarried, lineExpensesTotal } from '../domain/lineExpenses';
 import { isMonthLocked } from '../domain/ledger';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
@@ -298,7 +298,7 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
  */
 export function addTransaction(d: BudgetData, input: Transaction, options: { replaceActual?: boolean } = {}): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
-  if (input.type === 'fix') return addLineExpense(d, input, options.replaceActual === true);
+  if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input, options.replaceActual === true);
   const given = d.accounts.find(a => a.id === input.accountId);
   if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
   // A variable expense on a line with an assigned account stays on it: another account is refused (spec 0006 amended, 0011 RG10).
@@ -324,7 +324,7 @@ export function addTransaction(d: BudgetData, input: Transaction, options: { rep
  * with no expense yet is replaced only when `replaceActual` is true, after the user confirmed (RG6); otherwise the expense is refused.
  */
 function addLineExpense(d: BudgetData, input: Transaction, replaceActual: boolean): boolean {
-  const line = expenseLine(d, input.month, input.target);
+  const line = input.type === 'rev' ? revenueLine(d, input.month, input.target) : expenseLine(d, input.month, input.target);
   if (!line || expenseLineBlocker(d, input.month, input.target)) return false;
   const accountId = expenseLineAccountId(d, line);
   if (input.accountId !== undefined && input.accountId !== accountId) return false;
@@ -349,7 +349,7 @@ export function deleteTransaction(d: BudgetData, id: string): boolean {
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month)) return false;
   d.transactions = d.transactions.filter(x => x.id !== id);
-  if (t.type === 'fix') {
+  if (t.type === 'fix' || t.type === 'rev') {
     // The actual follows the expenses left; the last one removed empties it, a replaced typed actual is not restored (RG7, RG12).
     const line = d.months[t.month]?.lines.find(x => x.key === t.target);
     if (line) line.actual = lineExpensesTotal(d, t.month, t.target);

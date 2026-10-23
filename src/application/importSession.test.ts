@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { filterCounts, filterLines, emptyFilters, lineStates, setChecked } from './importFilters';
-import { accountProgress, hasPendingCorrections, importableIds, prepareImport, previewCounts, refreshPreview, saveSkipChoices, sessionSummary, validateImport, type ImportPreview, type PreviewLine } from './statementImport';
+import { accountProgress, changeNature, hasPendingCorrections, importableIds, prepareImport, previewCounts, refreshPreview, saveSkipChoices, sessionSummary, validateImport, type ImportPreview, type PreviewLine } from './statementImport';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts } from '../domain/bank';
 import { emptyData } from '../domain/empty';
 import { accountPairKey, type StatementReading, type StatementRow } from '../domain/statement';
@@ -39,7 +39,7 @@ const ROWS = [
   row('2026-10-03', 'ACHAT B', 6),
   row('2026-10-04', 'RESTO SWILE', 12, { pair: SWILE_PAIR }),
   row('2026-10-05', 'CANTINE', 8, { pair: SWILE_PAIR }),
-  row('2026-10-06', 'SALAIRE', 900, { pair: SWILE_PAIR, direction: 'credit' }),
+  row('2026-10-06', 'VIREMENT RECU SALAIRE', 900, { pair: SWILE_PAIR, direction: 'credit' }),
 ];
 const toCourses = (l: PreviewLine): PreviewLine => ({ ...l, target: { kind: 'var', key: 'courses' } });
 /** Every debit attached to « courses », ready to import. */
@@ -99,7 +99,7 @@ describe('import par lots (RG68, RG77)', () => {
     const batch = validateImport(d, p, newId);
     expect(batch.importedIds).toEqual([]);
     expect(d.transactions).toEqual([]);
-    expect(sessionSummary(p, batch, new Set(), new Set(batch.failedIds)).leftOut).toBe(4);
+    expect(sessionSummary(p, batch, new Set(), new Set(batch.failedIds)).leftOut).toBe(5); // les 4 dépenses et l'entrée « Revenu » non importée
   });
 
   it('un compte marqué « traité » n’est pas importé ni compté « à compléter »', () => {
@@ -108,7 +108,7 @@ describe('import par lots (RG68, RG77)', () => {
     const marked = new Set([keyOf(SWILE_PAIR)]);
     const before = previewCounts(d, p);
     const after = previewCounts(d, p, { marked });
-    expect(after.incomplete).toBe(before.incomplete - 2);
+    expect(after.incomplete).toBe(before.incomplete - 3); // 2 dépenses + l'entrée « Revenu » non rattachée du compte
     const ready2 = { ...p, lines: p.lines.map(toCourses) };
     expect(validateImport(d, ready2, newId, { marked }).expenses).toBe(2);
     expect([...importableIds(d, ready2, { marked })].every(id => byLabel(ready2, 'ACHAT A').id === id || byLabel(ready2, 'ACHAT B').id === id)).toBe(true);
@@ -182,7 +182,7 @@ describe('état « Importée » et filtres (RG70)', () => {
     const batch = validateImport(d, p, newId, { ids: ids(p, 'ACHAT A', 'ACHAT B') });
     const done = new Set(batch.importedIds);
     expect(lineStates(d, byLabel(p, 'ACHAT A'), done)).toEqual(['importee']);
-    expect(filterLines(d, p.lines, emptyFilters(), new Set(), done).map(l => l.row.label)).toEqual(['RESTO SWILE', 'CANTINE', 'SALAIRE']);
+    expect(filterLines(d, p.lines, emptyFilters(), new Set(), done).map(l => l.row.label)).toEqual(['RESTO SWILE', 'CANTINE', 'VIREMENT RECU SALAIRE']);
     expect(filterLines(d, p.lines, { ...emptyFilters(), states: ['importee'] }, new Set(), done).map(l => l.row.label)).toEqual(['ACHAT A', 'ACHAT B']);
     expect(filterCounts(d, p.lines, done).states.importee).toBe(2);
   });
@@ -198,13 +198,18 @@ describe('état « Importée » et filtres (RG70)', () => {
 });
 
 describe('compte traité (RG71, RG73)', () => {
-  it('CA77: traité quand toutes ses dépenses sont importées ou déjà importées ; les entrées n’y changent rien', () => {
+  it('CA77 / RG19a(4): traité quand ses dépenses et ses entrées « Revenu » sont importées ou déjà importées ; un « Virement reçu » n’y compte pas', () => {
     const d = budget();
     const p = ready(d);
     const swile = keyOf(SWILE_PAIR);
-    expect(accountProgress(p, swile)).toMatchObject({ remaining: 2, treated: false });
+    expect(accountProgress(p, swile)).toMatchObject({ remaining: 3, treated: false });
     const batch = validateImport(d, p, newId, { ids: ids(p, 'RESTO SWILE', 'CANTINE') });
-    expect(accountProgress(p, swile, new Set(batch.importedIds))).toMatchObject({ imported: 2, remaining: 0, treated: true });
+    const done = new Set(batch.importedIds);
+    // L'entrée « Revenu » non importée reste une ligne restante.
+    expect(accountProgress(p, swile, done)).toMatchObject({ imported: 2, remaining: 1, treated: false });
+    // Requalifiée « Virement reçu » à la main, elle n'en fait plus partie.
+    const recu = { ...p, lines: p.lines.map(l => (l.row.direction === 'credit' ? changeNature(d, l, 'recu') : l)) };
+    expect(accountProgress(recu, swile, done)).toMatchObject({ imported: 2, remaining: 0, treated: true });
   });
 
   it('CA78: une ligne décochée volontairement laisse le compte à traiter avec « 1 ligne restante »', () => {
@@ -212,7 +217,7 @@ describe('compte traité (RG71, RG73)', () => {
     const p = ready(d);
     const unchecked = { ...p, lines: p.lines.map(l => (l.row.label === 'CANTINE' ? { ...l, checked: false } : l)) };
     const batch = validateImport(d, unchecked, newId, { ids: ids(unchecked, 'RESTO SWILE') });
-    expect(accountProgress(unchecked, keyOf(SWILE_PAIR), new Set(batch.importedIds))).toMatchObject({ remaining: 1, treated: false });
+    expect(accountProgress(unchecked, keyOf(SWILE_PAIR), new Set(batch.importedIds))).toMatchObject({ remaining: 2, treated: false }); // CANTINE décochée + l'entrée « Revenu »
   });
 
   it('CA79: rouvert avec le même fichier, un compte entièrement importé est traité (doublons)', () => {
@@ -221,7 +226,8 @@ describe('compte traité (RG71, RG73)', () => {
     const again = prepareImport(d, reading(ROWS));
     expect(again.lines.filter(l => l.row.direction === 'debit').every(l => l.duplicate && !l.checked)).toBe(true);
     expect(accountProgress(again, keyOf(MAIN_PAIR))).toMatchObject({ alreadyImported: 2, remaining: 0, treated: true });
-    expect(accountProgress(again, keyOf(SWILE_PAIR)).treated).toBe(true);
+    // L'entrée « Revenu » de Swile n'est pas importée : le compte reste à traiter (RG19a(4)).
+    expect(accountProgress(again, keyOf(SWILE_PAIR))).toMatchObject({ alreadyImported: 2, remaining: 1, treated: false });
   });
 
   it('un couple sans ligne de dépense n’est pas « traité »', () => {
@@ -237,15 +243,15 @@ describe('cumul de la session et rafraîchissement (RG75, RG80)', () => {
     let p = ready(d);
     const b1 = validateImport(d, p, newId, { ids: ids(p, 'ACHAT A', 'ACHAT B') });
     let done = new Set(b1.importedIds);
-    const totals1 = { expenses: b1.expenses, withdrawals: b1.withdrawals, internalTransfers: b1.internalTransfers };
+    const totals1 = { expenses: b1.expenses, revenues: 0, withdrawals: b1.withdrawals, internalTransfers: b1.internalTransfers };
     p = refreshPreview(d, reading(ROWS), p);
     p = { ...p, lines: p.lines.map(l => (l.row.direction === 'debit' && !done.has(l.id) ? toCourses(l) : l)) };
     const b2 = validateImport(d, p, newId, { ids: ids(p, 'RESTO SWILE'), done });
     done = new Set([...done, ...b2.importedIds]);
-    const totals = { expenses: totals1.expenses + b2.expenses, withdrawals: 0, internalTransfers: 0 };
+    const totals = { expenses: totals1.expenses + b2.expenses, revenues: 0, withdrawals: 0, internalTransfers: 0 };
     expect(totals.expenses).toBe(3);
     const sum = sessionSummary(p, totals, done);
-    expect(sum).toMatchObject({ expenses: 3, incomes: 1, leftOut: 1, duplicatesSkipped: 0, errors: 0 });
+    expect(sum).toMatchObject({ expenses: 3, incomes: 0, leftOut: 2, outsideBalances: 0, duplicatesSkipped: 0, errors: 0 }) // CANTINE et l'entrée « Revenu » restent à part;
     expect(d.transactions).toHaveLength(3);
   });
 

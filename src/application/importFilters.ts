@@ -1,7 +1,7 @@
 import { actualReplacedBy } from '../domain/lineExpenses';
 import { normalizeLabel, fullLabelOf } from '../domain/statement';
 import type { BudgetData, ImportTarget, MonthKey } from '../domain/types';
-import { changeMonth, changeNature, isImportMonth, isIncome, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, isImportMonth, isIncome, isReceivedTransfer, lineBalanceWarning, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
 
 /*
  * States, filters and bulk actions of the import preview (spec 0013, amendments 3 and 4). Pure functions on the lines of
@@ -11,7 +11,7 @@ import { changeMonth, changeNature, isImportMonth, isIncome, lineProblem, target
 /** States of a line, shown as chips and used as a filter (RG47). A line can have several. */
 export type LineState =
   | 'nouveau' | 'a_rattacher' | 'a_qualifier' | 'compte_a_rattacher' | 'doublon' | 'doublon_probable'
-  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'reel_remplace';
+  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'reel_remplace' | 'date_hors_soldes';
 
 const NONE: ReadonlySet<string> = new Set();
 
@@ -29,9 +29,10 @@ export const STATE_LABEL: Record<LineState, string> = {
   entree: 'Entrée d’argent',
   importee: 'Importée',
   reel_remplace: 'Réel saisi à remplacer',
+  date_hors_soldes: 'Date hors soldes',
 };
 
-export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'reel_remplace'];
+export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'reel_remplace', 'date_hors_soldes'];
 
 /**
  * States of a line. « Nouveau » is a line with nothing left to do that is not already imported; « Décochée » is an unchecked debit;
@@ -39,16 +40,19 @@ export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier'
  */
 export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<string> = NONE): LineState[] {
   if (done.has(l.id)) return ['importee'];
-  if (isIncome(l)) return l.accountId === null ? ['entree', 'compte_a_rattacher'] : ['entree'];
-  const out: LineState[] = [];
+  // A received transfer is only shown (spec 0015, RG17); an entry of money to import is an ordinary line that also carries « Entrée d'argent ».
+  if (isReceivedTransfer(l)) return l.accountId === null ? ['entree', 'compte_a_rattacher'] : ['entree'];
+  const out: LineState[] = isIncome(l) ? ['entree'] : [];
   const problem = lineProblem(d, l);
   if (l.accountId === null) out.push('compte_a_rattacher');
   else if (l.nature === 'a_qualifier') out.push('a_qualifier');
   else if (problem) out.push('a_rattacher');
-  else if (!l.duplicate) out.push('nouveau');
+  else if (!l.duplicate && !isIncome(l)) out.push('nouveau');
   if (l.duplicate) out.push('doublon');
   // The target is a fixed/credit line whose typed actual the first expense would replace (spec 0014, RG6): informative, not blocking.
   if (l.target?.kind === 'line' && !l.duplicate && actualReplacedBy(d, l.month, l.target.key) !== null) out.push('reel_remplace');
+  // The bank date is outside what the balances cover: informative, the line stays importable (spec 0015, RG6).
+  if (lineBalanceWarning(d, l) !== null) out.push('date_hors_soldes');
   if (l.similarImported === 'probable') out.push('doublon_probable');
   if (l.similarImported === 'semblable') out.push('semblable_importee');
   if (l.similarManual) out.push('saisie_manuelle');
@@ -85,7 +89,7 @@ export function matchesFilters(d: BudgetData, l: PreviewLine, f: PreviewFilters,
   return (
     inFamily(f.accounts, [l.pairKey]) &&
     inFamily(f.states, lineStates(d, l, done)) &&
-    inFamily(f.natures, isIncome(l) ? [] : [l.nature]) &&
+    inFamily(f.natures, [l.nature]) &&
     inFamily(f.months, [l.month]) &&
     inFamily(f.categories, [l.row.category])
   );
@@ -116,7 +120,7 @@ export function filterCounts(d: BudgetData, lines: PreviewLine[], done: Readonly
   const add = (rec: Record<string, number>, key: string) => (rec[key] = (rec[key] ?? 0) + 1);
   for (const l of lines) {
     for (const s of lineStates(d, l, done)) c.states[s]++;
-    if (!isIncome(l)) add(c.natures as Record<string, number>, l.nature);
+    add(c.natures as Record<string, number>, l.nature);
     add(c.months, l.month);
     add(c.accounts, l.pairKey);
     if (l.row.category) add(c.categories, l.row.category);
@@ -132,13 +136,13 @@ export function pruneFilters(f: PreviewFilters, lines: PreviewLine[]): PreviewFi
     accounts: has(f.accounts, l => l.pairKey),
     months: has(f.months, l => l.month),
     categories: has(f.categories, l => l.row.category),
-    natures: has(f.natures, l => (isIncome(l) ? null : l.nature)),
+    natures: has(f.natures, l => l.nature),
   };
 }
 
 /** Checks or unchecks the given lines. An entry of money is never touched; a checked incomplete line stays not importable (RG56, RG60). */
 export function setChecked(lines: PreviewLine[], ids: ReadonlySet<string>, checked: boolean, done: ReadonlySet<string> = NONE): PreviewLine[] {
-  return lines.map(l => (ids.has(l.id) && !isIncome(l) && !done.has(l.id) ? { ...l, checked } : l));
+  return lines.map(l => (ids.has(l.id) && !isReceivedTransfer(l) && !done.has(l.id) ? { ...l, checked } : l));
 }
 
 export interface BulkChange {
@@ -163,7 +167,7 @@ export function applyBulk(d: BudgetData, lines: PreviewLine[], ids: ReadonlySet<
   let unchanged = 0;
   const out = lines.map(l => {
     if (!ids.has(l.id)) return l;
-    if (isIncome(l) || done.has(l.id) || l.accountId === null || change.nature === 'a_qualifier') {
+    if (isReceivedTransfer(l) || done.has(l.id) || l.accountId === null || change.nature === 'a_qualifier') {
       unchanged++;
       return l;
     }

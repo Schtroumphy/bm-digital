@@ -1,5 +1,6 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isEnvelopeAccount, isLineInBudget, mainAccount, resolveBoxAccountId } from './bank';
-import { carriedLineNote, isExpenseLineBlock, isLineCarried } from './lineExpenses';
+import { isMonthInBalanceRange } from './balanceRange';
+import { bankDateOf, carriedLineNote, isCarryingBlock, isLineCarried } from './lineExpenses';
 import { bankMovements, countedAmount, envelopeCheckKey, flowOf, monthMode, type BankMovement, type CountedSource, type MonthMode } from './bankMovements';
 import { addMonths, compareMonths, money, parseMonth, round2 } from './format';
 import { closeKey, isMonthLocked, isYearClosed, monthLines, type Ledger } from './ledger';
@@ -194,11 +195,11 @@ export interface MonthBalance {
  */
 export function monthBalance(d: BudgetData, m: MonthKey, accountId: string): MonthBalance | null {
   const account = d.accounts.find(a => a.id === accountId);
-  if (!account || d.firstMonth === null || compareMonths(m, account.openingMonth) < 0 || compareMonths(m, d.firstMonth) < 0) return null;
+  if (!account || d.firstMonth === null || !isMonthInBalanceRange(d, account, m)) return null;
   let balance: number | undefined;
   let result: MonthBalance | null = null;
   for (let k = d.firstMonth; compareMonths(k, m) <= 0; k = addMonths(k, 1)) {
-    if (compareMonths(k, account.openingMonth) < 0) continue;
+    if (!isMonthInBalanceRange(d, account, k)) continue;
     const { year, month } = parseMonth(k);
     const prevClose = month === 0 && isYearClosed(d, year - 1) ? d.closes[year - 1] : null;
     const start = prevClose?.overrides[closeKey('bank', accountId)] ?? (compareMonths(k, account.openingMonth) === 0 ? undefined : balance) ?? account.openingBalance;
@@ -221,6 +222,8 @@ export interface Movement {
   counted: boolean;
   /** Explanation shown next to a movement that is not counted. */
   note?: string;
+  /** Month of the budget the entry is attached to when it differs from its bank date's month (tooltip, spec 0015, RG4). */
+  attachedMonth?: MonthKey;
   lineKey?: string;
   adjustmentId?: string;
   cancelledOn?: string;
@@ -283,7 +286,7 @@ function pendingLines(d: BudgetData, m: MonthKey, accountId: string, today: stri
     } else {
       if (lineCheck(d, m, l.key)) continue;
       // « Reste à sortir » stays budgetary: a fixed/credit line carried by its expenses weighs its budget, never the actual they feed (spec 0014, RG13).
-      if (isExpenseLineBlock(l.block) && isLineCarried(d, m, l.key)) ({ amount, source } = { amount: l.budget, source: 'budget' });
+      if (isCarryingBlock(l.block) && isLineCarried(d, m, l.key)) ({ amount, source } = { amount: l.budget, source: 'budget' });
       else ({ amount, source } = countedAmount(l));
     }
     out.push({ line: l, amount, source, late: isLate(d, m, l, today) });
@@ -295,7 +298,8 @@ function pendingLines(d: BudgetData, m: MonthKey, accountId: string, today: stri
 function expectedLines(d: BudgetData, m: MonthKey, accountId: string, today: string): PendingLine[] {
   return monthLines(d, m)
     .filter(l => l.block === 'rev' && l.execMode !== 'informatif' && accountIdOf(d, l.accountId) === accountId && !lineCheck(d, m, l.key))
-    .map(l => ({ line: l, ...countedAmount(l), late: isLate(d, m, l, today) }));
+    // « Revenus attendus » stays budgetary: a revenue line carried by its entries weighs its budget, never the actual they feed (spec 0015, RG14).
+    .map(l => ({ line: l, ...(isLineCarried(d, m, l.key) ? { amount: l.budget, source: 'budget' as const } : countedAmount(l)), late: isLate(d, m, l, today) }));
 }
 
 /** Why a counterpart is not counted by the main account (RG101). */
@@ -340,8 +344,8 @@ export function ignoredMovements(d: BudgetData, accountId: string, m: MonthKey):
     if (t.fromAccountId === main && outOfBudget(t.to.id)) out.push({ date: `${m}-01`, label: `${t.name} (virement)`, amount: -t.amount, reason: IGNORED_REASON });
   }
   for (const mv of d.accountMovements ?? []) {
-    if (mv.month !== m || mv.amount === 0) continue;
-    const date = `${m}-${String(mv.day).padStart(2, '0')}`;
+    const date = bankDateOf(mv);
+    if (!date.startsWith(m) || mv.amount === 0) continue;
     if (mv.fromAccountId === main && outOfBudget(mv.toAccountId)) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (mouvement)`, amount: -mv.amount, reason: IGNORED_REASON });
     if (mv.toAccountId === main && outOfBudget(mv.fromAccountId)) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (mouvement)`, amount: mv.amount, reason: IGNORED_REASON });
   }

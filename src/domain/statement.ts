@@ -65,7 +65,9 @@ export function suggestedPattern(row: Pick<StatementRow, 'label' | 'notes'>): st
 }
 
 /** Fingerprint of a line: date + amount + normalized complete label, notes included; the category is left out (RG34, CA33a). */
-export const fingerprintOf = (row: Pick<StatementRow, 'date' | 'amount' | 'label' | 'notes'>): string => `${row.date}|${row.amount.toFixed(2)}|${normalizeLabel(fullLabelOf(row))}`;
+export const fingerprintOf = (row: Pick<StatementRow, 'date' | 'amount' | 'label' | 'notes'> & Partial<Pick<StatementRow, 'direction'>>): string =>
+  // The sense enters the fingerprint of a credit only, so the fingerprints already stored for debits stay valid (spec 0015, RG20).
+  `${row.direction === 'credit' ? '+' : ''}${row.date}|${row.amount.toFixed(2)}|${normalizeLabel(fullLabelOf(row))}`;
 
 /** An entry of money whose label or notes speak of a transfer (« virement », « vir »): only a hint, it qualifies nothing (spec 0013, RG62). */
 export const isTransferReceived = (row: Pick<StatementRow, 'label' | 'notes'>): boolean => /\b(virement|vir)\b/.test(normalizeLabel(fullLabelOf(row)));
