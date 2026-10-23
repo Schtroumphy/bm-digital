@@ -323,6 +323,11 @@ export function deleteTransaction(d: BudgetData, id: string): boolean {
   return true;
 }
 
+/** Deletes several expenses, each as `deleteTransaction` does (locked months are skipped). Returns how many were deleted. */
+export function deleteTransactions(d: BudgetData, ids: string[]): number {
+  return ids.filter(id => deleteTransaction(d, id)).length;
+}
+
 /** Sets (or clears with null) a savings/investment account statement. Refused (false) on a locked month. */
 export function setStatement(d: BudgetData, m: MonthKey, key: string, v: number | null): boolean {
   if (isMonthLocked(d, m)) return false;

@@ -3,7 +3,7 @@ import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
 import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
-import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
+import { addTransaction, deleteTransaction, deleteTransactions, setStatement } from '../../application/actions';
 import { deleteAccountMovement, updateAccountMovement } from '../../application/accountMovements';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
@@ -67,6 +67,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', amount: '', type: 'var', target: '', accountId: '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string }>({ q: '', type: 'all', accountId: 'all' });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const targets: [string, string][] =
     form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
@@ -85,6 +87,28 @@ function EntryTab({ month }: { month: MonthKey }) {
 
   const s = monthSummary(data, ledger, month);
   const txs = data.transactions.filter(t => t.month === month);
+  const q = filter.q.trim().toLowerCase();
+  const shown = txs
+    .filter(t => filter.type === 'all' || t.type === filter.type)
+    .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId)
+    .filter(t => !q || t.label.toLowerCase().includes(q))
+    .sort((a, b) => b.day - a.day);
+  // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
+  const picked = shown.filter(t => selected.has(t.id));
+  const allPicked = shown.length > 0 && picked.length === shown.length;
+  const toggle = (id: string) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const removePicked = () => {
+    if (locked || picked.length === 0) return;
+    if (!window.confirm(`Supprimer ${picked.length} dépense${picked.length > 1 ? 's' : ''} (${money(picked.reduce((a, t) => a + t.amount, 0))}) ?`)) return;
+    const ids = picked.map(t => t.id);
+    update(d => void deleteTransactions(d, ids));
+    setSelected(new Set());
+  };
   const targetName = (type: TxType, id: string) => (type === 'env' ? data.envelopes.find(e => e.id === id)?.name : lines.find(l => l.key === id)?.name) ?? 'Supprimé';
   const targetHue = (type: TxType, id: string) => (type === 'var' ? HUE.dep : type === 'env' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
 
@@ -208,7 +232,40 @@ function EntryTab({ month }: { month: MonthKey }) {
             <div className="tx-title">Dépenses de {monthLabel(month)}</div>
             <b>{money(txs.reduce((a, t) => a + t.amount, 0))}</b>
           </div>
+          <div className="tx-filters">
+            <input className="text-input" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
+            <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>
+              <option value="all">Tous les types</option>
+              {(Object.keys(TYPE_LABEL) as TxType[]).map(t => (
+                <option key={t} value={t}>
+                  {TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <select className="text-input" value={filter.accountId} onChange={e => setFilter(f => ({ ...f, accountId: e.target.value }))}>
+              <option value="all">Tous les comptes</option>
+              {data.accounts.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {picked.length > 0 && (
+            <div className="tx-bulk">
+              <span>
+                {picked.length} sélectionnée{picked.length > 1 ? 's' : ''} · {money(picked.reduce((a, t) => a + t.amount, 0))}
+              </span>
+              <span className="btn-outline" onClick={() => setSelected(new Set())}>
+                Désélectionner
+              </span>
+              <span className={`btn-outline is-danger${locked ? ' is-disabled' : ''}`} onClick={removePicked}>
+                Supprimer la sélection
+              </span>
+            </div>
+          )}
           <div className="tx-grid tx-cols">
+            <input type="checkbox" aria-label="Tout sélectionner" checked={allPicked} disabled={locked || shown.length === 0} onChange={() => setSelected(allPicked ? new Set() : new Set(shown.map(t => t.id)))} />
             <span>Date</span>
             <span>Libellé</span>
             <span>Imputation</span>
@@ -216,28 +273,28 @@ function EntryTab({ month }: { month: MonthKey }) {
             <span className="num">Montant</span>
             <span />
           </div>
-          {[...txs]
-            .sort((a, b) => b.day - a.day)
-            .map(t => (
-              <div key={t.id} className="tx-grid tx-row">
-                <span className="muted">{dayLabel(t.month, t.day)}</span>
-                <span className="ellipsis" style={{ fontWeight: 500 }}>
-                  {t.label}
+          {shown.map(t => (
+            <div key={t.id} className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
+              <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} disabled={locked} onChange={() => toggle(t.id)} />
+              <span className="muted">{dayLabel(t.month, t.day)}</span>
+              <span className="ellipsis" style={{ fontWeight: 500 }}>
+                {t.label}
+              </span>
+              <span className="tx-target">
+                <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
+                <span className="ellipsis">{targetName(t.type, t.target)}</span>
+                <span className="tx-type">{TYPE_LABEL[t.type]}</span>
+              </span>
+              <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
+              <b className="num">{money(t.amount)}</b>
+              {locked ? <span /> : (
+                <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
+                  <Icon name="close" size={14} />
                 </span>
-                <span className="tx-target">
-                  <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
-                  <span className="ellipsis">{targetName(t.type, t.target)}</span>
-                  <span className="tx-type">{TYPE_LABEL[t.type]}</span>
-                </span>
-                <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
-                <b className="num">{money(t.amount)}</b>
-                {locked ? <span /> : (
-                  <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
-                    <Icon name="close" size={14} />
-                  </span>
-                )}
-              </div>
-            ))}
+              )}
+            </div>
+          ))}
+          {txs.length > 0 && shown.length === 0 && <div className="empty">Aucune dépense ne correspond aux filtres.</div>}
           {txs.length === 0 && <div className="empty">Aucune dépense saisie ce mois-ci.</div>}
           <div style={{ height: 8 }} />
         </div>
