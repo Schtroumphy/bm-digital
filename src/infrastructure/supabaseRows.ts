@@ -137,6 +137,7 @@ export function toRows(d: BudgetData): TableRows {
       category: orNull(t.category),
       detail: orNull(t.detail),
       bank_date: orNull(t.bankDate),
+      source: orNull(t.source),
       position,
     }),
   );
@@ -156,6 +157,10 @@ export function toRows(d: BudgetData): TableRows {
       category: orNull(m.category),
       detail: orNull(m.detail),
       bank_date: orNull(m.bankDate),
+      credit_import_account_id: orNull(m.creditTrace?.importAccountId),
+      credit_fingerprint: orNull(m.creditTrace?.fingerprint),
+      credit_rank: orNull(m.creditTrace?.rank),
+      credit_bank_date: orNull(m.creditTrace?.bankDate),
       target_kind: orNull(m.target?.kind),
       target_key: orNull(m.target ? (m.target.kind === 'line' ? m.target.key : m.target.id) : undefined),
       position,
@@ -323,6 +328,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       category: orUndefined(r.category),
       detail: orUndefined(r.detail),
       bankDate: orUndefined(r.bank_date),
+      source: orUndefined(r.source),
     }),
   );
 
@@ -341,6 +347,9 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       category: orUndefined(r.category),
       detail: orUndefined(r.detail),
       bankDate: orUndefined(r.bank_date),
+      creditTrace: r.credit_import_account_id !== null && r.credit_fingerprint !== null && r.credit_rank !== null && r.credit_bank_date !== null
+        ? { importAccountId: r.credit_import_account_id, fingerprint: r.credit_fingerprint, rank: r.credit_rank, bankDate: r.credit_bank_date }
+        : undefined,
       target: r.target_kind === 'line' && r.target_key !== null ? { kind: 'line' as const, key: r.target_key } : r.target_kind === 'env' && r.target_key !== null ? { kind: 'env' as const, id: r.target_key } : undefined,
     }),
   );

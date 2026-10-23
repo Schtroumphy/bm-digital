@@ -1,6 +1,6 @@
 import { normalizeLabel, fullLabelOf } from '../domain/statement';
 import type { BudgetData, ImportTarget, MonthKey } from '../domain/types';
-import { changeMonth, changeNature, isImportMonth, isIncome, isLocked, isReceivedTransfer, lineBalanceWarning, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, completionOf, isImportMonth, isIncome, isLocked, lineBalanceWarning, lineProblem, linkedPartner, reconcileLinks, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
 
 /*
  * States, filters and bulk actions of the import preview (spec 0013, amendments 3 and 4). Pure functions on the lines of
@@ -10,7 +10,8 @@ import { changeMonth, changeNature, isImportMonth, isIncome, isLocked, isReceive
 /** States of a line, shown as chips and used as a filter (RG47). A line can have several. */
 export type LineState =
   | 'nouveau' | 'a_rattacher' | 'a_qualifier' | 'compte_a_rattacher' | 'doublon' | 'doublon_probable'
-  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'date_hors_soldes';
+  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'date_hors_soldes'
+  | 'lie' | 'une_face' | 'complete_virement' | 'appariement_ambigu';
 
 const NONE: ReadonlySet<string> = new Set();
 
@@ -28,9 +29,13 @@ export const STATE_LABEL: Record<LineState, string> = {
   entree: 'Entrée d’argent',
   importee: 'Importée',
   date_hors_soldes: 'Date hors soldes',
+  lie: 'Lié',
+  une_face: 'Une face',
+  complete_virement: 'Complète le virement',
+  appariement_ambigu: 'Appariement ambigu',
 };
 
-export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'date_hors_soldes'];
+export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'date_hors_soldes', 'lie', 'une_face', 'complete_virement', 'appariement_ambigu'];
 
 /**
  * States of a line. « Nouveau » is a line with nothing left to do that is not already imported; « Décochée » is a debit unchecked by choice; « Déjà importée » (`doublon`) is a locked line, which has no other state (RG87);
@@ -38,8 +43,6 @@ export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier'
  */
 export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<string> = NONE): LineState[] {
   if (done.has(l.id)) return ['importee'];
-  // A received transfer is only shown (spec 0015, RG17); an entry of money to import is an ordinary line that also carries « Entrée d'argent ».
-  if (isReceivedTransfer(l)) return l.accountId === null ? ['entree', 'compte_a_rattacher'] : ['entree'];
   // A line already imported before is « déjà traitée »: locked, with no other state, not even « Décochée » (RG83, RG87).
   if (isLocked(l)) return ['doublon'];
   const out: LineState[] = isIncome(l) ? ['entree'] : [];
@@ -51,6 +54,13 @@ export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<stri
   // The target is a fixed/credit line whose typed actual the first expense would replace (spec 0014, RG6): informative, not blocking.
   // The bank date is outside what the balances cover: informative, the line stays importable (spec 0015, RG6).
   if (lineBalanceWarning(d, l) !== null) out.push('date_hors_soldes');
+  // Internal transfers (spec 0016): both faces linked, the other face missing, a face that completes an imported transfer, several possible halves.
+  if (l.accountId !== null && (l.nature === 'interne' || l.nature === 'recu')) {
+    if (l.link) out.push('lie');
+    if (completionOf(d, l)) out.push('complete_virement');
+    else if (!l.link) out.push('une_face');
+  }
+  if (l.ambiguous && !l.link) out.push('appariement_ambigu');
   if (l.similarImported === 'probable') out.push('doublon_probable');
   if (l.similarImported === 'semblable') out.push('semblable_importee');
   if (l.similarManual) out.push('saisie_manuelle');
@@ -138,9 +148,17 @@ export function pruneFilters(f: PreviewFilters, lines: PreviewLine[]): PreviewFi
   };
 }
 
-/** Checks or unchecks the given lines. An entry of money and a locked line are never touched; a checked incomplete line stays not importable (RG56, RG60). */
+/**
+ * Checks or unchecks the given lines. A locked line is never touched; a checked incomplete line stays not importable (RG56, RG60). The two faces of a linked pair
+ * are checked together: the other face of a line follows it (spec 0016, RG7).
+ */
 export function setChecked(lines: PreviewLine[], ids: ReadonlySet<string>, checked: boolean, done: ReadonlySet<string> = NONE): PreviewLine[] {
-  return lines.map(l => (ids.has(l.id) && !isReceivedTransfer(l) && !isLocked(l) && !done.has(l.id) ? { ...l, checked } : l));
+  const all = new Set(ids);
+  for (const l of lines) if (ids.has(l.id)) {
+    const partner = linkedPartner(lines, l);
+    if (partner) all.add(partner.id);
+  }
+  return lines.map(l => (all.has(l.id) && !isLocked(l) && !done.has(l.id) ? { ...l, checked } : l));
 }
 
 export interface BulkChange {
@@ -165,7 +183,7 @@ export function applyBulk(d: BudgetData, lines: PreviewLine[], ids: ReadonlySet<
   let unchanged = 0;
   const out = lines.map(l => {
     if (!ids.has(l.id)) return l;
-    if (isReceivedTransfer(l) || isLocked(l) || done.has(l.id) || l.accountId === null || change.nature === 'a_qualifier') {
+    if (isLocked(l) || done.has(l.id) || l.accountId === null || change.nature === 'a_qualifier') {
       unchanged++;
       return l;
     }
@@ -192,5 +210,6 @@ export function applyBulk(d: BudgetData, lines: PreviewLine[], ids: ReadonlySet<
     changed++;
     return next;
   });
-  return { lines: out, changed, unchanged };
+  // A pair whose nature or account was changed is no longer a pair (spec 0016, RG9).
+  return { lines: reconcileLinks(out), changed, unchanged };
 }

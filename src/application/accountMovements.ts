@@ -3,6 +3,7 @@ import { round2 } from '../domain/format';
 import { daysInMonth } from '../domain/checkoff';
 import { isMonthLocked } from '../domain/ledger';
 import { syncLineActual } from '../domain/lineActuals';
+import { linkStateOf } from '../domain/internalTransfers';
 import { isValidTransferTarget } from '../domain/transfers';
 import type { AccountMovement, BudgetData, MonthKey, MovementTarget } from '../domain/types';
 
@@ -56,12 +57,14 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
 
 /**
  * Changes the label and the amount of a transfer, and its detail when `patch.detail` is given (spec 0020, RG6; empty clears it).
- * Refused (false) on a locked month, an empty label or an amount that is not positive.
+ * Refused (false) on a locked month, an empty label or an amount that is not positive, and for a changed amount on a transfer linked to
+ * two lines of the bank file (« Lié »): both lines have that amount, the transfer has to be unlinked or deleted first (spec 0016, RG15).
  */
 export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; detail?: string }): boolean {
   const mv = d.accountMovements?.find(x => x.id === id);
   const label = patch.label.trim();
   if (!mv || isMonthLocked(d, mv.month) || !label || !(patch.amount > 0)) return false;
+  if (linkStateOf(mv) === 'lie' && round2(patch.amount) !== mv.amount) return false;
   mv.label = label;
   mv.amount = round2(patch.amount);
   if (patch.detail !== undefined) applyDetail(mv, patch.detail);
@@ -98,5 +101,24 @@ export function deleteAccountMovement(d: BudgetData, id: string): boolean {
   if (!mv || isMonthLocked(d, mv.month)) return false;
   d.accountMovements = d.accountMovements!.filter(x => x.id !== id);
   syncTarget(d, mv.month, mv.target);
+  return true;
+}
+
+/**
+ * Cuts one face of a linked transfer (spec 0016, RG19): the trace of that face is removed, the transfer stays with its other face, and the freed line of
+ * the file can be imported again on its own. Refused (false) on a locked month, an unknown transfer, or a transfer that is not linked (a single face has
+ * nothing to cut: delete it instead).
+ */
+export function unlinkMovementFace(d: BudgetData, id: string, face: 'debit' | 'credit'): boolean {
+  const mv = d.accountMovements?.find(x => x.id === id);
+  if (!mv || isMonthLocked(d, mv.month) || linkStateOf(mv) !== 'lie') return false;
+  if (face === 'credit') delete mv.creditTrace;
+  else {
+    // The credit face stays: the transfer is then dated by it.
+    mv.bankDate = mv.creditTrace!.bankDate;
+    delete mv.importAccountId;
+    delete mv.fingerprint;
+    delete mv.rank;
+  }
   return true;
 }

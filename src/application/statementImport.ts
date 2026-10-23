@@ -1,8 +1,9 @@
-import { CASH_ACCOUNT_ID, accountIdOf, activeBankAccounts, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
+import { CASH_ACCOUNT_ID, accountIdOf, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
+import { ENVELOPES_ID, canLinkFaces, findCompletable, isEnvelopesPool, pairFaces, tracesOf, type Face } from '../domain/internalTransfers';
 import { compareMonths } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
-import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, MonthKey, MovementTarget, Transaction } from '../domain/types';
+import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, ImportTrace, MonthKey, MovementTarget, Transaction } from '../domain/types';
 import { balanceDateWarning } from '../domain/balanceRange';
 import { bankDateOf, expenseLine, expenseLineAccountId, revenueLine } from '../domain/lineExpenses';
 import { syncLineActual } from '../domain/lineActuals';
@@ -19,8 +20,8 @@ import { findImportAccountLink, isLinkableAccount, linkedAccountOf, setImportAcc
 
 /**
  * `a_qualifier` only exists in the preview: a transfer the user has not yet decided to be internal or external (RG35), never stored.
- * `recu` (in `ImportNature`) is a transfer received from another of the user's accounts: chosen by hand, never proposed by the
- * heuristic, never imported, only remembered as a rule (spec 0015, RG19).
+ * `recu` (in `ImportNature`) is the credit face of an internal transfer, shown « Virement interne »: an entry of money that comes from
+ * another of the user's accounts, or from « Enveloppes (global) » (spec 0016, RG1, RG12, RG27). Importable like any other line.
  */
 export type LineNature = ImportNature | 'a_qualifier';
 
@@ -73,6 +74,23 @@ export interface PreviewLine {
    * the default of the destination applies (`transferAttachment`); `null` = the user chose « aucune ».
    */
   attach?: MovementTarget | null;
+  /**
+   * The other face of the internal transfer this line belongs to (spec 0016, RG6, RG7): the id of the credit line for a debit and the other way round.
+   * `undefined` = not linked (the automatic pairing may link it), `null` = the user unlinked it, no automatic pairing.
+   */
+  link?: string | null;
+  /** Several faces could be its other half: nothing is paired automatically, the user links by hand (RG6). */
+  ambiguous?: boolean;
+  /** `revenu` only: who paid, free text (RG3). Empty = the label of the line. */
+  source?: string;
+}
+
+/** The two accounts a line of nature « virement » (debit `interne`/`retrait`, credit `recu`) moves money between; null when it is not one or has no target yet. */
+export function transferEnds(l: Pick<PreviewLine, 'nature' | 'target' | 'accountId'>): { from: string; to: string } | null {
+  if (l.accountId === null || l.target?.kind !== 'account') return null;
+  if (l.nature === 'interne' || l.nature === 'retrait') return { from: l.accountId, to: l.target.id };
+  if (l.nature === 'recu') return { from: l.target.id, to: l.accountId };
+  return null;
 }
 
 /**
@@ -80,9 +98,11 @@ export interface PreviewLine {
  * envelope or the savings/investment line of the destination account (RG15). Null when there is none.
  */
 export function transferAttachment(d: BudgetData, l: Pick<PreviewLine, 'nature' | 'target' | 'month' | 'accountId' | 'attach'>): MovementTarget | null {
-  if ((l.nature !== 'retrait' && l.nature !== 'interne') || l.target?.kind !== 'account') return null;
-  const wanted = l.attach === undefined ? defaultTransferTarget(d, l.month, l.target.id, l.accountId ?? undefined) : l.attach;
-  return wanted && isValidTransferTarget(d, l.month, l.target.id, wanted) ? wanted : null;
+  const ends = transferEnds(l);
+  // « Enveloppes (global) » has no budget item: the global debit replaces the allocations of the month by itself (spec 0016, RG28).
+  if (!ends || isEnvelopesPool(ends.from) || isEnvelopesPool(ends.to)) return null;
+  const wanted = l.attach === undefined ? defaultTransferTarget(d, l.month, ends.to, ends.from) : l.attach;
+  return wanted && isValidTransferTarget(d, l.month, ends.to, wanted) ? wanted : null;
 }
 
 /** An account of the file seen in the lines. */
@@ -113,13 +133,10 @@ export interface ImportPreview {
 /** A line already imported in an earlier session: shown as done, unchecked and locked, it can never be imported again (spec 0013, RG83). */
 export const isLocked = (l: PreviewLine): boolean => l.duplicate;
 
-/** An entry of money (credit of the file). It is imported only as a « Revenu » on a revenue line (spec 0015); a received transfer is never imported. */
+/** An entry of money (credit of the file): a « Revenu » on a revenue line (spec 0015) or a « Virement interne » received from another account (spec 0016). */
 export const isIncome = (l: Pick<PreviewLine, 'row'>): boolean => l.row.direction === 'credit';
 
-/** A line that can never be imported: a transfer received from another account (spec 0015, RG17, RG19). */
-export const isReceivedTransfer = (l: Pick<PreviewLine, 'nature'>): boolean => l.nature === 'recu';
-
-const NATURE_LABEL: Record<LineNature, string> = { depense: 'Dépense', retrait: 'Retrait', interne: 'Transfert interne', externe: 'Transfert externe', revenu: 'Revenu', a_qualifier: 'À qualifier', recu: 'Virement reçu' };
+const NATURE_LABEL: Record<LineNature, string> = { depense: 'Dépense', retrait: 'Retrait', interne: 'Transfert interne', externe: 'Transfert externe', revenu: 'Revenu', a_qualifier: 'À qualifier', recu: 'Virement interne' };
 export const natureLabel = (n: LineNature) => NATURE_LABEL[n];
 
 const importKey = (accountId: string, fingerprint: string, rank: number) => `${accountId}\u0001${fingerprint}\u0001${rank}`;
@@ -132,11 +149,24 @@ export const isImportMonth = (d: BudgetData, m: MonthKey): boolean =>
 
 export const importMonths = (d: BudgetData): MonthKey[] => Object.keys(d.months).filter(m => isImportMonth(d, m)).sort();
 
-/** Accounts offered as the destination of a withdrawal (cash, an envelope's account) or of an internal transfer (any other active account) (RG10a). */
+/**
+ * Accounts offered as the destination of a withdrawal (cash, an envelope's account), of an internal transfer (any other active account, an
+ * envelope's included: a transfer paired with the credit of an envelope's account ends there, spec 0016) or as the source of a received transfer
+ * (any other active account). « Enveloppes (global) » is not an account: see `canUseEnvelopesPool`.
+ */
 export function destinationAccounts(d: BudgetData, nature: LineNature, sourceId: string | null): BankAccount[] {
   if (nature === 'retrait') return d.accounts.filter(a => !a.archived && a.id !== sourceId && (a.id === CASH_ACCOUNT_ID || isEnvelopeAccount(a)));
-  if (nature === 'interne') return activeBankAccounts(d).filter(a => a.id !== sourceId);
+  if (nature === 'interne' || nature === 'recu') return d.accounts.filter(a => !a.archived && a.id !== sourceId);
   return [];
+}
+
+/**
+ * « Enveloppes (global) » is offered as « Vers » of a debit from any account but an envelope's (RG25) and as « Depuis » of a credit that
+ * lands on an envelope's account (RG27).
+ */
+export function canUseEnvelopesPool(d: BudgetData, nature: LineNature, accountId: string | null): boolean {
+  const isEnv = d.accounts.some(a => a.id === accountId && isEnvelopeAccount(a));
+  return accountId !== null && (nature === 'interne' ? !isEnv : nature === 'recu' ? isEnv : false);
 }
 
 const isExpenseNature = (n: LineNature) => n === 'depense' || n === 'externe';
@@ -169,8 +199,10 @@ export function targetIsValid(d: BudgetData, sourceId: string | null, nature: Li
     }
     return target.kind === 'env' && d.envelopes.some(e => e.id === target.id);
   }
-  if (nature === 'retrait' || nature === 'interne') {
-    return target.kind === 'account' && destinationAccounts(d, nature, sourceId).some(a => a.id === target.id);
+  if (nature === 'retrait' || nature === 'interne' || nature === 'recu') {
+    if (target.kind !== 'account') return false;
+    if (isEnvelopesPool(target.id)) return canUseEnvelopesPool(d, nature, sourceId);
+    return destinationAccounts(d, nature, sourceId).some(a => a.id === target.id);
   }
   return false;
 }
@@ -184,13 +216,12 @@ function balanceAccounts(d: BudgetData, l: PreviewLine): string[] {
   const t = l.target;
   if (t.kind === 'env') return [d.envelopes.find(e => e.id === t.id)?.accountId ?? l.accountId];
   if (t.kind === 'var') return [fixedTransactionAccountId(d, { type: 'var', month: l.month, target: t.key }) ?? l.accountId];
-  if (t.kind === 'account') return [l.accountId, t.id];
+  if (t.kind === 'account') return isEnvelopesPool(t.id) ? [l.accountId] : [l.accountId, t.id];
   return [l.accountId];
 }
 
 /** Why the bank date of a line would put it outside the balances (not blocking: the line stays importable), or null (spec 0015, RG6). */
 export function lineBalanceWarning(d: BudgetData, l: PreviewLine): string | null {
-  if (isReceivedTransfer(l)) return null;
   for (const id of balanceAccounts(d, l)) {
     const warning = balanceDateWarning(d, id, l.row.date);
     if (warning) return warning;
@@ -201,11 +232,21 @@ export function lineBalanceWarning(d: BudgetData, l: PreviewLine): string | null
 /** Why a line cannot be imported yet, or null when it is complete (RG12, RG17, RG32). */
 export function lineProblem(d: BudgetData, l: PreviewLine): string | null {
   if (l.accountId === null) return 'Compte à rattacher';
-  if (l.nature === 'recu') return 'Virement reçu'; // shown, never imported (spec 0015, RG17)
   if (l.nature === 'a_qualifier') return 'À qualifier';
+  // A line that completes a transfer already imported only adds its trace to it: its own month does not matter, the month of the transfer does (RG13).
+  const completes = completionOf(d, l);
+  if (completes) return isMonthLocked(d, completes.month) ? 'Virement d’un mois clos' : null;
   if (!isImportMonth(d, l.month)) return 'Choisir un mois ouvert';
-  if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) || l.nature === 'revenu' ? 'À rattacher' : 'Choisir une destination';
+  if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) || l.nature === 'revenu' ? 'À rattacher' : l.nature === 'recu' ? 'Choisir le compte source' : 'Choisir une destination';
   return null;
+}
+
+/** The transfer already imported with a single face that this line completes, if it does (spec 0016, RG13). Not for a line linked to another line of the file. */
+export function completionOf(d: BudgetData, l: PreviewLine): AccountMovement | null {
+  const ends = transferEnds(l);
+  if (!ends || l.nature === 'retrait' || l.accountId === null || (l.link !== undefined && l.link !== null) || l.duplicate) return null;
+  const credit = l.nature === 'recu';
+  return findCompletable(d, { accountId: l.accountId, credit, amount: l.row.amount, date: l.row.date }, credit ? ends.from : ends.to);
 }
 
 /** Longest rule whose pattern is in the label and whose target still exists (RG16, RG18). */
@@ -213,8 +254,8 @@ function matchingRule(d: BudgetData, sourceId: string, row: StatementRow, month:
   const text = normalizeLabel(fullLabelOf(row));
   const credit = row.direction === 'credit';
   const found = (d.importRules ?? [])
-    // A rule « Revenu » applies to entries of money only, the others to debits only; a rule cannot aim at a new revenue line (spec 0015, RG21).
-    .filter(r => r.pattern !== '' && text.includes(r.pattern) && (r.nature === 'revenu' || r.nature === 'recu') === credit && (r.nature === 'recu' ? !r.target : !!r.target && !(r.target.kind === 'line' && r.target.key === NEW_REVENUE_LINE) && targetIsValid(d, sourceId, r.nature, r.target, month)))
+    // A rule « Revenu » or « Virement interne » (received) applies to entries of money only, the others to debits only; a rule cannot aim at a new revenue line (spec 0015, RG21).
+    .filter(r => r.pattern !== '' && text.includes(r.pattern) && (r.nature === 'revenu' || r.nature === 'recu') === credit && !!r.target && !(r.target.kind === 'line' && r.target.key === NEW_REVENUE_LINE) && targetIsValid(d, sourceId, r.nature, r.target, month))
     .sort((a, b) => b.pattern.length - a.pattern.length);
   return found[0] ?? null;
 }
@@ -223,8 +264,11 @@ function matchingRule(d: BudgetData, sourceId: string, row: StatementRow, month:
 function proposal(d: BudgetData, sourceId: string, row: StatementRow, month: MonthKey): { nature: LineNature; target: ImportTarget | null } {
   const rule = matchingRule(d, sourceId, row, month);
   if (rule) return { nature: rule.nature, target: rule.target ?? null };
-  // An entry of money is a « Revenu » by default, a transfer-like label only adds a hint (spec 0015, RG17, RG18).
-  if (row.direction === 'credit') return { nature: 'revenu', target: null };
+  if (row.direction === 'credit') {
+    // An entry of money on an envelope's account comes from « Enveloppes (global) » (spec 0016, RG27); otherwise it is a « Revenu » by default,
+    // a transfer-like label only adds a hint (spec 0015, RG17, RG18).
+    return canUseEnvelopesPool(d, 'recu', sourceId) ? { nature: 'recu', target: { kind: 'account', id: ENVELOPES_ID } } : { nature: 'revenu', target: null };
+  }
   const nature = natureByKeyword(row) ?? 'depense';
   if (nature === 'retrait') {
     const cash = destinationAccounts(d, 'retrait', sourceId).find(a => a.id === CASH_ACCOUNT_ID);
@@ -248,16 +292,22 @@ function resolveAccount(d: BudgetData, choices: PairChoices, name: string, conne
  * `previous` are the lines of the preview being redone, whose corrections are kept when the line is unchanged.
  */
 export function prepareImport(d: BudgetData, reading: StatementReading, choices: PairChoices = {}, previous: PreviewLine[] = []): ImportPreview {
-  const imported = [...d.transactions, ...(d.accountMovements ?? [])].filter(x => x.importAccountId && x.fingerprint);
   const known = new Set<string>();
   const byDay = new Map<string, { fingerprint: string; category?: string }[]>();
-  for (const x of imported) {
-    if (x.rank) known.add(importKey(x.importAccountId!, x.fingerprint!, x.rank));
-    const k = dayKey(x.importAccountId!, bankDateOf(x), x.amount, 'type' in x && x.type === 'rev');
-    byDay.set(k, [...(byDay.get(k) ?? []), { fingerprint: x.fingerprint!, category: x.category }]);
+  // Every import trace already stored is a key that can serve once: a transaction has one, a transfer up to two (debit face, credit face; spec 0016, RG16).
+  const stored: { trace: ImportTrace; amount: number; credit: boolean; category?: string }[] = [
+    ...d.transactions.filter(t => t.importAccountId && t.fingerprint).map(t => ({ trace: { importAccountId: t.importAccountId!, fingerprint: t.fingerprint!, rank: t.rank ?? 0, bankDate: bankDateOf(t) }, amount: t.amount, credit: t.type === 'rev', category: t.category })),
+    ...(d.accountMovements ?? []).flatMap(mv => tracesOf(mv).map(trace => ({ trace, amount: mv.amount, credit: trace === mv.creditTrace, category: mv.category }))),
+  ];
+  for (const x of stored) {
+    if (x.trace.rank) known.add(importKey(x.trace.importAccountId, x.trace.fingerprint, x.trace.rank));
+    const k = dayKey(x.trace.importAccountId, x.trace.bankDate, x.amount, x.credit);
+    byDay.set(k, [...(byDay.get(k) ?? []), { fingerprint: x.trace.fingerprint, category: x.category }]);
   }
   const manual = new Set(d.transactions.filter(t => !t.fingerprint).map(t => dayKey(accountIdOf(d, t.accountId), bankDateOf(t), t.amount, t.type === 'rev')));
   const before = new Map(previous.map(l => [l.id, l]));
+  // Lines carried over from the previous preview with their corrections: the automatic pairing leaves them as they are (a unlinked or requalified line stays so).
+  const carried = new Set<string>();
 
   const seen = new Map<string, number>();
   const lines: PreviewLine[] = [];
@@ -297,16 +347,116 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
       transferHint: nature === 'a_qualifier',
       receivedHint: credit && isTransferReceived(row),
       // An entry is checked only once it has a revenue line (spec 0015, RG18); a received transfer never is.
-      checked: credit ? !duplicate && nature === 'revenu' && target !== null : !duplicate && nature !== 'a_qualifier',
+      checked: credit ? !duplicate && (nature === 'revenu' || nature === 'recu') && target !== null : !duplicate && nature !== 'a_qualifier',
     };
     const old = before.get(fresh.id);
     // The corrections already made on an unchanged line (same account, same rank) are kept.
     // A locked line stays unchecked whatever the old state was (RG83).
-    lines.push(old && old.accountId === accountId && old.rank === rank ? { ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach } : fresh);
+    if (old && old.accountId === accountId && old.rank === rank) {
+      // Only a line the user touched (or already linked/unlinked) is protected from the automatic pairing; an untouched one may now find its other half.
+      if (old.link !== undefined || old.nature !== fresh.nature || old.checked !== fresh.checked || JSON.stringify(old.target) !== JSON.stringify(fresh.target)) carried.add(fresh.id);
+      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source });
+    } else lines.push(fresh);
   });
   // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
   lines.sort((a, b) => a.row.date.localeCompare(b.row.date) || Number(a.id) - Number(b.id));
-  return { lines, skipped, pairs: [...pairs.values()], choices, errors: reading.errors };
+  return { lines: linkFaces(d, reconcileLinks(lines), carried), skipped, pairs: [...pairs.values()], choices, errors: reading.errors };
+}
+
+const faceOf = (l: PreviewLine): Face => ({ id: l.id, accountId: l.accountId!, amount: l.row.amount, date: l.row.date, credit: isIncome(l) });
+/** A line that looks like one half of a transfer between two accounts: a debit qualified or worded as a transfer, a credit worded as one or already a received transfer (spec 0016, RG2). */
+const looksLikeTransfer = (l: PreviewLine): boolean => (isIncome(l) ? l.receivedHint || l.nature === 'recu' : l.nature === 'interne' || l.nature === 'a_qualifier');
+
+/**
+ * Automatic pairing of the lines of a preview (spec 0016, RG6, RG10): a debit and a credit of the same amount on two different accounts, within 3 days,
+ * one possible match on each side, at least one of the two looking like a transfer. The pair is proposed « À confirmer »: both lines unchecked, nature
+ * « Transfert interne » on the debit and « Virement interne » on the credit. Several candidates: nothing is paired, the lines are `ambiguous`.
+ * A line the user already handled (kept from the previous preview) or unlinked is left alone, and so is a line already imported.
+ */
+function linkFaces(d: BudgetData, lines: PreviewLine[], carried: ReadonlySet<string>): PreviewLine[] {
+  const open = lines.filter(l => l.accountId !== null && !l.duplicate && l.link === undefined && !carried.has(l.id) && l.nature !== 'retrait');
+  const byId = new Map(open.map(l => [l.id, l]));
+  const { pairs, ambiguous } = pairFaces(open.map(faceOf), undefined, (debit, credit) => looksLikeTransfer(byId.get(debit.id)!) || looksLikeTransfer(byId.get(credit.id)!));
+  const patch = new Map<string, Partial<PreviewLine>>();
+  for (const [debitId, creditId] of pairs) {
+    const debit = byId.get(debitId)!;
+    const credit = byId.get(creditId)!;
+    patch.set(debitId, { nature: 'interne', target: { kind: 'account', id: credit.accountId! }, checked: false, link: creditId, ambiguous: false, transferHint: false });
+    patch.set(creditId, { nature: 'recu', target: { kind: 'account', id: debit.accountId! }, checked: false, link: debitId, ambiguous: false });
+  }
+  for (const id of ambiguous) if (!patch.has(id)) patch.set(id, { ambiguous: true });
+  // A line that finishes a transfer imported with one face only is proposed as such (RG13): unchecked until the user confirms.
+  for (const l of open) {
+    if (patch.has(l.id)) continue;
+    const credit = isIncome(l);
+    const mv = findCompletable(d, { accountId: l.accountId!, credit, amount: l.row.amount, date: l.row.date });
+    if (mv) patch.set(l.id, credit ? { nature: 'recu', target: { kind: 'account', id: mv.fromAccountId }, checked: false } : { nature: 'interne', target: { kind: 'account', id: mv.toAccountId }, checked: false, transferHint: false });
+  }
+  return lines.map(l => (patch.has(l.id) ? { ...l, ...patch.get(l.id) } : l));
+}
+
+/** Whether two lines still make a coherent pair: one debit « Transfert interne » to the account of the credit, one credit « Virement interne » from the account of the debit, same amount (RG10). */
+function coherentPair(a: PreviewLine, b: PreviewLine): boolean {
+  const [debit, credit] = isIncome(a) ? [b, a] : [a, b];
+  return !isIncome(debit) && isIncome(credit) && a.link === b.id && b.link === a.id && debit.nature === 'interne' && credit.nature === 'recu' &&
+    debit.target?.kind === 'account' && debit.target.id === credit.accountId && credit.target?.kind === 'account' && credit.target.id === debit.accountId &&
+    debit.accountId !== credit.accountId && round2Eq(debit.row.amount, credit.row.amount);
+}
+const round2Eq = (a: number, b: number) => Math.abs(a - b) < 0.005;
+
+/** Links that no longer make a coherent pair are cut on both lines (a nature or an account was changed by hand): the two lines become independent, to qualify (RG9). */
+export function reconcileLinks(lines: PreviewLine[]): PreviewLine[] {
+  const byId = new Map(lines.map(l => [l.id, l]));
+  return lines.map(l => {
+    if (l.link === undefined || l.link === null) return l;
+    const other = byId.get(l.link);
+    return other && coherentPair(l, other) ? l : { ...l, link: null };
+  });
+}
+
+/** The partner of a linked line, when the two still make a pair. */
+export function linkedPartner(lines: PreviewLine[], l: PreviewLine): PreviewLine | undefined {
+  const other = l.link ? lines.find(x => x.id === l.link) : undefined;
+  return other && coherentPair(l, other) ? other : undefined;
+}
+
+/**
+ * The lines after the line `id` was edited: the pair follows (spec 0016, RG7). Checking, unchecking and the month of the attachment are copied to the other
+ * face; if the edit broke the pair (another nature or account), the two lines are unlinked.
+ */
+export function syncLinked(d: BudgetData, lines: PreviewLine[], id: string): PreviewLine[] {
+  const settled = reconcileLinks(lines);
+  const l = settled.find(x => x.id === id);
+  const partner = l && linkedPartner(settled, l);
+  if (!l || !partner) return settled;
+  return settled.map(x => (x.id === partner.id ? { ...changeMonth(d, x, l.month), checked: l.checked } : x));
+}
+
+/** Credits that can be linked by hand to a debit (RG9): same rule as the automatic pairing, minus the « looks like a transfer » condition; an already linked line is exclusive. */
+export function linkCandidates(lines: PreviewLine[], debitId: string): PreviewLine[] {
+  const debit = lines.find(l => l.id === debitId);
+  if (!debit || isIncome(debit) || debit.accountId === null || debit.duplicate) return [];
+  return lines.filter(c => isIncome(c) && c.accountId !== null && !c.duplicate && !linkedPartner(lines, c) && canLinkFaces(faceOf(debit), faceOf(c)));
+}
+
+/** Links a debit to a credit by hand (RG9). Null when they cannot be linked (different amounts, same account, a face already linked...). The pair is unchecked, to confirm. */
+export function linkLines(d: BudgetData, lines: PreviewLine[], debitId: string, creditId: string): PreviewLine[] | null {
+  const debit = lines.find(l => l.id === debitId);
+  const credit = lines.find(l => l.id === creditId);
+  if (!debit || !credit || linkedPartner(lines, debit) || linkedPartner(lines, credit) || !linkCandidates(lines, debitId).some(c => c.id === creditId)) return null;
+  const month = debit.month;
+  return lines.map(l =>
+    l.id === debitId ? { ...l, nature: 'interne', target: { kind: 'account', id: credit.accountId! }, checked: false, link: creditId, ambiguous: false, transferHint: false }
+    : l.id === creditId ? { ...changeMonth(d, l, month), nature: 'recu', target: { kind: 'account', id: debit.accountId! }, checked: false, link: debitId, ambiguous: false }
+    : l,
+  );
+}
+
+/** Unlinks a pair (RG9): the two lines become independent and are not paired again automatically. */
+export function unlinkLine(lines: PreviewLine[], id: string): PreviewLine[] {
+  const l = lines.find(x => x.id === id);
+  const partner = l && linkedPartner(lines, l);
+  return lines.map(x => (x.id === id || x.id === partner?.id ? { ...x, link: null, checked: false } : x));
 }
 
 /**
@@ -329,7 +479,7 @@ export function choosePairAccount(d: BudgetData, reading: StatementReading, prev
   return prepareImport(d, reading, { ...preview.choices, [pairKey]: accountId }, preview.lines);
 }
 
-/** Natures offered in the selector of a line: « Revenu » / « Virement reçu » for an entry of money, the debit natures otherwise (« À qualifier » only while the line is in that state). Always the same set, whatever the current nature, so a choice can be undone (spec 0015, RG19). */
+/** Natures offered in the selector of a line: « Revenu » / « Virement interne » for an entry of money, the debit natures otherwise (« À qualifier » only while the line is in that state). Always the same set, whatever the current nature, so a choice can be undone (spec 0015, RG19; spec 0016, RG1). */
 export function natureOptions(l: Pick<PreviewLine, 'row' | 'nature'>): LineNature[] {
   if (isIncome(l)) return ['revenu', 'recu'];
   return (['depense', 'retrait', 'interne', 'externe', 'a_qualifier'] as const).filter(n => n !== 'a_qualifier' || l.nature === 'a_qualifier');
@@ -340,12 +490,14 @@ export function changeNature(d: BudgetData, l: PreviewLine, nature: LineNature):
   // An entry of money is a revenue or a received transfer, a debit never is (spec 0015, RG17).
   if (isIncome(l) ? nature !== 'revenu' && nature !== 'recu' : nature === 'revenu' || nature === 'recu') return l;
   let target = targetIsValid(d, l.accountId, nature, l.target, l.month) ? l.target : null;
+  // A credit on an envelope's account comes from « Enveloppes (global) » by default (spec 0016, RG27).
+  if (nature === 'recu' && !target && canUseEnvelopesPool(d, 'recu', l.accountId)) target = { kind: 'account', id: ENVELOPES_ID };
   if (!target && (nature === 'depense' || nature === 'externe')) target = ownEnvelopeTarget(d, l.accountId);
   if (nature === 'retrait' && !target && l.accountId !== null) {
     const cash = destinationAccounts(d, nature, l.accountId).find(a => a.id === CASH_ACCOUNT_ID);
     target = cash ? { kind: 'account', id: cash.id } : null;
   }
-  return { ...l, nature, target, remember: target || nature === 'recu' ? l.remember : null, checked: nature === 'recu' ? false : l.checked };
+  return { ...l, nature, target, remember: target ? l.remember : null, checked: nature === 'recu' && !target ? false : l.checked };
 }
 
 /** The line attached to another month: a `var` line is kept if the month has it too (RG11). */
@@ -361,7 +513,7 @@ export interface PreviewCounts {
   incomplete: number;
   /** Pairs of the banner with no match chosen yet (RG32). */
   pairsToLink: number;
-  /** Entries of money listed in the preview, never imported (RG65). */
+  /** Entries of money listed in the preview (revenues and received transfers). */
   incomes: number;
 }
 
@@ -375,7 +527,22 @@ export interface ImportScope {
 
 /** Ids of the lines an import would write: checked, complete, not already imported (before or in the session), not in a marked account (RG68, RG77). */
 export function importableIds(d: BudgetData, preview: ImportPreview, scope: ImportScope = {}): Set<string> {
-  return new Set(preview.lines.filter(l => l.checked && !isLocked(l) && !lineProblem(d, l) && !scope.done?.has(l.id) && !scope.marked?.has(l.pairKey)).map(l => l.id));
+  const ready = new Set(preview.lines.filter(l => l.checked && !isLocked(l) && !lineProblem(d, l) && !scope.done?.has(l.id) && !scope.marked?.has(l.pairKey)).map(l => l.id));
+  // A linked pair is written whole or not at all (spec 0016, RG7): a face whose partner is not ready is not ready either.
+  return new Set([...ready].filter(id => {
+    const partner = linkedPartner(preview.lines, preview.lines.find(l => l.id === id)!);
+    return !partner || ready.has(partner.id);
+  }));
+}
+
+/** The ids plus the other face of every linked line among them, even when a filter hides it: a pair is imported together (spec 0016, RG7). */
+export function withLinkedPartners(lines: PreviewLine[], ids: ReadonlySet<string>): Set<string> {
+  const out = new Set(ids);
+  for (const l of lines) if (ids.has(l.id)) {
+    const partner = linkedPartner(lines, l);
+    if (partner) out.add(partner.id);
+  }
+  return out;
 }
 
 export function previewCounts(d: BudgetData, preview: ImportPreview, scope: ImportScope = {}): PreviewCounts {
@@ -383,13 +550,13 @@ export function previewCounts(d: BudgetData, preview: ImportPreview, scope: Impo
   return {
     toImport: importableIds(d, preview, scope).size,
     duplicates: open.filter(l => l.duplicate).length,
-    incomplete: open.filter(l => !isReceivedTransfer(l) && !isLocked(l) && !scope.marked?.has(l.pairKey) && lineProblem(d, l)).length,
+    incomplete: open.filter(l => !isLocked(l) && !scope.marked?.has(l.pairKey) && lineProblem(d, l)).length,
     incomes: preview.lines.filter(isIncome).length,
     pairsToLink: preview.pairs.filter(p => !p.known && !(p.key in preview.choices)).length,
   };
 }
 
-/** Progress of one account of the file: what is left to do on it (RG71). A received transfer, never imported, never keeps an account « à traiter ». */
+/** Progress of one account of the file: what is left to do on it (RG71). */
 export interface AccountProgress {
   imported: number;
   /** Already imported before: the locked lines (RG83, RG87). */
@@ -400,7 +567,7 @@ export interface AccountProgress {
 }
 
 export function accountProgress(preview: ImportPreview, pairKey: string, done: ReadonlySet<string> = new Set()): AccountProgress {
-  const debits = preview.lines.filter(l => l.pairKey === pairKey && !isReceivedTransfer(l));
+  const debits = preview.lines.filter(l => l.pairKey === pairKey);
   const imported = debits.filter(l => done.has(l.id)).length;
   const alreadyImported = debits.filter(l => !done.has(l.id) && isLocked(l)).length;
   const remaining = debits.length - imported - alreadyImported;
@@ -415,7 +582,14 @@ export interface ImportBatch {
   /** Entries of money written as revenues (spec 0015). */
   revenues: number;
   withdrawals: number;
+  /** Internal transfers written (one per pair, whatever its faces), « Enveloppes (global) » debits left out (spec 0016, RG21). */
   internalTransfers: number;
+  /** Of which written from both faces at once (« Lié »). */
+  linkedTransfers: number;
+  /** Debits written « vers enveloppes » (RG30). */
+  envelopeTransfers: number;
+  /** Lines that only added their trace to a transfer already imported (« Complète le virement », RG13): no new entry. */
+  completedFaces: number;
   importedIds: string[];
   failedIds: string[];
 }
@@ -427,10 +601,11 @@ export interface ImportSummary {
   revenues: number;
   withdrawals: number;
   internalTransfers: number;
+  linkedTransfers: number;
+  envelopeTransfers: number;
+  completedFaces: number;
   /** Lines already imported before, not imported again (« Déjà importées », RG87). */
   duplicatesSkipped: number;
-  /** Received transfers of the preview, shown and not imported (spec 0015, RG17). */
-  incomes: number;
   /** Lines of accounts matched to « Ne pas importer » (RG32). */
   accountsSkipped: number;
   /** Lines unchecked by the user, or checked but still incomplete; locked lines are not in it (RG87). */
@@ -446,6 +621,9 @@ export interface SessionTotals {
   revenues: number;
   withdrawals: number;
   internalTransfers: number;
+  linkedTransfers?: number;
+  envelopeTransfers?: number;
+  completedFaces?: number;
 }
 
 /**
@@ -460,10 +638,12 @@ export function sessionSummary(preview: ImportPreview, totals: SessionTotals, do
     revenues: totals.revenues,
     withdrawals: totals.withdrawals,
     internalTransfers: totals.internalTransfers,
+    linkedTransfers: totals.linkedTransfers ?? 0,
+    envelopeTransfers: totals.envelopeTransfers ?? 0,
+    completedFaces: totals.completedFaces ?? 0,
     duplicatesSkipped: open.filter(isLocked).length,
-    incomes: open.filter(isReceivedTransfer).length,
     accountsSkipped: preview.skipped,
-    leftOut: open.filter(l => !isReceivedTransfer(l) && !isLocked(l)).length,
+    leftOut: open.filter(l => !isLocked(l)).length,
     errors: preview.errors.length + open.filter(l => failed.has(l.id)).length,
   };
 }
@@ -487,20 +667,29 @@ export interface ImportOptions {
  * box when there is one (spec 0006), else on the account of its line (ADR 0012).
  */
 export function validateImport(d: BudgetData, preview: ImportPreview, newId: (prefix: string) => string, options: ImportOptions = {}): ImportBatch {
-  // (account, fingerprint, rank) already stored: a line with the same key is skipped (RG77).
+  // (account, fingerprint, rank) already stored, on either face of a transfer: a line with the same key is skipped (RG77; spec 0016, RG16).
   const usedKey = (accountId: string, fingerprint: string, rank: number) => `${accountId}\u0001${fingerprint}\u0001${rank}`;
   const used = new Set<string>();
-  for (const x of [...d.transactions, ...(d.accountMovements ?? [])]) if (x.importAccountId && x.fingerprint && x.rank) used.add(usedKey(x.importAccountId, x.fingerprint, x.rank));
+  for (const x of d.transactions) if (x.importAccountId && x.fingerprint && x.rank) used.add(usedKey(x.importAccountId, x.fingerprint, x.rank));
+  for (const mv of d.accountMovements ?? []) for (const t of tracesOf(mv)) used.add(usedKey(t.importAccountId, t.fingerprint, t.rank));
 
+  // A face asked for brings its linked partner, even one the caller left out (hidden by a filter, for example).
+  const wanted = options.ids && withLinkedPartners(preview.lines, options.ids);
   const chosen = preview.lines.filter(
     l =>
-      l.checked && !isLocked(l) && !lineProblem(d, l) && (!options.ids || options.ids.has(l.id)) && !options.done?.has(l.id) && !options.marked?.has(l.pairKey) &&
+      l.checked && !isLocked(l) && !lineProblem(d, l) && (!wanted || wanted.has(l.id)) && !options.done?.has(l.id) && !options.marked?.has(l.pairKey) &&
       !used.has(usedKey(l.accountId!, l.fingerprint, l.rank)),
   );
-  const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, importedIds: [], failedIds: [] };
+  const chosenIds = new Set(chosen.map(l => l.id));
+  const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, importedIds: [], failedIds: [] };
+  const traceOf = (l: PreviewLine): ImportTrace => ({ importAccountId: l.accountId!, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date });
 
   const imported: PreviewLine[] = [];
+  const handled = new Set<string>();
+  // Lines that complete an existing one-face transfer, known before the batch: two identical lines cannot complete the same transfer.
+  const completing = new Set(chosen.filter(l => completionOf(d, l) !== null).map(l => l.id));
   for (const l of chosen) {
+    if (handled.has(l.id)) continue;
     const sourceId = l.accountId!;
     const base = {
       month: l.month, day: Number(l.row.date.slice(8, 10)), label: l.row.label, amount: l.row.amount,
@@ -522,7 +711,9 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
         Object.assign(line, { name: l.newLineName.trim() || l.row.label, accountId: sourceId });
         created = true;
       }
-      const tx: Transaction = { id: newId('t'), ...base, type: 'rev', target: key, accountId: sourceId };
+      // Who paid (spec 0016, RG3): the typed source, else the label of the line; information only.
+      const source = (l.source ?? '').trim() || l.row.label;
+      const tx: Transaction = { id: newId('t'), ...base, type: 'rev', target: key, accountId: sourceId, source };
       if (addTransaction(d, tx)) {
         batch.revenues++;
         imported.push(l);
@@ -546,11 +737,51 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
         batch.failedIds.push(l.id);
       }
     } else {
+      // A transfer: withdrawal, internal transfer (debit face), received transfer (credit face).
+      const partner = linkedPartner(preview.lines, l);
+      if (partner) {
+        // A linked pair is written whole or not at all (spec 0016, RG7): both faces must be chosen.
+        if (!chosenIds.has(partner.id) || handled.has(partner.id)) continue;
+        const [debit, credit] = isIncome(l) ? [partner, l] : [l, partner];
+        const attach = transferAttachment(d, debit);
+        const category = debit.row.category || credit.row.category;
+        const mv: AccountMovement = {
+          id: newId('m'), month: debit.month, day: Number(debit.row.date.slice(8, 10)), label: debit.row.label, amount: debit.row.amount,
+          fromAccountId: debit.accountId!, toAccountId: credit.accountId!, ...traceOf(debit), creditTrace: traceOf(credit), ...(category ? { category } : {}), ...(attach ? { target: attach } : {}),
+        };
+        (d.accountMovements ??= []).push(mv);
+        if (attach?.kind === 'line') syncLineActual(d, debit.month, attach.key);
+        batch.internalTransfers++;
+        batch.linkedTransfers++;
+        handled.add(partner.id);
+        imported.push(l, partner);
+        continue;
+      }
+      const completes = completionOf(d, l);
+      if (!completes && completing.has(l.id)) {
+        // The transfer it should complete was completed by an identical line of this batch: no second, credit-only transfer.
+        batch.failedIds.push(l.id);
+        continue;
+      }
+      if (completes) {
+        // The other face is already imported: this line only adds its trace, no new entry (spec 0016, RG13).
+        if (l.nature === 'recu') completes.creditTrace = traceOf(l);
+        else Object.assign(completes, traceOf(l));
+        if (l.row.category && !completes.category) completes.category = l.row.category;
+        batch.completedFaces++;
+        imported.push(l);
+        continue;
+      }
       const attach = transferAttachment(d, l);
-      const mv: AccountMovement = { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId, ...(attach ? { target: attach } : {}) };
+      const mv: AccountMovement =
+        l.nature === 'recu'
+          // Credit face alone: the movement has no debit trace; its date is that of the credit (RG12, RG14).
+          ? { id: newId('m'), month: l.month, day: base.day, label: l.row.label, amount: l.row.amount, fromAccountId: targetId, toAccountId: sourceId, bankDate: l.row.date, creditTrace: traceOf(l), ...(l.row.category ? { category: l.row.category } : {}), ...(attach ? { target: attach } : {}) }
+          : { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId, ...(attach ? { target: attach } : {}) };
       (d.accountMovements ??= []).push(mv);
       if (attach?.kind === 'line') syncLineActual(d, l.month, attach.key);
       if (l.nature === 'retrait') batch.withdrawals++;
+      else if (isEnvelopesPool(mv.toAccountId)) batch.envelopeTransfers++;
       else batch.internalTransfers++;
       imported.push(l);
     }
@@ -566,19 +797,8 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
     if (importedPairs.has(p.key) && typeof choice === 'string') setImportAccountLink(d, p.accountName, p.connectionName, choice, newId);
   }
   // A « Ne pas importer » choice has no line to import: it is remembered as soon as a batch wrote something (RG74).
-  if (imported.length > 0) {
-    saveSkipChoices(d, preview, newId);
-    saveReceivedRules(d, preview, newId);
-  }
+  if (imported.length > 0) saveSkipChoices(d, preview, newId);
   return batch;
-}
-
-/**
- * Remembers the rules « Virement reçu » asked on lines that are never written (spec 0015, RG19a). Like the « Ne pas importer » choices,
- * they are saved with the first batch and when finishing. A line of another nature is left to `validateImport`.
- */
-export function saveReceivedRules(d: BudgetData, preview: ImportPreview, newId: (prefix: string) => string) {
-  for (const l of preview.lines) if (l.nature === 'recu' && l.remember !== null) rememberRule(d, l.remember, 'recu', undefined, newId);
 }
 
 /** Remembers the « Ne pas importer » choices made in the banner (matches without an account). Done with the first batch and when finishing (RG74). */
@@ -598,9 +818,7 @@ export function hasPendingCorrections(d: BudgetData, reading: StatementReading, 
   return preview.lines.some(l => {
     if (done.has(l.id)) return false;
     const f = fresh.get(l.id);
-    // A rule « Virement reçu » already stored is not a pending correction.
-    const stored = l.nature === 'recu' && l.remember !== null && (d.importRules ?? []).some(r => r.pattern === normalizeLabel(l.remember!) && r.nature === 'recu');
-    return !!f && (f.nature !== l.nature || f.month !== l.month || f.checked !== l.checked || (l.remember !== null && !stored) || JSON.stringify(f.target) !== JSON.stringify(l.target));
+    return !!f && (f.nature !== l.nature || f.month !== l.month || f.checked !== l.checked || l.remember !== null || f.link !== l.link || JSON.stringify(f.target) !== JSON.stringify(l.target));
   });
 }
 

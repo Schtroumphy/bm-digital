@@ -9,14 +9,15 @@ import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
 import { defaultTransferTarget, similarPointedItem, transferItems } from '../../domain/transfers';
-import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, updateAccountMovement } from '../../application/accountMovements';
+import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
+import { creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
-import type { MonthKey, MovementTarget, TxType } from '../../domain/types';
+import type { AccountMovement, MonthKey, MovementTarget, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
 /** Sum of the expenses of a list: an entry of money (`rev`) is never an expense (spec 0015). */
@@ -386,7 +387,20 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
     update(d => void setAccountMovementDetail(d, id, text));
     setEditingDetail(null);
   };
-  const nameOf = (id: string) => data.accounts.find(a => a.id === id)?.name ?? 'Supprimé';
+  const nameOf = (id: string) => movementAccountName(data, id);
+  // « Réparti dans les enveloppes » next to a debit « vers enveloppes » (spec 0016, RG29): calculated, never typed, no balance.
+  const split = envelopeSplit(data, month);
+  // Several debits « vers enveloppes » in a month: the monthly total is shown once, on the first one listed.
+  const firstPoolId = [...movements].sort((a, b) => b.day - a.day).find(m => isEnvelopesPool(m.toAccountId))?.id;
+  // State of the link between the two lines of the bank file (spec 0016, RG18).
+  const linkLabel = (m: AccountMovement) => {
+    const state = linkStateOf(m);
+    const day = (date: string) => date.slice(8, 10) + '/' + date.slice(5, 7);
+    if (state === 'lie') return `Lié · Débit ${day(debitDateOf(m))} ${nameOf(m.fromAccountId)}, Crédit ${day(creditDateOf(m))} ${nameOf(m.toAccountId)}`;
+    if (state === 'debit') return 'Une face (débit)';
+    if (state === 'credit') return 'Une face (crédit)';
+    return null;
+  };
   // Tooltip of a transfer: the budget item it stands for, if any (list lines carry their extra information in the tooltip, spec 0019).
   const targetLabel = (target?: MovementTarget) => {
     if (!target) return 'Transfert libre : sans ligne de budget';
@@ -414,7 +428,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
                 <span className="muted ellipsis">
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                 </span>
-                <input className="text-input is-amount" value={editing.amount} inputMode="decimal" onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
+                <input className="text-input is-amount" value={editing.amount} inputMode="decimal" disabled={linkStateOf(m) === 'lie'} title={linkStateOf(m) === 'lie' ? 'Montant figé : les deux lignes du fichier ont ce montant. Déliez ou supprimez le virement.' : undefined} onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
                 <span className="icon-btn" title="Enregistrer" onClick={save}>
                   <Icon name="check" size={14} />
                 </span>
@@ -428,8 +442,10 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
               <div className="mv-grid tx-row">
                 <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
                 <EntryLabel entry={m} onOpen={openDetail} />
-                <span className="muted ellipsis" title={targetLabel(m.target)}>
+                <span className="muted ellipsis" title={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join('\n')}>
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
+                  {linkLabel(m) && <span className="state-chip is-info" style={{ marginLeft: 6 }}>{linkLabel(m)}</span>}
+                  {isEnvelopesPool(m.toAccountId) && m.id === firstPoolId && <span className="state-chip is-neutral" style={{ marginLeft: 6 }} title="Total du mois : tous les virements vers enveloppes et tous les crédits individuels">Réparti : {money(split.distributed)} sur {money(split.sent)}</span>}
                 </span>
                 <b className="num">{money(m.amount)}</b>
                 {locked ? (
@@ -439,6 +455,16 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
                     <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '' })}>
                       <span style={{ fontSize: 11 }}>Modifier</span>
                     </span>
+                    {linkStateOf(m) === 'lie' && (
+                      <>
+                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Retirer la ligne du fichier côté débit : le virement garde sa face crédit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'debit'))}>
+                          <span style={{ fontSize: 11 }}>Délier le débit</span>
+                        </span>
+                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Retirer la ligne du fichier côté crédit : le virement garde sa face débit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'credit'))}>
+                          <span style={{ fontSize: 11 }}>Délier le crédit</span>
+                        </span>
+                      </>
+                    )}
                     <span className="icon-btn" title="Supprimer" onClick={() => update(d => void deleteAccountMovement(d, m.id))}>
                       <Icon name="close" size={14} />
                     </span>

@@ -141,14 +141,14 @@ describe('filtrage', () => {
 });
 
 describe('cochage et import avec filtres', () => {
-  it('CA60 / CA65: tout cocher / décocher n’agit que sur les lignes données, jamais sur un virement reçu', () => {
+  it('CA60 / CA65: tout cocher / décocher n’agit que sur les lignes données, y compris un virement reçu (spec 0016)', () => {
     const { d, lines } = setup();
     const ids = new Set(lines.map(l => l.id));
     const all = setChecked(lines, ids, true);
-    // Une entrée « Revenu » se coche comme les autres (RG18) ; seul un « Virement reçu » n'est jamais touché (RG19).
+    // Une entrée « Revenu » se coche comme les autres (RG18), un « Virement interne » reçu aussi (spec 0016).
     expect(byLabel(all, 'FAVEUR').checked).toBe(true);
     const recu = changeNature(d, byLabel(lines, 'FAVEUR'), 'recu');
-    expect(setChecked([recu], new Set([recu.id]), true)[0].checked).toBe(false);
+    expect(setChecked([recu], new Set([recu.id]), true)[0].checked).toBe(true);
     expect(byLabel(all, 'EDF').checked).toBe(true);
     // Cochée mais incomplète : pas importable pour autant.
     expect(previewCounts(d, { ...setup().p, lines: all }).toImport).toBe(1);
