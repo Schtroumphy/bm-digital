@@ -58,8 +58,8 @@ describe('états d’une ligne', () => {
     expect(lineStates(d, byLabel(lines, 'EDF'))).toEqual(['a_rattacher']);
     expect(lineStates(d, byLabel(lines, 'VIREMENT EMIS'))).toEqual(['a_qualifier', 'decochee']);
     expect(lineStates(d, byLabel(lines, 'RETRAIT'))).toEqual(['nouveau']);
-    expect(lineStates(d, byLabel(lines, 'COTISATION'))).toEqual(['a_rattacher']);
-    expect(lineStates(d, byLabel(lines, 'FAVEUR'))).toEqual(['entree']);
+    expect(lineStates(d, byLabel(lines, 'COTISATION'))).toEqual(['a_rattacher', 'date_hors_soldes']); // 30/09 : avant le premier mois du budget
+    expect(lineStates(d, byLabel(lines, 'FAVEUR'))).toEqual(['entree', 'a_rattacher', 'decochee']);
   });
 
   it('Mois ≠ date quand le mois de rattachement diffère, Doublon pour un déjà importé', () => {
@@ -73,7 +73,7 @@ describe('états d’une ligne', () => {
 describe('filtrage', () => {
   it('CA51: un filtre d’état n’affiche que ces lignes', () => {
     const { d, lines } = setup();
-    expect(labels(filterLines(d, lines, f({ states: ['a_rattacher'] })))).toEqual(['COTISATION', 'PRLV EDF', 'CAFÉ DU COIN', 'RESTO SWILE']);
+    expect(labels(filterLines(d, lines, f({ states: ['a_rattacher'] })))).toEqual(['COTISATION', 'PRLV EDF', 'CAFÉ DU COIN', 'RESTO SWILE', 'VIREMENT EN VOTRE FAVEUR']);
   });
 
   it('CA52: ET entre familles, OU dans une famille', () => {
@@ -117,9 +117,9 @@ describe('filtrage', () => {
     const { d, lines } = setup();
     const c = filterCounts(d, lines);
     expect(c.total).toBe(7);
-    expect(c.states.a_rattacher).toBe(4);
+    expect(c.states.a_rattacher).toBe(5);
     expect(c.states.entree).toBe(1);
-    expect(c.states.decochee).toBe(1);
+    expect(c.states.decochee).toBe(2); // le virement émis et l'entrée « Revenu » non rattachée (RG18)
     expect(c.categories).toEqual({ Energie: 1, Restaurants: 2 });
     expect(c.months).toEqual({ '2026-10': 6, '2026-09': 1 });
     expect(Object.values(c.accounts).reduce((a, b) => a + b, 0)).toBe(7);
@@ -140,11 +140,14 @@ describe('filtrage', () => {
 });
 
 describe('cochage et import avec filtres', () => {
-  it('CA60 / CA65: tout cocher / décocher n’agit que sur les lignes données, jamais sur les entrées', () => {
+  it('CA60 / CA65: tout cocher / décocher n’agit que sur les lignes données, jamais sur un virement reçu', () => {
     const { d, lines } = setup();
     const ids = new Set(lines.map(l => l.id));
     const all = setChecked(lines, ids, true);
-    expect(isIncome(byLabel(all, 'FAVEUR')) && byLabel(all, 'FAVEUR').checked).toBe(false);
+    // Une entrée « Revenu » se coche comme les autres (RG18) ; seul un « Virement reçu » n'est jamais touché (RG19).
+    expect(byLabel(all, 'FAVEUR').checked).toBe(true);
+    const recu = changeNature(d, byLabel(lines, 'FAVEUR'), 'recu');
+    expect(setChecked([recu], new Set([recu.id]), true)[0].checked).toBe(false);
     expect(byLabel(all, 'EDF').checked).toBe(true);
     // Cochée mais incomplète : pas importable pour autant.
     expect(previewCounts(d, { ...setup().p, lines: all }).toImport).toBe(1);

@@ -39,7 +39,10 @@ export function completeData(): BudgetData {
   // Spec 0014 : dépense sur une ligne fixe et règle vers une ligne fixe.
   const fixLine = dec.lines.find(l => l.block === 'fix')!;
   d.transactions.push({ id: 't-fix', month: '2026-12', day: 5, label: 'Prélèvement', amount: 62, type: 'fix', target: fixLine.key, accountId: fixLine.accountId ?? 'acc-main' });
-  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché' }];
+  // Spec 0015 : entrée sur une ligne de revenu, avec une date bancaire différente du mois de rattachement.
+  const revLine = dec.lines.find(l => l.block === 'rev')!;
+  d.transactions.push({ id: 't-rev', month: '2026-12', day: 1, label: 'Salaire', amount: 2480, type: 'rev', target: revLine.key, accountId: revLine.accountId ?? 'acc-main', bankDate: '2026-11-28' });
+  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08' }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
     { id: 'l2', accountName: 'Livret A (x1234)', connectionName: 'Banque Test', accountId: null },
@@ -48,6 +51,7 @@ export function completeData(): BudgetData {
     { id: 'r1', pattern: 'carrefour', nature: 'depense', target: { kind: 'var', key: 'courses' } },
     { id: 'r2', pattern: 'retrait', nature: 'retrait', target: { kind: 'account', id: 'acc-cash' } },
     { id: 'r-fix', pattern: 'edf', nature: 'depense', target: { kind: 'line', key: fixLine.key } },
+    { id: 'r-rev', pattern: 'acme', nature: 'revenu', target: { kind: 'line', key: revLine.key } },
   ];
   return d;
 }

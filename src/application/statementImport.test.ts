@@ -68,19 +68,20 @@ const edit = (p: ImportPreview, id: string, fn: (l: PreviewLine) => PreviewLine)
 const toCourses = (l: PreviewLine): PreviewLine => ({ ...l, target: { kind: 'var', key: 'courses' } });
 
 describe('aperçu de l’import', () => {
-  it('CA63: les crédits sont des lignes « Entrée d’argent » : décochées, sans nature ni cible, jamais importables', () => {
+  it('CA63 / spec 0015: les crédits sont des lignes « Revenu » à rattacher, décochées tant qu’aucune ligne de revenu n’est choisie', () => {
     const d = budget();
     const p = prepare(d);
     expect(p.lines).toHaveLength(5);
     const incomes = p.lines.filter(isIncome);
     expect(incomes.map(l => l.row.amount)).toEqual([1234.56, 12]);
     for (const l of incomes) {
-      expect(l).toMatchObject({ checked: false, duplicate: false, rank: 0, fingerprint: '', target: null });
-      expect(lineProblem(d, l)).toBe('Entrée d’argent');
-      expect(lineStates(d, l)).toEqual(['entree']);
+      expect(l).toMatchObject({ nature: 'revenu', checked: false, duplicate: false, target: null });
+      expect(l.rank).toBeGreaterThan(0);
+      expect(l.fingerprint.startsWith('+')).toBe(true);
+      expect(lineProblem(d, l)).toBe('À rattacher');
+      expect(lineStates(d, l)).toEqual(['entree', 'a_rattacher', 'decochee']);
     }
-    expect(previewCounts(d, p)).toMatchObject({ incomes: 2, incomplete: 2, toImport: 1 });
-    // Triées par date avec les débits.
+    expect(previewCounts(d, p)).toMatchObject({ incomes: 2, incomplete: 4, toImport: 1 });
     expect(p.lines.map(l => l.row.date)).toEqual([...p.lines.map(l => l.row.date)].sort());
   });
 
@@ -91,14 +92,14 @@ describe('aperçu de l’import', () => {
     expect(isTransferReceived({ label: 'Envoi', notes: '' })).toBe(false);
   });
 
-  it('CA68: les entrées d’un compte « Ne pas importer » ne sont pas listées ; celles d’un compte non rattaché le sont, sans bloquer les autres lignes', () => {
+  it('CA68: les entrées d’un compte « Ne pas importer » ne sont pas listées ; celles d’un compte non rattaché le sont, « Compte à rattacher »', () => {
     const d = budget();
     d.importAccountLinks![1].accountId = null;
     const rows = [row('2026-10-03', 'ACHAT', 5), row('2026-10-03', 'SALAIRE', 900, { pair: SWILE_PAIR, direction: 'credit' }), row('2026-10-04', 'PAIE', 50, { pair: SAV_PAIR, direction: 'credit' })];
     const p = prepare(d, rows);
     expect(p.lines.map(l => l.row.label)).toEqual(['ACHAT', 'PAIE']);
     expect(p.skipped).toBe(1);
-    expect(lineStates(d, p.lines[1])).toEqual(['entree', 'compte_a_rattacher']);
+    expect(lineStates(d, p.lines[1])).toEqual(['entree', 'compte_a_rattacher', 'decochee']);
     expect(lineProblem(d, toCourses(p.lines[0]))).toBeNull();
     expect(previewCounts(d, { ...p, lines: p.lines.map(l => (isIncome(l) ? l : toCourses(l))) }).toImport).toBe(1);
   });
@@ -365,7 +366,7 @@ describe('validation de l’import', () => {
   it('crée une dépense var et un retrait, ignore le virement à qualifier', () => {
     const d = budget();
     const { summary } = importAll(d);
-    expect(summary).toEqual({ expenses: 1, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, incomes: 2, accountsSkipped: 0, leftOut: 1, errors: 0 });
+    expect(summary).toEqual({ outsideBalances: 0, expenses: 1, revenues: 0, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, incomes: 0, accountsSkipped: 0, leftOut: 3, errors: 0 });
     expect(d.transactions[0]).toMatchObject({ month: M, day: 3, label: 'CARREFOUR MARKET', amount: 54.2, type: 'var', target: 'courses', accountId: MAIN_ACCOUNT_ID, importAccountId: MAIN_ACCOUNT_ID, rank: 1, category: 'Alimentation' });
     expect(d.transactions[0].fingerprint).toContain('2026-10-03|54.20|carrefour market paiement par carte');
     expect(d.accountMovements).toHaveLength(1);

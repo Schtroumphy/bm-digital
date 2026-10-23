@@ -49,6 +49,7 @@ export type Database = {
       account_movements: {
         Row: {
           amount: number
+          bank_date: string | null
           category: string | null
           day: number
           detail: string | null
@@ -65,6 +66,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          bank_date?: string | null
           category?: string | null
           day: number
           detail?: string | null
@@ -81,6 +83,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          bank_date?: string | null
           category?: string | null
           day?: number
           detail?: string | null
@@ -375,8 +378,8 @@ export type Database = {
           nature: string
           pattern: string
           position: number
-          target_id: string
-          target_kind: string
+          target_id: string | null
+          target_kind: string | null
           user_id: string
         }
         Insert: {
@@ -384,8 +387,8 @@ export type Database = {
           nature: string
           pattern: string
           position?: number
-          target_id: string
-          target_kind: string
+          target_id?: string | null
+          target_kind?: string | null
           user_id?: string
         }
         Update: {
@@ -393,8 +396,8 @@ export type Database = {
           nature?: string
           pattern?: string
           position?: number
-          target_id?: string
-          target_kind?: string
+          target_id?: string | null
+          target_kind?: string | null
           user_id?: string
         }
         Relationships: []
@@ -567,6 +570,7 @@ export type Database = {
         Row: {
           account_id: string | null
           amount: number
+          bank_date: string | null
           category: string | null
           created_at: string
           day: number
@@ -585,6 +589,7 @@ export type Database = {
         Insert: {
           account_id?: string | null
           amount: number
+          bank_date?: string | null
           category?: string | null
           created_at?: string
           day: number
@@ -603,6 +608,7 @@ export type Database = {
         Update: {
           account_id?: string | null
           amount?: number
+          bank_date?: string | null
           category?: string | null
           created_at?: string
           day?: number

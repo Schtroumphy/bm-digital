@@ -1,3 +1,4 @@
+import { balanceRangeEnd, isMonthInBalanceRange } from './balanceRange';
 import { bankMovements, flowOf } from './bankMovements';
 import { envelopeAccountAt, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
@@ -36,10 +37,8 @@ export interface Account {
 
 /** Months listed in the month picker: from the first app month to two months past the latest one in use. */
 export function monthRange(d: BudgetData, today = currentMonthKey()): MonthKey[] {
-  if (d.firstMonth === null) return [];
-  let last = today;
-  for (const [k, m] of Object.entries(d.months)) if (m.initialized && compareMonths(k, last) > 0) last = k;
-  const end = addMonths(compareMonths(last, d.firstMonth) < 0 ? d.firstMonth : last, 2);
+  const end = balanceRangeEnd(d, today);
+  if (d.firstMonth === null || end === null) return [];
   const out: MonthKey[] = [];
   for (let k = d.firstMonth; compareMonths(k, end) <= 0; k = addMonths(k, 1)) out.push(k);
   return out;
@@ -127,7 +126,7 @@ export class Ledger {
       const md = d.months[m];
       const alloc = md?.initialized ? md.alloc : {};
       for (const b of d.accounts) {
-        if (compareMonths(m, b.openingMonth) < 0) continue;
+        if (!isMonthInBalanceRange(d, b, m)) continue;
         const start = prevClose?.overrides[closeKey('bank', b.id)] ?? (compareMonths(m, b.openingMonth) === 0 ? undefined : bankBal[b.id]) ?? b.openingBalance;
         const flow = this.bankFlow(b.id, m);
         const r = { start, in: flow.in, out: flow.out, balance: round2(start + flow.in - flow.out) };

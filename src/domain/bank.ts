@@ -100,7 +100,7 @@ export function resolveBoxAccountId(d: BudgetData, box: PaymentSetting, fallback
  */
 export function fixedTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string | undefined {
   // An expense on a fixed/credit line is always on the account of the line (spec 0014, RG2).
-  if (t.type === 'fix') {
+  if (t.type === 'fix' || t.type === 'rev') {
     const l = d.months[t.month]?.lines.find(x => x.key === t.target);
     return l ? accountIdOf(d, l.accountId) : undefined;
   }
@@ -126,7 +126,7 @@ export function transactionBox(d: BudgetData, t: Pick<Transaction, 'type' | 'mon
  * the one resolved from its box for a variable expense, the main account otherwise (savings withdrawal).
  */
 export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string {
-  if (t.type === 'fix') return fixedTransactionAccountId(d, t) ?? mainAccount(d).id;
+  if (t.type === 'fix' || t.type === 'rev') return fixedTransactionAccountId(d, t) ?? mainAccount(d).id;
   if (t.type === 'env') return d.envelopes.find(e => e.id === t.target)?.accountId ?? mainAccount(d).id;
   const box = transactionBox(d, t);
   return box ? resolveBoxAccountId(d, box) : mainAccount(d).id;
