@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './presentation/ds/organic.css';
 import './presentation/app.css';
 import { emptyData } from './domain/empty';
+import { createLinxoStatementSource } from './infrastructure/linxoStatement';
 import { createSupabaseAuth } from './infrastructure/supabaseAuth';
 import { createSupabaseClient } from './infrastructure/supabaseClient';
 import { createSupabaseRemote } from './infrastructure/supabaseRemote';
@@ -16,13 +17,14 @@ import { UiProvider } from './presentation/state/ui';
 const client = createSupabaseClient();
 const auth = createSupabaseAuth(client);
 const repository = createSupabaseRepository(createSupabaseRemote(client));
+const statementSource = createLinxoStatementSource();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthGate auth={auth}>
       <StoreProvider repository={repository} initialData={emptyData}>
         <UiProvider>
-          <App />
+          <App statementSource={statementSource} />
         </UiProvider>
       </StoreProvider>
     </AuthGate>

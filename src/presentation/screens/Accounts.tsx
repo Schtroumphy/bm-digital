@@ -103,13 +103,6 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
               {a.name}
             </EditableText>
           </div>
-          {!isKindFixed(a) && (
-            <div className="su-kinds" style={{ marginTop: 4, ...toneVars(a.hue) }}>
-              {KIND_CHOICES.map(k => (
-                <div key={k.value} className={`su-kind${kindOf(a) === k.value ? ' is-on' : ''}`} onClick={() => update(d => void setBankAccountKind(d, a.id, k.value))}>{k.label}</div>
-              ))}
-            </div>
-          )}
           {collision && !a.archived && (
             <div className="mention">
               <span className="env-tile-error">Une ligne d’épargne porte déjà ce nom. Liez-la à ce compte pour éviter de la compter deux fois.</span>{' '}
@@ -118,10 +111,18 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           )}
           <div className="mention">
             {mismatches[a.id] && <span className="env-tile-error">Type à revoir ({mismatches[a.id].join(', ')}) · </span>}
-            {receives.length > 0 && <span>Reçoit : {receives.join(', ')} · </span>}
-            <span className="link" onClick={() => setHistoryFor(historyFor === a.id ? null : a.id)}>{historyFor === a.id ? 'Masquer l’historique' : 'Historique'}</span>
+            {receives.length > 0 && <span>Reçoit : {receives.join(', ')}</span>}
           </div>
         </div>
+        {isKindFixed(a) ? (
+          <span />
+        ) : (
+          <div className="su-kinds" style={toneVars(a.hue)}>
+            {KIND_CHOICES.map(k => (
+              <div key={k.value} className={`su-kind${kindOf(a) === k.value ? ' is-on' : ''}`} onClick={() => update(d => void setBankAccountKind(d, a.id, k.value))}>{k.label}</div>
+            ))}
+          </div>
+        )}
         <div>
           <div className="rel">
             <EditableAmount
@@ -160,6 +161,9 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
             onClick={locked || a.archived ? undefined : () => update(d => void setMainBankAccount(d, a.id))}
           />
         )}
+        <span className={`icon-btn${historyFor === a.id ? ' is-on' : ''}`} title={historyFor === a.id ? 'Masquer l’historique' : 'Historique mensuel'} onClick={() => setHistoryFor(historyFor === a.id ? null : a.id)}>
+          <Icon name="history" size={14} />
+        </span>
         {a.archived ? (
           fromEnvelope ? <span /> : <span className="btn-quiet" onClick={locked ? undefined : () => update(d => unarchiveBankAccount(d, a.id))}>Désarchiver</span>
         ) : fromEnvelope ? (
@@ -283,12 +287,14 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
       <div className="panel-lg" style={toneVars(200)}>
         <div className="accounts-grid accounts-cols">
           <span>Compte</span>
+          <span>Type</span>
           <span className="num pad8">Départ</span>
           <span className="num">Entrées</span>
           <span className="num">Sorties</span>
           <span className="num">Solde</span>
           <span>Budget</span>
           <span className="num" style={{ textAlign: 'center' }}>Principal</span>
+          <span />
           <span />
         </div>
         {active.map(row)}
