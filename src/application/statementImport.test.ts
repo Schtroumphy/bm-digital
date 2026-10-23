@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, updateAccountMovement } from './accountMovements';
 import { findImportAccountLink, linkableAccounts, linkedAccountOf, removeImportAccountLink, setImportAccountLink } from './accountLinks';
-import { changeMonth, changeNature, choosePairAccount, importMonths, isIncome, lineProblem, prepareImport, previewCounts, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, isIncome, lineProblem, prepareImport, previewCounts, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { bankMovements } from '../domain/bankMovements';
 import { monthBalance } from '../domain/checkoff';
@@ -125,6 +125,18 @@ describe('aperçu de l’import', () => {
     // Mots entiers seulement.
     const other = prepare(d, [row('2026-10-02', 'RETRAITE COMPLEMENTAIRE', 10)]);
     expect(other.lines[0].nature).toBe('depense');
+  });
+
+  it('RG19 : un « Virement reçu » se requalifie « Revenu », et la liste de natures ne change pas', () => {
+    const d = budget();
+    const l = { ...byLabel(prepare(d), 'SALAIRE'), checked: true };
+    expect(natureOptions(l)).toEqual(['revenu', 'recu']);
+    const recu = changeNature(d, l, 'recu');
+    expect(recu).toMatchObject({ nature: 'recu', checked: false });
+    expect(natureOptions(recu)).toEqual(['revenu', 'recu']);
+    expect(changeNature(d, recu, 'revenu')).toMatchObject({ nature: 'revenu', checked: false });
+    // Un débit ne propose jamais « Revenu » ni « Virement reçu ».
+    expect(natureOptions(byLabel(prepare(d), 'CARREFOUR'))).toEqual(['depense', 'retrait', 'interne', 'externe']);
   });
 
   it('CA7: un virement émis n’est importable qu’une fois interne (avec destination) ou externe (avec cible)', () => {
