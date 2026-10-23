@@ -1,4 +1,5 @@
 import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual, varActualFromTx } from '../domain/budget';
 import { expenseLineBlocker, expenseLine, expenseLineAccountId, isLineCarried, lineExpensesTotal } from '../domain/lineExpenses';
@@ -307,7 +308,9 @@ export function addTransaction(d: BudgetData, input: Transaction, options: { rep
   const t = envelope
     ? { ...input, accountId: envelope.accountId }
     : input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
-  d.transactions.push(t);
+  const detail = normalizeDetail(input.detail);
+  const { detail: _raw, ...rest } = t;
+  d.transactions.push(detail === undefined ? rest : { ...rest, detail });
   // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).
   if (t.type !== 'var') return true;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
@@ -329,6 +332,14 @@ function addLineExpense(d: BudgetData, input: Transaction, replaceActual: boolea
   if (line.actual !== null && !isLineCarried(d, input.month, input.target) && !replaceActual) return false;
   d.transactions.push({ ...input, accountId });
   line.actual = lineExpensesTotal(d, input.month, input.target);
+  return true;
+}
+
+/** Sets, changes or clears (empty text) the detail of a transaction, nothing else. Allowed on a locked month: it changes no figure (spec 0020, RG6, RG11). */
+export function setTransactionDetail(d: BudgetData, id: string, detail: string): boolean {
+  const t = d.transactions.find(x => x.id === id);
+  if (!t) return false;
+  applyDetail(t, detail);
   return true;
 }
 

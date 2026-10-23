@@ -35,11 +35,11 @@ export function completeData(): BudgetData {
     { id: 'adj2', accountId: 'acc-main', date: '2026-11-30', amount: 5, label: 'écart constaté', createdOn: '2026-11-30', cancelledOn: '2026-12-02' },
   ];
   // Spec 0013 : transaction importée, mouvement entre comptes et règle mémorisée.
-  d.transactions.push({ id: 't-imp', month: '2026-12', day: 3, label: 'Paiement par carte CARREFOUR', amount: 12.5, type: 'var', target: 'inconnu', accountId: 'acc-main', importAccountId: 'acc-main', fingerprint: '2026-12-03|12.50|paiement par carte carrefour', rank: 1, category: 'Alimentation' });
+  d.transactions.push({ id: 't-imp', month: '2026-12', day: 3, label: 'Paiement par carte CARREFOUR', amount: 12.5, type: 'var', target: 'inconnu', accountId: 'acc-main', importAccountId: 'acc-main', fingerprint: '2026-12-03|12.50|paiement par carte carrefour', rank: 1, category: 'Alimentation', detail: 'Courses de la semaine' });
   // Spec 0014 : dépense sur une ligne fixe et règle vers une ligne fixe.
   const fixLine = dec.lines.find(l => l.block === 'fix')!;
   d.transactions.push({ id: 't-fix', month: '2026-12', day: 5, label: 'Prélèvement', amount: 62, type: 'fix', target: fixLine.key, accountId: fixLine.accountId ?? 'acc-main' });
-  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait' }];
+  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché' }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
     { id: 'l2', accountName: 'Livret A (x1234)', connectionName: 'Banque Test', accountId: null },
@@ -95,6 +95,22 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       await repo.save(changed);
       expect(await repo.load()).toEqual(changed);
       expect(await open().load()).toEqual(changed);
+    });
+
+    it('spec 0020 : le détail des écritures est conservé, puis vidé, et des écritures sans détail restent sans détail', async () => {
+      const repo = open();
+      const data = completeData();
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.transactions.find(t => t.id === 't-imp')!.detail).toBe('Courses de la semaine');
+      expect(loaded.accountMovements![0].detail).toBe('Pour le marché');
+      // Les autres écritures n'avaient pas de détail : elles n'en ont toujours pas (CA8).
+      expect(loaded.transactions.filter(t => t.id !== 't-imp').every(t => !('detail' in t))).toBe(true);
+      const cleared = structuredClone(loaded);
+      delete cleared.transactions.find(t => t.id === 't-imp')!.detail;
+      delete cleared.accountMovements![0].detail;
+      await repo.save(cleared);
+      expect(await open().load()).toEqual(cleared);
     });
 
     it('des sauvegardes rapprochées s’appliquent dans l’ordre : la dernière gagne', async () => {

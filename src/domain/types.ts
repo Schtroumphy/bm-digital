@@ -119,6 +119,8 @@ export interface Transaction {
   rank?: number;
   /** Category given by the bank aggregator (Linxo), kept as information only: not part of the fingerprint (spec 0013, RG37). */
   category?: string;
+  /** Free context shown under the label (spec 0020): at most 200 characters, trimmed, absent when empty. Not part of the fingerprint. */
+  detail?: string;
 }
 
 /**
@@ -138,6 +140,8 @@ export interface AccountMovement {
   fingerprint?: string;
   rank?: number;
   category?: string;
+  /** Free context shown under the label (spec 0020), same rule as `Transaction.detail`. */
+  detail?: string;
 }
 
 /**
