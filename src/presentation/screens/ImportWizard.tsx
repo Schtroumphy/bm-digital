@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import {
-  accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, natureLabel, prepareImport,
-  previewCounts, refreshPreview, replacedActuals, saveSkipChoices, sessionSummary, validateImport,
+  accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, isReceivedTransfer, natureLabel, prepareImport,
+  previewCounts, refreshPreview, replacedActuals, saveReceivedRules, saveSkipChoices, sessionSummary, validateImport,
   type ImportBatch, type ImportPreview, type ImportSummary, type LineNature, type PreviewLine, type SessionTotals,
 } from '../../application/statementImport';
 import {
@@ -27,14 +27,14 @@ import { ImportRow, targetFrom } from './ImportRow';
 
 const ABANDON = 'Abandonner l’import en cours ? Les corrections seront perdues.';
 const ABANDON_KEEP = `${ABANDON} Les lignes déjà importées sont conservées.`;
-const NO_TOTALS: SessionTotals = { expenses: 0, withdrawals: 0, internalTransfers: 0 };
+const NO_TOTALS: SessionTotals = { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0 };
 
 /** « 2 dépenses, 1 retrait » : what a batch wrote, for the session banner. */
 function describeBatch(b: ImportBatch): string {
   const part = (n: number, one: string, many: string) => (n > 0 ? [`${n} ${n > 1 ? many : one}`] : []);
-  return [...part(b.expenses, 'dépense', 'dépenses'), ...part(b.withdrawals, 'retrait', 'retraits'), ...part(b.internalTransfers, 'transfert interne', 'transferts internes')].join(', ');
+  return [...part(b.expenses, 'dépense', 'dépenses'), ...part(b.revenues, 'entrée', 'entrées'), ...part(b.withdrawals, 'retrait', 'retraits'), ...part(b.internalTransfers, 'transfert interne', 'transferts internes')].join(', ');
 }
-const NATURE_CHOICES: LineNature[] = ['depense', 'retrait', 'interne', 'externe'];
+const NATURE_CHOICES: LineNature[] = ['depense', 'retrait', 'interne', 'externe', 'revenu'];
 
 export function ImportWizard({ source, onClose }: { source: StatementSource; onClose: () => void }) {
   const { data, update } = useStore();
@@ -196,7 +196,7 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
     update(d => void validateImport(d, preview, newId, options));
     setDone(new Set([...done, ...batch.importedIds]));
     setFailed(f => new Set([...[...f].filter(id => !batch.importedIds.includes(id)), ...batch.failedIds]));
-    setTotals(t => ({ expenses: t.expenses + batch.expenses, withdrawals: t.withdrawals + batch.withdrawals, internalTransfers: t.internalTransfers + batch.internalTransfers }));
+    setTotals(t => ({ outsideBalances: (t.outsideBalances ?? 0) + batch.outsideBalances, expenses: t.expenses + batch.expenses, revenues: t.revenues + batch.revenues, withdrawals: t.withdrawals + batch.withdrawals, internalTransfers: t.internalTransfers + batch.internalTransfers }));
     setLastBatch(describeBatch(batch));
     const next = refreshPreview(copy, reading, preview);
     setPreview(next);
@@ -209,7 +209,10 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
   const finish = () => {
     if (!preview) return;
     // The « Ne pas importer » choices made since the last batch are remembered now (RG74).
-    update(d => void saveSkipChoices(d, preview, newId));
+    update(d => {
+      saveSkipChoices(d, preview, newId);
+      saveReceivedRules(d, preview, newId);
+    });
     setSummary(sessionSummary(preview, totals, done, failed));
   };
 
@@ -261,11 +264,11 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
 
   if (summary) {
     const groups: [string, [string, number][]][] = [
-      ['Importées', [['Dépenses', summary.expenses], ['Retraits', summary.withdrawals], ['Transferts internes', summary.internalTransfers]]],
-      ['Ignorées', [['Doublons', summary.duplicatesSkipped], ['Entrées d’argent (non importées)', summary.incomes], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
-      ['À vérifier', [['Lignes en erreur', summary.errors]]],
+      ['Importées', [['Dépenses', summary.expenses], ['Entrées d’argent (revenus)', summary.revenues], ['Retraits', summary.withdrawals], ['Transferts internes', summary.internalTransfers]]],
+      ['Ignorées', [['Doublons', summary.duplicatesSkipped], ['Virements reçus (non importés)', summary.incomes], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
+      ['À vérifier', [['Lignes en erreur', summary.errors], ['Importées avec une date hors soldes', summary.outsideBalances]]],
     ];
-    const total = summary.expenses + summary.withdrawals + summary.internalTransfers;
+    const total = summary.expenses + summary.revenues + summary.withdrawals + summary.internalTransfers;
     return (
       <div className="panel-lg import-wizard">
         {header}
@@ -735,13 +738,15 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
   const [nature, setNature] = useState('');
   const [target, setTarget] = useState('');
   const [month, setMonth] = useState('');
-  const editable = shown.filter(l => !isIncome(l));
+  const editable = shown.filter(l => !isReceivedTransfer(l));
   const natureNow = (nature || 'depense') as LineNature;
   const varLines = new Map<string, string>();
   const fixedLines = new Map<string, string>();
+  const revenueLines = new Map<string, string>();
   for (const m of importMonths(data)) for (const l of data.months[m].lines) {
     if (l.block === 'var') varLines.set(l.key, l.name);
     else if (isExpenseLineBlock(l.block)) fixedLines.set(l.key, l.name);
+    else if (l.block === 'rev') revenueLines.set(l.key, l.name);
   }
   const apply = () => {
     const change: BulkChange = {};
@@ -780,7 +785,13 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
       </select>
       <select className="su-select" value={target} aria-label="Cible à appliquer" onChange={e => setTarget(e.target.value)}>
         <option value="">Cible : inchangée</option>
-        {natureNow === 'retrait' || natureNow === 'interne' ? (
+        {natureNow === 'revenu' ? (
+          [...revenueLines].map(([k, name]) => (
+            <option key={k} value={`line:${k}`}>
+              {name}
+            </option>
+          ))
+        ) : natureNow === 'retrait' || natureNow === 'interne' ? (
           destinationAccounts(data, natureNow, null).map(a => (
             <option key={a.id} value={`account:${a.id}`}>
               {a.name}
