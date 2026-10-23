@@ -1,10 +1,10 @@
 import { CASH_ACCOUNT_ID, accountIdOf, activeBankAccounts, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
 import { compareMonths } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
-import { accountPairKey, fingerprintOf, fullLabelOf, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
+import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
 import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, MonthKey, Transaction } from '../domain/types';
 import { addTransaction } from './actions';
-import { isLinkableAccount, linkedAccountOf, setImportAccountLink } from './accountLinks';
+import { findImportAccountLink, isLinkableAccount, linkedAccountOf, setImportAccountLink } from './accountLinks';
 
 /*
  * Import of the bank's expenses (spec 0013). Pure functions: `prepareImport` turns a read statement into lines to
@@ -45,6 +45,8 @@ export interface PreviewLine {
   similarImported: 'semblable' | 'probable' | null;
   /** The label says « virement emis »: possibly a transfer to one of the user's accounts (RG35). */
   transferHint: boolean;
+  /** An entry of money whose label speaks of a transfer: informative only, qualifies nothing (RG62). */
+  receivedHint: boolean;
   nature: LineNature;
   target: ImportTarget | null;
   /** Month the line is attached to (RG11). */
@@ -60,7 +62,7 @@ export interface PairInfo {
   key: string;
   accountName: string;
   connectionName: string;
-  /** Debit lines of the file for this pair. */
+  /** Lines of the file for this pair (debits and entries of money). */
   lines: number;
   /** The pair already had a usable match when the file was opened. The others are listed in the « comptes à rattacher » banner (RG32). */
   known: boolean;
@@ -70,16 +72,18 @@ export interface PairInfo {
 export type PairChoices = Record<string, string | null>;
 
 export interface ImportPreview {
+  /** Debits and entries of money (credits), the latter listed but never imported (spec 0013, amendment 4). */
   lines: PreviewLine[];
-  /** Credits found in the file, never imported (RG8). */
-  ignoredCredits: number;
-  /** Debit lines of pairs matched to « Ne pas importer », left out of the preview (RG32). */
+  /** Lines (debits and entries of money) of pairs matched to « Ne pas importer », left out of the preview (RG32). */
   skipped: number;
   pairs: PairInfo[];
   /** Matches chosen in this preview; saved with the import, not before (RG25, RG32). */
   choices: PairChoices;
   errors: StatementError[];
 }
+
+/** An entry of money (credit of the file): listed in the preview, never checked nor imported (spec 0013, amendment 4). */
+export const isIncome = (l: Pick<PreviewLine, 'row'>): boolean => l.row.direction === 'credit';
 
 const NATURE_LABEL: Record<LineNature, string> = { depense: 'Dépense', retrait: 'Retrait', interne: 'Transfert interne', externe: 'Transfert externe', a_qualifier: 'À qualifier' };
 export const natureLabel = (n: LineNature) => NATURE_LABEL[n];
@@ -110,7 +114,7 @@ function ownEnvelopeTarget(d: BudgetData, sourceId: string | null): ImportTarget
 }
 
 /** Whether a target is usable for a nature, in a month, for a line of the account `sourceId`. */
-function targetIsValid(d: BudgetData, sourceId: string | null, nature: LineNature, target: ImportTarget | null, month: MonthKey): boolean {
+export function targetIsValid(d: BudgetData, sourceId: string | null, nature: LineNature, target: ImportTarget | null, month: MonthKey): boolean {
   if (!target || sourceId === null) return false;
   if (isExpenseNature(nature)) {
     // A line of an envelope's account can only be spent from that envelope: no variable line on an envelope's account (spec 0011, RG2, RG10).
@@ -128,6 +132,7 @@ function targetIsValid(d: BudgetData, sourceId: string | null, nature: LineNatur
 /** Why a line cannot be imported yet, or null when it is complete (RG12, RG17, RG32). */
 export function lineProblem(d: BudgetData, l: PreviewLine): string | null {
   if (l.accountId === null) return 'Compte à rattacher';
+  if (isIncome(l)) return 'Entrée d’argent'; // listed, never imported (RG60)
   if (l.nature === 'a_qualifier') return 'À qualifier';
   if (!isImportMonth(d, l.month)) return 'Choisir un mois ouvert';
   if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) ? 'À rattacher' : 'Choisir une destination';
@@ -185,13 +190,9 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
   const lines: PreviewLine[] = [];
   const pairs = new Map<string, PairInfo>();
   let skipped = 0;
-  let ignoredCredits = 0;
 
   reading.rows.forEach((row, index) => {
-    if (row.direction === 'credit') {
-      ignoredCredits++;
-      return;
-    }
+    const income = row.direction === 'credit';
     const pairKey = accountPairKey(row.accountName, row.connectionName);
     const pair = pairs.get(pairKey) ?? { key: pairKey, accountName: row.accountName, connectionName: row.connectionName, lines: 0, known: linkedAccountOf(d, row.accountName, row.connectionName) !== undefined };
     pair.lines++;
@@ -202,6 +203,14 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
       return;
     }
     const accountId = resolved ?? null;
+    // An entry of money is only listed (spec 0013, RG59, RG66): no fingerprint, no rank, never a duplicate, nothing to propose, never checked.
+    if (income) {
+      lines.push({
+        id: String(index), row, pairKey, accountId, fingerprint: '', rank: 0, month: row.date.slice(0, 7), remember: null, suggestedPattern: '',
+        duplicate: false, similarManual: false, similarImported: null, transferHint: false, receivedHint: isTransferReceived(row), nature: 'depense', target: null, checked: false,
+      });
+      return;
+    }
     const fingerprint = fingerprintOf(row);
     const rankKey = `${accountId ?? `pair:${pairKey}`}\u0001${fingerprint}`;
     const rank = (seen.get(rankKey) ?? 0) + 1;
@@ -210,7 +219,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     const base = { id: String(index), row, pairKey, accountId, fingerprint, rank, month, remember: null, suggestedPattern: suggestedPattern(row) };
 
     if (accountId === null) {
-      lines.push({ ...base, duplicate: false, similarManual: false, similarImported: null, transferHint: false, nature: 'depense', target: null, checked: false });
+      lines.push({ ...base, duplicate: false, similarManual: false, similarImported: null, transferHint: false, receivedHint: false, nature: 'depense', target: null, checked: false });
       return;
     }
     const { nature, target } = proposal(d, accountId, row, month);
@@ -221,13 +230,31 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
       similarManual: manual.has(dayKey(accountId, row.date, row.amount)),
       similarImported: near.length === 0 ? null : row.category !== '' && near.some(x => x.category === row.category) ? 'probable' : 'semblable',
       transferHint: nature === 'a_qualifier',
+      receivedHint: false,
       checked: !duplicate && nature !== 'a_qualifier',
     };
     const old = before.get(fresh.id);
     // The corrections already made on an unchanged line (same account, same rank) are kept.
     lines.push(old && old.accountId === accountId && old.rank === rank ? { ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked, remember: old.remember } : fresh);
   });
-  return { lines, ignoredCredits, skipped, pairs: [...pairs.values()], choices, errors: reading.errors };
+  // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
+  lines.sort((a, b) => a.row.date.localeCompare(b.row.date) || Number(a.id) - Number(b.id));
+  return { lines, skipped, pairs: [...pairs.values()], choices, errors: reading.errors };
+}
+
+/**
+ * The preview redone with the matches as they are now, after the list « Correspondances de comptes » was used (spec 0013, RG43).
+ * A pair that now has a stored match uses it and drops its undecided choice; the corrections of the lines whose account and rank
+ * did not change are kept, the others start from the default proposals.
+ */
+export function refreshPreview(d: BudgetData, reading: StatementReading, preview: ImportPreview): ImportPreview {
+  const choices = Object.fromEntries(
+    Object.entries(preview.choices).filter(([key]) => {
+      const pair = preview.pairs.find(p => p.key === key);
+      return !pair || linkedAccountOf(d, pair.accountName, pair.connectionName) === undefined;
+    }),
+  );
+  return prepareImport(d, reading, choices, preview.lines);
 }
 
 /** The same file with the match of one pair chosen (an account id, or null for « Ne pas importer »): lines are redone, other corrections kept. */
@@ -259,16 +286,59 @@ export interface PreviewCounts {
   incomplete: number;
   /** Pairs of the banner with no match chosen yet (RG32). */
   pairsToLink: number;
+  /** Entries of money listed in the preview, never imported (RG65). */
+  incomes: number;
 }
 
-export function previewCounts(d: BudgetData, preview: ImportPreview): PreviewCounts {
-  const { lines } = preview;
+/** What the session already did, and what it leaves aside: lines imported earlier, and accounts marked « traité » (spec 0013, RG71, RG72). */
+export interface ImportScope {
+  /** Ids of the lines imported during this session. */
+  done?: ReadonlySet<string>;
+  /** Pair keys of the accounts the user marked as handled: their lines are not imported nor counted as « à compléter » (RG72). */
+  marked?: ReadonlySet<string>;
+}
+
+/** Ids of the lines an import would write: checked, complete, not already imported, not in a marked account (RG68, RG77). */
+export function importableIds(d: BudgetData, preview: ImportPreview, scope: ImportScope = {}): Set<string> {
+  return new Set(preview.lines.filter(l => l.checked && !lineProblem(d, l) && !scope.done?.has(l.id) && !scope.marked?.has(l.pairKey)).map(l => l.id));
+}
+
+export function previewCounts(d: BudgetData, preview: ImportPreview, scope: ImportScope = {}): PreviewCounts {
+  const open = preview.lines.filter(l => !scope.done?.has(l.id));
   return {
-    toImport: lines.filter(l => l.checked && !lineProblem(d, l)).length,
-    duplicates: lines.filter(l => l.duplicate).length,
-    incomplete: lines.filter(l => lineProblem(d, l)).length,
+    toImport: importableIds(d, preview, scope).size,
+    duplicates: open.filter(l => l.duplicate).length,
+    incomplete: open.filter(l => !isIncome(l) && !scope.marked?.has(l.pairKey) && lineProblem(d, l)).length,
+    incomes: preview.lines.filter(isIncome).length,
     pairsToLink: preview.pairs.filter(p => !p.known && !(p.key in preview.choices)).length,
   };
+}
+
+/** Progress of one account of the file: what is left to do on it (RG71). Entries of money never keep an account « à traiter ». */
+export interface AccountProgress {
+  imported: number;
+  /** Already imported before (a duplicate that is not forced). */
+  alreadyImported: number;
+  remaining: number;
+  /** Nothing left to do: every debit line is imported here or before. A file account with no debit line is not « traité ». */
+  treated: boolean;
+}
+
+export function accountProgress(preview: ImportPreview, pairKey: string, done: ReadonlySet<string> = new Set()): AccountProgress {
+  const debits = preview.lines.filter(l => l.pairKey === pairKey && !isIncome(l));
+  const imported = debits.filter(l => done.has(l.id)).length;
+  const alreadyImported = debits.filter(l => !done.has(l.id) && l.duplicate && !l.checked).length;
+  const remaining = debits.length - imported - alreadyImported;
+  return { imported, alreadyImported, remaining, treated: debits.length > 0 && remaining === 0 };
+}
+
+/** What a batch wrote. `failedIds` are lines the budget refused: they are not marked imported (RG76). */
+export interface ImportBatch {
+  expenses: number;
+  withdrawals: number;
+  internalTransfers: number;
+  importedIds: string[];
+  failedIds: string[];
 }
 
 export interface ImportSummary {
@@ -277,7 +347,8 @@ export interface ImportSummary {
   internalTransfers: number;
   /** Duplicates left out (not forced). */
   duplicatesSkipped: number;
-  creditsIgnored: number;
+  /** Entries of money of the preview, not imported (RG65). */
+  incomes: number;
   /** Lines of accounts matched to « Ne pas importer » (RG32). */
   accountsSkipped: number;
   /** Lines unchecked by the user, or checked but still incomplete. */
@@ -286,23 +357,48 @@ export interface ImportSummary {
   errors: number;
 }
 
-/**
- * Writes the checked, complete lines: `Transaction`s for expenses and external transfers, `AccountMovement`s for withdrawals and
- * internal transfers (RG26), the remembered rules (RG18) and the account matches chosen in the preview (RG32). A duplicate that the
- * user forced takes the next free rank of its fingerprint, so the uniqueness (account, fingerprint, rank) holds (ADR 0010). A `var`
- * expense goes on the account assigned to its box when there is one (spec 0006), else on the account of its line (ADR 0012).
- */
-export function validateImport(d: BudgetData, preview: ImportPreview, newId: (prefix: string) => string): ImportSummary {
-  const chosen = preview.lines.filter(l => l.checked && !lineProblem(d, l));
-  const summary: ImportSummary = {
-    expenses: 0, withdrawals: 0, internalTransfers: 0,
-    duplicatesSkipped: preview.lines.filter(l => l.duplicate && !chosen.includes(l)).length,
-    creditsIgnored: preview.ignoredCredits,
-    accountsSkipped: preview.skipped,
-    leftOut: preview.lines.filter(l => !l.duplicate && !chosen.includes(l)).length,
-    errors: preview.errors.length,
-  };
+export interface SessionTotals {
+  expenses: number;
+  withdrawals: number;
+  internalTransfers: number;
+}
 
+/**
+ * Summary of the whole session (RG80): what the batches wrote, then what is left aside at the time of finishing. A line imported
+ * is counted once; a line the budget refused and that is still not imported counts as an error.
+ */
+export function sessionSummary(preview: ImportPreview, totals: SessionTotals, done: ReadonlySet<string>, failed: ReadonlySet<string> = new Set()): ImportSummary {
+  const open = preview.lines.filter(l => !done.has(l.id));
+  return {
+    expenses: totals.expenses,
+    withdrawals: totals.withdrawals,
+    internalTransfers: totals.internalTransfers,
+    duplicatesSkipped: open.filter(l => l.duplicate).length,
+    incomes: preview.lines.filter(isIncome).length,
+    accountsSkipped: preview.skipped,
+    leftOut: open.filter(l => !isIncome(l) && !l.duplicate).length,
+    errors: preview.errors.length + open.filter(l => failed.has(l.id)).length,
+  };
+}
+
+export interface ImportOptions {
+  /** Only these lines are written (the lines shown, for example, RG68). Absent = every checked, complete line. */
+  ids?: ReadonlySet<string>;
+  /** Lines already imported during the session: never written again (RG77). */
+  done?: ReadonlySet<string>;
+  /** Accounts marked « traité »: their lines are left alone (RG72). */
+  marked?: ReadonlySet<string>;
+}
+
+/**
+ * Writes the chosen lines: `Transaction`s for expenses and external transfers, `AccountMovement`s for withdrawals and internal
+ * transfers (RG26), the remembered rules of the lines written (RG18, RG74) and the account matches of the pairs that had a line
+ * written (RG74). A line already imported in the session, or not forced and whose (account, fingerprint, rank) is already stored,
+ * is skipped, so a replayed batch writes nothing more (RG77). A duplicate that the user forced takes the next free rank of its
+ * fingerprint, so the uniqueness (account, fingerprint, rank) holds (ADR 0010). A `var` expense goes on the account assigned to its
+ * box when there is one (spec 0006), else on the account of its line (ADR 0012).
+ */
+export function validateImport(d: BudgetData, preview: ImportPreview, newId: (prefix: string) => string, options: ImportOptions = {}): ImportBatch {
   // Ranks taken per (account, fingerprint): the stored ones, then the new ones. Forced duplicates come last and go after them.
   const used = new Map<string, Set<number>>();
   const usedKey = (accountId: string, fingerprint: string) => `${accountId}\u0001${fingerprint}`;
@@ -311,6 +407,14 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
     used.set(k, (used.get(k) ?? new Set()).add(rank));
   };
   for (const x of [...d.transactions, ...(d.accountMovements ?? [])]) if (x.importAccountId && x.fingerprint && x.rank) take(x.importAccountId, x.fingerprint, x.rank);
+
+  const chosen = preview.lines.filter(
+    l =>
+      l.checked && !lineProblem(d, l) && (!options.ids || options.ids.has(l.id)) && !options.done?.has(l.id) && !options.marked?.has(l.pairKey) &&
+      (l.duplicate || !used.get(usedKey(l.accountId!, l.fingerprint))?.has(l.rank)),
+  );
+  const batch: ImportBatch = { expenses: 0, withdrawals: 0, internalTransfers: 0, importedIds: [], failedIds: [] };
+
   const ranks = new Map<PreviewLine, number>();
   for (const l of chosen.filter(l => !l.duplicate)) {
     take(l.accountId!, l.fingerprint, l.rank);
@@ -337,21 +441,54 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
           ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId }
           : { id: newId('t'), ...base, type: 'env', target: targetId };
       if (addTransaction(d, tx)) {
-        summary.expenses++;
+        batch.expenses++;
         imported.push(l);
-      } else summary.errors++;
+      } else {
+        // Defensive: a month that cannot take the line is already caught by `lineProblem` (« Choisir un mois ouvert », RG76), so the
+        // budget refusing a complete line should not happen. If it does, the line is not marked imported and is counted as an error.
+        batch.failedIds.push(l.id);
+      }
     } else {
       const mv: AccountMovement = { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId };
       (d.accountMovements ??= []).push(mv);
-      if (l.nature === 'retrait') summary.withdrawals++;
-      else summary.internalTransfers++;
+      if (l.nature === 'retrait') batch.withdrawals++;
+      else batch.internalTransfers++;
       imported.push(l);
     }
   }
+  batch.importedIds = imported.map(l => l.id);
 
   for (const l of imported) if (l.remember !== null) rememberRule(d, l.remember, l.nature as ImportNature, l.target!, newId);
-  for (const p of preview.pairs) if (p.key in preview.choices) setImportAccountLink(d, p.accountName, p.connectionName, preview.choices[p.key], newId);
-  return summary;
+  // A match with an account, chosen in the banner, is written only if a line of that pair was written (RG74).
+  const importedPairs = new Set(imported.map(l => l.pairKey));
+  for (const p of preview.pairs) {
+    const choice = preview.choices[p.key];
+    if (importedPairs.has(p.key) && typeof choice === 'string') setImportAccountLink(d, p.accountName, p.connectionName, choice, newId);
+  }
+  // A « Ne pas importer » choice has no line to import: it is remembered as soon as a batch wrote something (RG74).
+  if (imported.length > 0) saveSkipChoices(d, preview, newId);
+  return batch;
+}
+
+/** Remembers the « Ne pas importer » choices made in the banner (matches without an account). Done with the first batch and when finishing (RG74). */
+export function saveSkipChoices(d: BudgetData, preview: ImportPreview, newId: (prefix: string) => string) {
+  for (const p of preview.pairs) if (p.key in preview.choices && preview.choices[p.key] === null) setImportAccountLink(d, p.accountName, p.connectionName, null, newId);
+}
+
+/**
+ * Whether the user has corrections that closing would lose (RG79): a line not imported whose nature, target, month, check or rule
+ * differs from what the file proposes, or a choice of the banner that is not saved.
+ */
+export function hasPendingCorrections(d: BudgetData, reading: StatementReading, preview: ImportPreview, done: ReadonlySet<string> = new Set()): boolean {
+  // A choice of the banner counts while it is not stored: an account choice is stored with the first line of its pair, a « Ne pas importer » with the first batch (RG74).
+  const unsavedChoice = preview.pairs.some(p => p.key in preview.choices && findImportAccountLink(d, p.accountName, p.connectionName)?.accountId !== preview.choices[p.key]);
+  if (unsavedChoice) return true;
+  const fresh = new Map(prepareImport(d, reading, preview.choices).lines.map(l => [l.id, l]));
+  return preview.lines.some(l => {
+    if (done.has(l.id)) return false;
+    const f = fresh.get(l.id);
+    return !!f && (f.nature !== l.nature || f.month !== l.month || f.checked !== l.checked || l.remember !== null || JSON.stringify(f.target) !== JSON.stringify(l.target));
+  });
 }
 
 /** Adds the rule, or updates the one with the same pattern (RG18). An empty pattern remembers nothing. */

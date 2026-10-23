@@ -7,12 +7,13 @@ import { newId, useStore } from '../state/store';
  * A match can be changed, set to « Ne pas importer » or deleted (the pair is then asked again at the next import).
  * Changing a match touches no transaction already imported.
  */
-export function AccountLinks({ onBack }: { onBack: () => void }) {
+export function AccountLinks({ onBack, backLabel }: { onBack: () => void; backLabel: string }) {
   const { data, update } = useStore();
   const links = data.importAccountLinks ?? [];
   return (
     <div className="import-body">
       <div className="field-label">Correspondances de comptes</div>
+      <div className="muted is-small">Les changements sont enregistrés tout de suite et n’altèrent aucune opération déjà importée.</div>
       {links.length === 0 && <div className="empty">Aucune correspondance : elles sont demandées à l’import d’un fichier.</div>}
       {links.map(l => {
         const broken = l.accountId !== null && !isLinkableAccount(data, l.accountId);
@@ -43,7 +44,7 @@ export function AccountLinks({ onBack }: { onBack: () => void }) {
       })}
       <div className="import-actions">
         <button type="button" className="btn-outline" onClick={onBack}>
-          Retour
+          {backLabel}
         </button>
       </div>
     </div>
