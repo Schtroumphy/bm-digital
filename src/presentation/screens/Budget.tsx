@@ -34,6 +34,9 @@ export const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: numb
   inv: { title: 'Investissements', icon: 'trend', hue: HUE.inv },
 };
 
+/** Yellow of the « bonus » star of the surplus KPI. */
+const STAR = 'oklch(0.8 0.15 90)';
+
 export const BLOCK_TITLES = Object.fromEntries(Object.entries(BLOCKS).map(([k, v]) => [k, v.title])) as Record<BlockKey, string>;
 
 export function BudgetActions({ month }: { month: MonthKey }) {
@@ -247,7 +250,7 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
           </div>
           <div className="panel kpi">
             <div className="kpi-label" title="Revenus réels − sorties réelles (crédits, dépenses, épargnes, placements, enveloppes). Une ligne sans réel compte à son budget.">
-              <span className="dot" style={{ background: s.surplus < 0 ? BAD : tone(HUE.rev).base }} />
+              <Icon name="star" size={12} stroke={2} color={s.surplus < 0 ? BAD : STAR} style={{ fill: s.surplus < 0 ? BAD : STAR }} />
               Surplus
             </div>
             <div className="kpi-value" style={{ color: s.surplus < 0 ? BAD : undefined }}>{money(s.surplus)}</div>
