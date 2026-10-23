@@ -1,5 +1,6 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, mainAccount, resolveBoxAccountId } from './bank';
 import { compareMonths, round2 } from './format';
+import { isExpenseLineBlock, isLineCarried } from './lineExpenses';
 import type { BudgetData, MonthKey } from './types';
 
 /*
@@ -59,6 +60,8 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
 
   for (const l of lines) {
     if (l.block === 'var') continue; // variable lines move money through their transactions only
+    // A fixed/credit line carrying expenses moves money through them, at their date: its own movement is not counted (spec 0014, RG9).
+    if (isExpenseLineBlock(l.block) && isLineCarried(d, m, l.key)) continue;
     if (!mine(l.accountId)) continue;
     const sign = l.block === 'rev' ? 1 : -1;
     if (source === 'actual') {

@@ -1,4 +1,5 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isEnvelopeAccount, isLineInBudget, mainAccount, resolveBoxAccountId } from './bank';
+import { carriedLineNote, isExpenseLineBlock, isLineCarried } from './lineExpenses';
 import { bankMovements, countedAmount, envelopeCheckKey, flowOf, monthMode, type BankMovement, type CountedSource, type MonthMode } from './bankMovements';
 import { addMonths, compareMonths, money, parseMonth, round2 } from './format';
 import { closeKey, isMonthLocked, isYearClosed, monthLines, type Ledger } from './ledger';
@@ -87,6 +88,8 @@ export function lineTooltip(d: BudgetData, m: MonthKey, l: Line, today: string):
     parts.push(`Montant compté : ${money(c.amount)} (${c.source === 'actual' ? 'réel' : 'budget'})`);
     parts.push(c.source === 'actual' ? `Le réel (${money(c.amount)}) prime sur le budget (${money(l.budget)}).` : 'Pas de réel : le budget est compté.');
   }
+  const carried = carriedLineNote(d, m, l);
+  if (carried) parts.push(carried);
   if (l.dueDay !== undefined) parts.push(`Prévu le ${effectiveDueDay(l.dueDay, m)} du mois`);
   const mode = EXEC_MODES.find(x => x.value === l.execMode);
   if (mode) parts.push(`Mode d’exécution : ${mode.label}`);
@@ -279,7 +282,9 @@ function pendingLines(d: BudgetData, m: MonthKey, accountId: string, today: stri
       }
     } else {
       if (lineCheck(d, m, l.key)) continue;
-      ({ amount, source } = countedAmount(l));
+      // « Reste à sortir » stays budgetary: a fixed/credit line carried by its expenses weighs its budget, never the actual they feed (spec 0014, RG13).
+      if (isExpenseLineBlock(l.block) && isLineCarried(d, m, l.key)) ({ amount, source } = { amount: l.budget, source: 'budget' });
+      else ({ amount, source } = countedAmount(l));
     }
     out.push({ line: l, amount, source, late: isLate(d, m, l, today) });
   }

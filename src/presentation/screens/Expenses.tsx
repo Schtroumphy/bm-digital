@@ -7,6 +7,7 @@ import { addTransaction, deleteTransaction, deleteTransactions, setStatement } f
 import { deleteAccountMovement, updateAccountMovement } from '../../application/accountMovements';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
+import { actualReplacedBy, expenseLineBlocker, isExpenseLineBlock, lineExpensesTotal } from '../../domain/lineExpenses';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { monthSummary, variableRemaining } from '../../domain/budget';
@@ -15,7 +16,7 @@ import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
 import type { MonthKey, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
-const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne' };
+const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit' };
 
 export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
   const [tab, setTab] = useState<'saisie' | 'soldes'>('saisie');
@@ -71,7 +72,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const targets: [string, string][] =
-    form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
+    form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : form.type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, `${l.name} (${l.block === 'cre' ? 'Crédit' : 'Fixe'}, ${bankAccount(data, l.accountId)?.name ?? ''})`]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
   // « Payé avec » is frozen on the account of the envelope (spec 0011, RG10) or on the account assigned to the variable line (spec 0006 amended).
   // Otherwise, until the user picks an account (form.accountId empty), it follows the payment mode of the chosen box (spec 0006, RG5).
@@ -81,6 +82,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   // A withdrawal cannot be credited to the dedicated account of its savings line (spec 0007, RG7).
   const refusedAccountId = form.type === 'epa' ? lines.find(l => l.key === target)?.linkedAccountId : undefined;
   const accountRefused = accountId === refusedAccountId;
+  // A fixed/credit line whose account is archived takes no expense (spec 0014).
+  const lineBlocker = form.type === 'fix' && target ? expenseLineBlocker(data, month, target) : null;
   const amount = parseAmount(form.amount) ?? 0;
   // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
@@ -110,7 +113,7 @@ function EntryTab({ month }: { month: MonthKey }) {
     setSelected(new Set());
   };
   const targetName = (type: TxType, id: string) => (type === 'env' ? data.envelopes.find(e => e.id === id)?.name : lines.find(l => l.key === id)?.name) ?? 'Supprimé';
-  const targetHue = (type: TxType, id: string) => (type === 'var' ? HUE.dep : type === 'env' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
+  const targetHue = (type: TxType, id: string) => (type === 'var' || type === 'fix' ? HUE.dep : type === 'env' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
 
   let impact: [string, string][] = [];
   if (target && form.type === 'var') {
@@ -130,6 +133,14 @@ function EntryTab({ month }: { month: MonthKey }) {
       [`${e.name} · dépensé`, `${money(spent)} → ${money(spent + budgetAmount)}`],
       ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - budgetAmount)}`],
     ];
+  } else if (target && form.type === 'fix') {
+    const l = lines.find(x => x.key === target)!;
+    const cur = l.actual ?? 0;
+    const carried = lineExpensesTotal(data, month, target) !== null;
+    impact = [
+      [`${l.name} · réel`, `${money(cur)} → ${money(carried ? cur + amount : amount)}`],
+      ['Reste à sortir', 'inchangé (budgétaire)'],
+    ];
   } else if (target) {
     const out = round2(txs.filter(t => t.type === 'epa' && t.target === target).reduce((a, t) => a + t.amount, 0));
     impact = [
@@ -139,9 +150,12 @@ function EntryTab({ month }: { month: MonthKey }) {
   }
 
   const add = () => {
-    if (!amount || amount < 0 || !target || locked || accountRefused) return;
+    if (!amount || amount < 0 || !target || locked || accountRefused || lineBlocker) return;
+    // A typed actual on a fixed/credit line is replaced only after an explicit confirmation (spec 0014, RG6).
+    const replaced = form.type === 'fix' ? actualReplacedBy(data, month, target) : null;
+    if (replaced !== null && !window.confirm(`Cette ligne a un réel saisi de ${money(replaced)}. L’enregistrer le remplacera par le montant des dépenses et il ne sera pas restauré si vous supprimez ensuite la dépense. Remplacer ?`)) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId }, { replaceActual: replaced !== null }),
     );
     // Picking another account is a one-off: the next expense follows its box again.
     setForm(f => ({ ...f, label: '', amount: '', accountId: '' }));
@@ -172,15 +186,15 @@ function EntryTab({ month }: { month: MonthKey }) {
         <div>
           <div className="field-label is-gap">Type</div>
           <div className="chips">
-            {(['var', 'env', 'epa'] as const).map(t => (
+            {(['var', 'env', 'epa', 'fix'] as const).map(t => (
               <Chip key={t} on={form.type === t} onClick={() => setForm(f => ({ ...f, type: t, target: '' }))}>
-                {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne' }[t]}
+                {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit' }[t]}
               </Chip>
             ))}
           </div>
         </div>
         <div>
-          <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : 'Compte d’épargne débité'}</div>
+          <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : form.type === 'fix' ? 'Ligne fixe ou crédit' : 'Compte d’épargne débité'}</div>
           <div className="chips is-wrap">
             {targets.map(([id, name]) => (
               <Chip key={id} on={target === id} onClick={() => setForm(f => ({ ...f, target: id }))}>
@@ -202,6 +216,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             ))}
           </div>
         </div>
+        {lineBlocker && <div className="alert-box">{lineBlocker}</div>}
         {accountRefused && <div className="alert-box">Choisis un compte différent du compte débité (le compte dédié de la ligne).</div>}
         <div className="impact">
           <div className="field-label">Impact sur le réel</div>
@@ -212,7 +227,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             </div>
           ))}
         </div>
-        <div className={`btn-dark is-block${!amount || locked || accountRefused ? ' is-disabled' : ''}`} onClick={add}>
+        <div className={`btn-dark is-block${!amount || locked || accountRefused || lineBlocker ? ' is-disabled' : ''}`} onClick={add}>
           <Icon name="plus" size={15} stroke={3} />
           Ajouter la dépense
         </div>

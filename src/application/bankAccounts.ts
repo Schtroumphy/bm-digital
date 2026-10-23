@@ -1,6 +1,7 @@
-import { canLinkAccount, CASH_ACCOUNT_ID, fixedTransactionAccountId, isEnvelopeAccount, isKindFixed, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
+import { accountIdOf, canLinkAccount, CASH_ACCOUNT_ID, fixedTransactionAccountId, isEnvelopeAccount, isKindFixed, isSavingsWithdrawalAllowed, mainAccount, nextBankHue } from '../domain/bank';
 import { currentMonthKey } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
+import { isExpenseLineBlock, isLineCarried } from '../domain/lineExpenses';
 import type { AccountKind, BudgetData, MonthKey } from '../domain/types';
 
 /*
@@ -126,6 +127,8 @@ export function setLineAccount(d: BudgetData, m: MonthKey, key: string, accountI
   if (isMonthLocked(d, m)) return false;
   const l = d.months[m]?.lines.find(x => x.key === key);
   if (!l || (l.linkedAccountId && l.linkedAccountId === accountId)) return false;
+  // The expenses of a fixed/credit line stay on its account (spec 0014, RG2): see `CARRIED_ACCOUNT_REFUSAL`.
+  if (isExpenseLineBlock(l.block) && isLineCarried(d, m, key) && accountIdOf(d, l.accountId) !== accountId) return false;
   // The account of an envelope is never the account of a line (spec 0011, RG2).
   const target = find(d, accountId);
   if (target && isEnvelopeAccount(target)) return false;
