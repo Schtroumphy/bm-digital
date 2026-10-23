@@ -330,7 +330,9 @@ function addLineExpense(d: BudgetData, input: Transaction, replaceActual: boolea
   if (input.accountId !== undefined && input.accountId !== accountId) return false;
   if (isEnvelopeAccount(d.accounts.find(a => a.id === accountId))) return false;
   if (line.actual !== null && !isLineCarried(d, input.month, input.target) && !replaceActual) return false;
-  d.transactions.push({ ...input, accountId });
+  const detail = normalizeDetail(input.detail);
+  const { detail: _raw, ...rest } = input;
+  d.transactions.push(detail === undefined ? { ...rest, accountId } : { ...rest, accountId, detail });
   line.actual = lineExpensesTotal(d, input.month, input.target);
   return true;
 }
