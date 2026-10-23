@@ -6,7 +6,7 @@ import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon, type IconName } from '../components/Icon';
 import { Toast } from '../components/Toast';
 import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
-import { CARRIED_ACCOUNT_REFUSAL, carriedLineNote, isExpenseLineBlock, lineExpenses } from '../../domain/lineExpenses';
+import { carriedAccountRefusal, carriedLineNote, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
 import { LineCheckBox, LineCheckMeta } from '../components/LineCheck';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
@@ -349,7 +349,7 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
     strip = { label: 'Restant', value: money(rest), color: rest >= 0 ? 'oklch(0.48 0.13 150)' : 'oklch(0.52 0.19 25)' };
   }
   // Number of expenses carried by a fixed/credit line (spec 0014): its actual is their sum, not editable, and its pointage no longer moves balances.
-  const carriedBy = (l: Line) => (isExpenseLineBlock(l.block) ? lineExpenses(data, month, l.key).length : 0);
+  const carriedBy = (l: Line) => (isCarryingBlock(l.block) ? lineExpenses(data, month, l.key).length : 0);
   const set = (key: string, patch: Partial<Line>) => update(d => updateLine(d, month, key, patch));
   const add = (section?: string) => {
     const key = newId('l');
@@ -411,7 +411,7 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                       <LinkedAccountPicker data={data} linkedAccountId={l.linkedAccountId} block={l.block} sourceId={accountIdOf(data, l.accountId)} stacked disabled={locked} onPick={id => update(d => void setLineLinkedAccount(d, month, l.key, id))} />
                     </span>
                   )}
-                  {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked || carriedBy(l) > 0} hint={carriedBy(l) > 0 ? CARRIED_ACCOUNT_REFUSAL : block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
+                  {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked || carriedBy(l) > 0} hint={carriedBy(l) > 0 ? carriedAccountRefusal(l.block) : block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={[l.name, lineTooltip(data, month, l, today)].filter(Boolean).join('\n')} disabled={locked}>
                     {l.name}
                   </EditableText>

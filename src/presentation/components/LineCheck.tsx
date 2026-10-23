@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { checkLine, setLineSchedule, uncheckLine, updateCheck } from '../../application/checkoff';
 import { EXEC_MODES, hasNoAmount, isLate, isPointable, lineCheck, lineCounted, lineTooltip } from '../../domain/checkoff';
-import { isExpenseLineBlock, isLineCarried } from '../../domain/lineExpenses';
+import { isCarryingBlock, isLineCarried } from '../../domain/lineExpenses';
 import { money } from '../../domain/format';
 import type { ExecMode, Line, MonthKey } from '../../domain/types';
 import { useStore } from '../state/store';
@@ -27,10 +27,10 @@ export function LineCheckBox({ month, line, locked, today }: Props) {
   return (
     <span
       className={`check${done ? ' is-on' : ''}${locked ? ' is-locked' : ''}`}
-      title={[received ? (done ? 'Reçu : marquer non reçu' : 'Marquer reçu') : done ? 'Pointé : décocher' : 'Pointer : l’argent a bougé', isExpenseLineBlock(line.block) && isLineCarried(data, month, line.key) ? 'Pointage sans effet : la ligne est portée par ses dépenses' : '', lineTooltip(data, month, line, today)].filter(Boolean).join('\n')}
+      title={[received ? (done ? 'Reçu : marquer non reçu' : 'Marquer reçu') : done ? 'Pointé : décocher' : 'Pointer : l’argent a bougé', isCarryingBlock(line.block) && isLineCarried(data, month, line.key) ? 'Pointage sans effet : la ligne est portée par ses écritures' : '', lineTooltip(data, month, line, today)].filter(Boolean).join('\n')}
       onClick={locked ? undefined : toggle}
-      aria-label={isExpenseLineBlock(line.block) && isLineCarried(data, month, line.key) ? `Pointage de ${line.name} : sans effet sur les soldes, la ligne est portée par ses dépenses` : undefined}
-      aria-describedby={isExpenseLineBlock(line.block) && isLineCarried(data, month, line.key) ? `carried:${line.key}` : undefined}
+      aria-label={isCarryingBlock(line.block) && isLineCarried(data, month, line.key) ? `Pointage de ${line.name} : sans effet sur les soldes, la ligne est portée par ses écritures` : undefined}
+      aria-describedby={isCarryingBlock(line.block) && isLineCarried(data, month, line.key) ? `carried:${line.key}` : undefined}
     >
       <Icon name="check" size={12} stroke={3.5} color="#fff" style={{ opacity: done ? 1 : 0 }} />
     </span>

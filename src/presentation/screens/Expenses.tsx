@@ -8,7 +8,7 @@ import { addTransaction, deleteTransaction, deleteTransactions, setStatement, se
 import { deleteAccountMovement, setAccountMovementDetail, updateAccountMovement } from '../../application/accountMovements';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
-import { actualReplacedBy, expenseLineBlocker, isExpenseLineBlock, lineExpensesTotal } from '../../domain/lineExpenses';
+import { actualReplacedBy, bankDateOf, expenseLineBlocker, isExpenseLineBlock, lineExpensesTotal } from '../../domain/lineExpenses';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { matchesEntrySearch } from '../../domain/detail';
@@ -18,7 +18,10 @@ import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
 import type { MonthKey, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
-const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit' };
+/** Sum of the expenses of a list: an entry of money (`rev`) is never an expense (spec 0015). */
+const spentOf = (xs: { type: TxType; amount: number }[]) => round2(xs.filter(t => t.type !== 'rev').reduce((a, t) => a + t.amount, 0));
+
+const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
 export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
   const [tab, setTab] = useState<'saisie' | 'soldes'>('saisie');
@@ -136,7 +139,7 @@ function EntryTab({ month }: { month: MonthKey }) {
     });
   const removePicked = () => {
     if (locked || picked.length === 0) return;
-    if (!window.confirm(`Supprimer ${picked.length} dépense${picked.length > 1 ? 's' : ''} (${money(picked.reduce((a, t) => a + t.amount, 0))}) ?`)) return;
+    if (!window.confirm(`Supprimer ${picked.length} opération${picked.length > 1 ? 's' : ''} (dépenses : ${money(spentOf(picked))}) ?`)) return;
     const ids = picked.map(t => t.id);
     update(d => void deleteTransactions(d, ids));
     setSelected(new Set());
@@ -277,8 +280,8 @@ function EntryTab({ month }: { month: MonthKey }) {
         </div>
         <div className="panel-lg">
           <div className="tx-head">
-            <div className="tx-title">Dépenses de {monthLabel(month)}</div>
-            <b>{money(txs.reduce((a, t) => a + t.amount, 0))}</b>
+            <div className="tx-title">Opérations de {monthLabel(month)}</div>
+            <b title="Total des dépenses (les entrées d’argent ne comptent pas)">{money(spentOf(txs))}</b>
           </div>
           <div className="tx-filters">
             <input className="text-input" value={filter.q} placeholder="Rechercher un libellé ou un détail" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
@@ -302,7 +305,7 @@ function EntryTab({ month }: { month: MonthKey }) {
           {picked.length > 0 && (
             <div className="tx-bulk">
               <span>
-                {picked.length} sélectionnée{picked.length > 1 ? 's' : ''} · {money(picked.reduce((a, t) => a + t.amount, 0))}
+                {picked.length} sélectionnée{picked.length > 1 ? 's' : ''} · {money(spentOf(picked))}
               </span>
               <span className="btn-outline" onClick={() => setSelected(new Set())}>
                 Désélectionner
@@ -325,7 +328,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             <Fragment key={t.id}>
               <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
                 <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} disabled={locked} onChange={() => toggle(t.id)} />
-                <span className="muted">{dayLabel(t.month, t.day)}</span>
+                <span className="muted" title={bankDateOf(t).slice(0, 7) !== t.month ? `Rattachée à ${monthLabel(t.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(t).slice(0, 7), Number(bankDateOf(t).slice(8, 10)))}</span>
                 <EntryLabel entry={t} onOpen={openDetail} />
                 <span className="tx-target">
                   <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
@@ -350,8 +353,8 @@ function EntryTab({ month }: { month: MonthKey }) {
               )}
             </Fragment>
           ))}
-          {txs.length > 0 && shown.length === 0 && <div className="empty">Aucune dépense ne correspond aux filtres.</div>}
-          {txs.length === 0 && <div className="empty">Aucune dépense saisie ce mois-ci.</div>}
+          {txs.length > 0 && shown.length === 0 && <div className="empty">Aucune opération ne correspond aux filtres.</div>}
+          {txs.length === 0 && <div className="empty">Aucune opération saisie ce mois-ci.</div>}
           <div style={{ height: 8 }} />
         </div>
         <MovementsBlock month={month} locked={locked} />
@@ -393,7 +396,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
           editing?.id === m.id ? (
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
-                <span className="muted">{dayLabel(m.month, m.day)}</span>
+                <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
                 <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
                 <span className="muted ellipsis">
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
@@ -410,7 +413,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
           ) : (
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
-                <span className="muted">{dayLabel(m.month, m.day)}</span>
+                <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
                 <EntryLabel entry={m} onOpen={openDetail} />
                 <span className="muted ellipsis">
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}

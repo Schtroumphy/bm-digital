@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { cancelAdjustment, createAdjustment, setAccountStatement } from '../../application/checkoff';
 import { IGNORED_REASON, accountPointage, balanceDateBounds, effectiveDueDay, lateCount, pointageAccounts, shortDate, validateBalanceDate, type AccountPointage, type BalanceDateError, type PendingLine } from '../../domain/checkoff';
-import { addMonths, money, monthName, parseAmount, parseMonth, rawNumber } from '../../domain/format';
+import { addMonths, money, monthLabel, monthName, parseAmount, parseMonth, rawNumber } from '../../domain/format';
 import type { MonthKey } from '../../domain/types';
 import { AccountDot } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
@@ -209,7 +209,7 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
             <span>{money(x.amount, true)}</span>
           </div>
         ) : (
-          <div key={i} className={`pt-row${x.counted ? '' : ' is-grey'}`}>
+          <div key={i} className={`pt-row${x.counted ? '' : ' is-grey'}`} title={x.attachedMonth ? `Rattachée à ${monthLabel(x.attachedMonth).toLowerCase()}` : undefined}>
             <span style={x.cancelledOn ? { textDecoration: 'line-through' } : undefined}>
               {shortDate(x.date)} {x.label}
               {x.adjustmentId && ` (régularisation, créée le ${shortDate(x.createdOn ?? x.date)})`}
