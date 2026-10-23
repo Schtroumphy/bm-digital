@@ -308,6 +308,12 @@ export function choosePairAccount(d: BudgetData, reading: StatementReading, prev
   return prepareImport(d, reading, { ...preview.choices, [pairKey]: accountId }, preview.lines);
 }
 
+/** Natures offered in the selector of a line: « Revenu » / « Virement reçu » for an entry of money, the debit natures otherwise (« À qualifier » only while the line is in that state). Always the same set, whatever the current nature, so a choice can be undone (spec 0015, RG19). */
+export function natureOptions(l: Pick<PreviewLine, 'row' | 'nature'>): LineNature[] {
+  if (isIncome(l)) return ['revenu', 'recu'];
+  return (['depense', 'retrait', 'interne', 'externe', 'a_qualifier'] as const).filter(n => n !== 'a_qualifier' || l.nature === 'a_qualifier');
+}
+
 /** The line with another nature: the target is kept only if it still fits, a withdrawal goes to cash by default (RG35), an expense of an envelope's account goes to that envelope. */
 export function changeNature(d: BudgetData, l: PreviewLine, nature: LineNature): PreviewLine {
   // An entry of money is a revenue or a received transfer, a debit never is (spec 0015, RG17).

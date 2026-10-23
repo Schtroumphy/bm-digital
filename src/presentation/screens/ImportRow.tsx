@@ -1,5 +1,5 @@
 import { AccountDot } from '../components/AccountPicker';
-import { lineBalanceWarning, destinationAccounts, isIncome, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, type LineNature, type PreviewLine } from '../../application/statementImport';
+import { lineBalanceWarning, destinationAccounts, isIncome, isReceivedTransfer, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
 import { bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
 import { dayLabel, money, monthLabel } from '../../domain/format';
@@ -9,10 +9,8 @@ import { useStore } from '../state/store';
 
 /** One line of the import preview: checkbox, date, label, amount, nature, target, month and state chips (spec 0013). */
 
-const NATURES: LineNature[] = ['depense', 'retrait', 'interne', 'externe', 'a_qualifier'];
 /** Hint of an entry whose label speaks of a transfer: informative, in the tooltip only (spec 0015, RG17). */
 const TRANSFER_HINT = 'Virement possible : vérifiez que ce n’est pas un virement entre vos comptes.';
-const CREDIT_NATURES: LineNature[] = ['revenu', 'recu'];
 
 export const targetValue = (t: ImportTarget | null) => (t ? `${t.kind}:${t.kind === 'var' || t.kind === 'line' ? t.key : t.id}` : '');
 export function targetFrom(value: string): ImportTarget | null {
@@ -100,14 +98,20 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
         <b className={`num import-amount${credit ? ' is-income' : ''}`}>{credit ? money(l.row.amount, true) : money(l.row.amount)}</b>
         {income ? (
           <>
-            <span className="muted">—</span>
+            <select className="su-select" value={l.nature} onChange={e => onChange(x => changeNature(data, x, e.target.value as LineNature))}>
+              {natureOptions(l).map(n => (
+                <option key={n} value={n}>
+                  {natureLabel(n)}
+                </option>
+              ))}
+            </select>
             <span className="muted">—</span>
             <span className="muted">{monthLabel(l.month).split(' ')[0]}</span>
           </>
         ) : (
           <>
             <select className="su-select" value={l.nature} onChange={e => onChange(x => changeNature(data, x, e.target.value as LineNature))}>
-              {(credit ? CREDIT_NATURES : NATURES.filter(n => n !== 'a_qualifier' || l.nature === 'a_qualifier')).map(n => (
+              {natureOptions(l).map(n => (
                 <option key={n} value={n}>
                   {natureLabel(n)}
                 </option>
