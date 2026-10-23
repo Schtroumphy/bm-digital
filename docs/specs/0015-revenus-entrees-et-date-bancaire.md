@@ -175,3 +175,10 @@ Soldes suivant la date bancaire même dans un mois déjà clos (RG6) ; « Revenu
 ## Questions ouvertes
 
 Aucune.
+
+## Amendement 1 — spec 0019 (pointage fictif et soldes réels, implémentée)
+
+La [spec 0019](0019-pointage-fictif-et-soldes-reels.md) amende cette spec :
+- Supprimés : RG9 (réel remplacé), RG10 à RG12 (ligne `rev` portée), R2 et CA8.
+- RG2 ne s'applique qu'au solde réel : l'entrée importée est une écriture réelle datée par `bankDate` ; le solde estimé ne la compte pas (la ligne `rev` y entre par son pointage « reçu », au montant compté).
+- Le réel d'une ligne `rev` est la somme de ses entrées (CA17 de la 0019).

@@ -187,3 +187,7 @@ Q6. Existe-t-il déjà une table Supabase des comptes bancaires ? Le schéma est
 Q7. Les groupes « Épargnes » / « Investissements » mélangent comptes et lignes non liées. Faut-il rendre visibles les lignes encore non liées (pastille « non lié ») pour inciter à lier ? Recommandation : oui, simple libellé gris.
 
 Q8. Sur un budget démarré, l'assistant ignore les soldes des comptes existants (ADR 0003). Faut-il aussi ignorer le type d'un compte existant redéclaré dans l'assistant ? Recommandation : oui, il se règle dans l'onglet Comptes.
+
+## Amendement — spec 0019 (implémentée)
+
+Les soldes de la clôture (`bank:<id>`) viennent du **solde réel** (écritures), plus du réel des lignes ; une ligne `epa`/`inv` liée n'a toujours pas de ligne propre.

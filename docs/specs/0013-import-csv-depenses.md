@@ -681,3 +681,10 @@ L'import réel des entrées d'argent (rattachement à une ligne de revenu `rev`,
 Décidé par le développeur : le « double pointage » sera une spec séparée (0018, après les 0014 à 0017), avec un rapprochement automatique modifiable à la main. Il n'est pas rédigé ici. Raison : il modifie le modèle de pointage de la spec 0009 (cases, couleurs, mode de mois, `LineCheck`) et touche chaque écran qui affiche une case. Idée de départ : une écriture importée apparaît « importée » dans une couleur, et devient « validée » dans une autre quand un mouvement saisi et enregistré lui correspond.
 
 Ce que la 0013 garde pour le brancher : l'empreinte et le rang de chaque transaction et de chaque mouvement entre comptes importés (RG20, RG24), qui identifient une écriture comme venant de la banque et la rendent retrouvable. Aucune autre préparation n'est faite ici.
+
+## Amendement 7 — spec 0019 (pointage fictif et soldes réels, implémentée)
+
+- Le mouvement entre comptes devient un **transfert** (type d'écriture « Transfert » de l'écran Saisie), créable librement (RG14) et avec une cible facultative (enveloppe, ligne d'épargne/investissement, ligne `var` à compte dédié). L'aperçu propose la cible par défaut selon le compte de destination (CA23).
+- P7 (retrait vers une enveloppe et double compte) est résolu par la cible et par la règle RG10 de la 0019.
+- RG10b (« sans règle d'isolation ») est précisée par RG12 de la 0019 : un transfert débite et crédite ses deux comptes, dans le solde réel et dans le solde estimé, hors budget ou non.
+- Plus d'état d'aperçu « Réel saisi à remplacer » ; aucune autre règle d'import des lignes ne change.
