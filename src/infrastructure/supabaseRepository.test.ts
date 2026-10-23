@@ -45,6 +45,23 @@ describe('SupabaseRepository : écriture par diff', () => {
     return { remote, repo, data };
   }
 
+  it('un rang libéré puis repris dans la même sauvegarde passe (suppressions avant upserts)', async () => {
+    const { remote, repo, data } = await synced();
+    const old = data.transactions.find(t => t.id === 't-imp')!;
+    data.transactions = data.transactions.filter(t => t.id !== 't-imp');
+    data.transactions.push({ ...old, id: 't-imp2' });
+    await repo.save(data);
+    const reloaded = await createSupabaseRepository(remote).load();
+    expect(reloaded!.transactions.filter(t => t.fingerprint === old.fingerprint).map(t => t.id)).toEqual(['t-imp2']);
+  });
+
+  it('un conflit réel sur (compte d’import, empreinte, rang) fait échouer la sauvegarde', async () => {
+    const { repo, data } = await synced();
+    const old = data.transactions.find(t => t.id === 't-imp')!;
+    data.transactions.push({ ...old, id: 't-copy' });
+    await expect(repo.save(data)).rejects.toThrow(/unique/);
+  });
+
   it('load renvoie null pour un compte sans donnée (CA9)', async () => {
     expect(await createSupabaseRepository(createMemoryRemote()).load()).toBeNull();
   });

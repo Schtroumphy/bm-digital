@@ -46,6 +46,54 @@ export type Database = {
           },
         ]
       }
+      account_movements: {
+        Row: {
+          amount: number
+          category: string | null
+          day: number
+          fingerprint: string | null
+          from_account_id: string
+          id: string
+          import_account_id: string | null
+          label: string
+          month: string
+          position: number
+          rank: number | null
+          to_account_id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          day: number
+          fingerprint?: string | null
+          from_account_id: string
+          id: string
+          import_account_id?: string | null
+          label: string
+          month: string
+          position?: number
+          rank?: number | null
+          to_account_id: string
+          user_id?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          day?: number
+          fingerprint?: string | null
+          from_account_id?: string
+          id?: string
+          import_account_id?: string | null
+          label?: string
+          month?: string
+          position?: number
+          rank?: number | null
+          to_account_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       account_statements: {
         Row: {
           account_key: string
@@ -291,6 +339,63 @@ export type Database = {
         }
         Relationships: []
       }
+      import_account_links: {
+        Row: {
+          account_id: string | null
+          account_name: string
+          connection_name: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          account_name: string
+          connection_name: string
+          id: string
+          position?: number
+          user_id?: string
+        }
+        Update: {
+          account_id?: string | null
+          account_name?: string
+          connection_name?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      import_rules: {
+        Row: {
+          id: string
+          nature: string
+          pattern: string
+          position: number
+          target_id: string
+          target_kind: string
+          user_id: string
+        }
+        Insert: {
+          id: string
+          nature: string
+          pattern: string
+          position?: number
+          target_id: string
+          target_kind: string
+          user_id?: string
+        }
+        Update: {
+          id?: string
+          nature?: string
+          pattern?: string
+          position?: number
+          target_id?: string
+          target_kind?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       line_checks: {
         Row: {
           account_id: string | null
@@ -459,12 +564,16 @@ export type Database = {
         Row: {
           account_id: string | null
           amount: number
+          category: string | null
           created_at: string
           day: number
+          fingerprint: string | null
           id: string
+          import_account_id: string | null
           label: string
           month: string
           position: number
+          rank: number | null
           target: string
           type: string
           user_id: string
@@ -472,12 +581,16 @@ export type Database = {
         Insert: {
           account_id?: string | null
           amount: number
+          category?: string | null
           created_at?: string
           day: number
+          fingerprint?: string | null
           id: string
+          import_account_id?: string | null
           label: string
           month: string
           position?: number
+          rank?: number | null
           target: string
           type: string
           user_id?: string
@@ -485,12 +598,16 @@ export type Database = {
         Update: {
           account_id?: string | null
           amount?: number
+          category?: string | null
           created_at?: string
           day?: number
+          fingerprint?: string | null
           id?: string
+          import_account_id?: string | null
           label?: string
           month?: string
           position?: number
+          rank?: number | null
           target?: string
           type?: string
           user_id?: string

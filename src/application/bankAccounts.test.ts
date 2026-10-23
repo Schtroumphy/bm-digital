@@ -311,7 +311,7 @@ describe('assistant : étape Comptes', () => {
     const draft = exampleDraft(M, mkId);
     draft.rows.rev[0].accountId = CASH_ACCOUNT_ID;
     expect(createFirstMonth(d, draft, TODAY)).toBe(true);
-    expect(d.accounts.filter(a => a.kind !== 'enveloppe').map(a => [a.id, a.openingBalance, a.openingMonth, a.isDefault])).toEqual([
+    expect(d.accounts.filter(a => a.kind !== 'enveloppe' && a.kind !== 'epargne' && a.kind !== 'invest').map(a => [a.id, a.openingBalance, a.openingMonth, a.isDefault])).toEqual([
       [MAIN_ACCOUNT_ID, 1800, M, true],
       [CASH_ACCOUNT_ID, 40, M, false],
     ]);

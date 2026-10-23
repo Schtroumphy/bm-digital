@@ -1,3 +1,4 @@
+import type { StatementReading } from '../domain/statement';
 import type { BudgetData } from '../domain/types';
 
 /**
@@ -38,4 +39,13 @@ export interface AuthService {
   /** Rejects when the service cannot be reached; a wrong e-mail or password is a normal result. */
   signIn(email: string, password: string): Promise<SignInResult>;
   signOut(): Promise<void>;
+}
+
+/**
+ * Where the lines to import come from (spec 0013). The CSV file of the bank is the first implementation;
+ * an automatic bank connection would be another. It never touches the budget: it only reads.
+ */
+export interface StatementSource {
+  /** Reads the bytes of a file. Never throws for a bad file: the problem is in `fileError` or `errors`. */
+  read(bytes: Uint8Array): StatementReading;
 }

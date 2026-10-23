@@ -1,5 +1,5 @@
 import type {
-  AccountBalanceEntry, Adjustment, BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, ExecMode, Line, LineCheck,
+  AccountBalanceEntry, AccountMovement, Adjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, ExecMode, Line, LineCheck,
   MonthData, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
@@ -133,8 +133,44 @@ export function toRows(d: BudgetData): TableRows {
       type: t.type,
       target: t.target,
       account_id: orNull(t.accountId),
+      import_account_id: orNull(t.importAccountId),
+      fingerprint: orNull(t.fingerprint),
+      rank: orNull(t.rank),
+      category: orNull(t.category),
       position,
     }),
+  );
+
+  (d.accountMovements ?? []).forEach((m, position) =>
+    rows.account_movements.push({
+      id: m.id,
+      month: m.month,
+      day: m.day,
+      label: m.label,
+      amount: m.amount,
+      from_account_id: m.fromAccountId,
+      to_account_id: m.toAccountId,
+      import_account_id: orNull(m.importAccountId),
+      fingerprint: orNull(m.fingerprint),
+      rank: orNull(m.rank),
+      category: orNull(m.category),
+      position,
+    }),
+  );
+
+  (d.importRules ?? []).forEach((r, position) =>
+    rows.import_rules.push({
+      id: r.id,
+      pattern: r.pattern,
+      nature: r.nature,
+      target_kind: r.target.kind,
+      target_id: r.target.kind === 'var' ? r.target.key : r.target.id,
+      position,
+    }),
+  );
+
+  (d.importAccountLinks ?? []).forEach((l, position) =>
+    rows.import_account_links.push({ id: l.id, account_name: l.accountName, connection_name: l.connectionName, account_id: orNull(l.accountId), position }),
   );
 
   d.transfers.forEach((t, position) =>
@@ -278,8 +314,37 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       type: r.type as TxType,
       target: r.target,
       accountId: orUndefined(r.account_id),
+      importAccountId: orUndefined(r.import_account_id),
+      fingerprint: orUndefined(r.fingerprint),
+      rank: orUndefined(r.rank),
+      category: orUndefined(r.category),
     }),
   );
+
+  const accountMovements: AccountMovement[] = byPosition(rows.account_movements).map(r =>
+    compact({
+      id: r.id,
+      month: r.month,
+      day: r.day,
+      label: r.label,
+      amount: r.amount,
+      fromAccountId: r.from_account_id,
+      toAccountId: r.to_account_id,
+      importAccountId: orUndefined(r.import_account_id),
+      fingerprint: orUndefined(r.fingerprint),
+      rank: orUndefined(r.rank),
+      category: orUndefined(r.category),
+    }),
+  );
+
+  const importRules: ImportRule[] = byPosition(rows.import_rules).map(r => {
+    const target: ImportTarget = r.target_kind === 'var' ? { kind: 'var', key: r.target_id } : r.target_kind === 'env' ? { kind: 'env', id: r.target_id } : { kind: 'account', id: r.target_id };
+    return { id: r.id, pattern: r.pattern, nature: r.nature as ImportNature, target };
+  });
+
+  const importAccountLinks: ImportAccountLink[] = byPosition(rows.import_account_links).map(r => ({
+    id: r.id, accountName: r.account_name, connectionName: r.connection_name, accountId: r.account_id,
+  }));
 
   const transfers: Transfer[] = byPosition(rows.transfers).map(r => {
     const t: Transfer = { id: r.id, name: r.name, amount: r.amount, fromAccountId: r.from_account_id };
@@ -323,6 +388,9 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     statements,
     transactions,
     transfers,
+    ...(accountMovements.length ? { accountMovements } : {}),
+    ...(importRules.length ? { importRules } : {}),
+    ...(importAccountLinks.length ? { importAccountLinks } : {}),
     ...(adjustments.length ? { adjustments } : {}),
     planned,
     closes,

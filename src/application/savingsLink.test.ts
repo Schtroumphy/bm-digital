@@ -266,12 +266,26 @@ describe('assistant Démarrage (RG16)', () => {
     expect(createFirstMonth(d, draft, '2027-01')).toBe(true);
     const lines = d.months['2027-01'].lines;
     expect(lines.find(l => l.key === 'e1')?.linkedAccountId).toBe('livret-acc');
-    expect(lines.find(l => l.key === 'e2')?.linkedAccountId).toBeUndefined();
-    expect(lines.find(l => l.key === 'e3')?.linkedAccountId).toBeUndefined();
+    // A row with no valid dedicated account gets an account of its own, of the kind of its block.
+    expect(lines.find(l => l.key === 'e2')?.linkedAccountId).toBe('acc-sav-e2');
+    expect(lines.find(l => l.key === 'e3')?.linkedAccountId).toBe('acc-sav-e3');
     expect(lines.find(l => l.key === 'i1')?.linkedAccountId).toBe('pea-acc');
     // RG7 (spec 0010): an investment line cannot be tied to an « épargne » account.
-    expect(lines.find(l => l.key === 'i2')?.linkedAccountId).toBeUndefined();
+    expect(lines.find(l => l.key === 'i2')?.linkedAccountId).toBe('acc-sav-i2');
     expect(d.template.lines.find(l => l.key === 'e1')?.linkedAccountId).toBe('livret-acc');
+  });
+
+  it('crée un compte épargne ou investissement pour chaque ligne sans dédié, au solde saisi', () => {
+    const d = emptyData();
+    const draft = emptyDraft('2027-01');
+    draft.rows.epa = [row('e1', { name: 'Livret A', kind: 'LT', balance: 900 })];
+    draft.rows.inv = [row('i1', { name: 'PEA', balance: 300 })];
+    expect(createFirstMonth(d, draft, '2027-01')).toBe(true);
+    const acc = (id: string) => d.accounts.find(a => a.id === id)!;
+    expect([acc('acc-sav-e1').kind, acc('acc-sav-e1').name, acc('acc-sav-e1').openingBalance, acc('acc-sav-e1').openingMonth]).toEqual(['epargne', 'Livret A', 900, '2027-01']);
+    expect([acc('acc-sav-i1').kind, acc('acc-sav-i1').name, acc('acc-sav-i1').openingBalance]).toEqual(['invest', 'PEA', 300]);
+    expect(d.template.lines.find(l => l.key === 'e1')?.linkedAccountId).toBe('acc-sav-e1');
+    expect(d.months['2027-01'].lines.find(l => l.key === 'i1')?.linkedAccountId).toBe('acc-sav-i1');
   });
 });
 

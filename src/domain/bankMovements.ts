@@ -132,6 +132,14 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
     if (t.to.id === id && !(id === main && !isAccountInBudget(d, t.fromAccountId))) out.push({ date: first, label: `${t.name} (virement)`, amount: t.amount, kind: 'transfer' });
     if (t.fromAccountId === id && !(id === main && !isAccountInBudget(d, t.to.id))) out.push({ date: first, label: `${t.name} (virement)`, amount: -t.amount, kind: 'transfer' });
   }
+  // Movements between accounts created by the import (spec 0013, RG10b): a fact, so counted in both modes. The main account
+  // is not touched when the other side is out of the budget (spec 0009, RG92).
+  for (const mv of d.accountMovements ?? []) {
+    if (mv.month !== m || mv.amount === 0) continue;
+    const date = `${m}-${pad2(mv.day)}`;
+    if (mv.fromAccountId === id && !(id === main && !isAccountInBudget(d, mv.toAccountId))) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (mouvement)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.toAccountId === id && !(id === main && !isAccountInBudget(d, mv.fromAccountId))) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (mouvement)`, amount: mv.amount, kind: 'transfer', counterpart: true });
+  }
   for (const a of d.adjustments ?? []) {
     if (a.accountId === id && !a.cancelledOn && a.date.startsWith(m)) out.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', adjustmentId: a.id });
   }
