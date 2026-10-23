@@ -138,7 +138,7 @@ C'est un port défini dans `application/ports.ts`, seule porte d'accès à la pe
 
 20 tables, définies par `20261020120918_init_schema.sql`, rattrapées sur le domaine par `20261022212402_domain_schema_catchup.sql` (spec 0012), puis complétées par `20261022224005_csv_import.sql` (spec 0013 : `account_movements`, `import_rules`, colonnes d'import de `transactions`), puis `20261022231057_import_account_links.sql` (amendement 1 : `import_account_links`, colonne `category`) : `settings`, `bank_accounts`, `template_lines`, `months`, `budget_lines`, `line_checks`, `account_balances`, `envelopes`, `envelope_allocations`, `envelope_history`, `account_statements`, `transactions`, `transfers`, `transfers_done`, `adjustments`, `planned_items`, `year_closes`. L'ancien fichier `20261021000000_line_checks.sql`, jamais appliqué, a été supprimé : la migration de rattrapage le remplace.
 
-Spec 0019 : `20261023200000_transfers_and_derived_actuals.sql` (non appliquée) ajoute la cible facultative d'un transfert (`account_movements.target_kind`, `target_key`) et retire `template_lines.actual` ; `month_lines.actual` est conservé comme cache recalculé et `settings.pointage_start` reste en base, inutilisée.
+Spec 0019 : `20261023200855_transfers_and_derived_actuals.sql` (appliquée) ajoute la cible facultative d'un transfert (`account_movements.target_kind`, `target_key`) et retire `template_lines.actual` ; `month_lines.actual` est conservé comme cache recalculé et `settings.pointage_start` reste en base, inutilisée.
 
 - Chaque table porte un `user_id` (défaut `auth.uid()`, suppression en cascade) dans sa clé primaire.
 - La RLS « own rows » limite l'accès à `user_id = auth.uid()`.
