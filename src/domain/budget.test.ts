@@ -32,7 +32,7 @@ describe('seed data matches the design', () => {
     const s = monthSummary(d, ledger, '2026-12');
     expect(s.remaining).toBe(2950);
     expect(s.income).toBe(8000);
-    expect(s.expenses).toBe(3856);
+    expect(s.expenses).toBe(2990);
     expect(s.savings).toBe(1194);
     expect(s.grossSavings).toBe(2060);
     expect(s.grossSavingsRate.toFixed(1)).toBe('25.8');

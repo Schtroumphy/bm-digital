@@ -185,7 +185,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const b = (k: BlockKey) => blockTotals(lines, k).budget;
   const allocSum = sum(Object.values(monthAlloc(d, m)));
   const income = b('rev');
-  const expenses = round2(b('cre') + b('fix') + b('var') + allocSum);
+  // Envelope allocations are counted once, in the gross savings: Dépenses + Épargne budgétisée = Revenus when nothing is left to place.
+  const expenses = round2(b('cre') + b('fix') + b('var'));
   const savings = round2(b('epa') + b('inv'));
   const paidIn = round2(blockTotals(lines, 'epa').actual + blockTotals(lines, 'inv').actual);
   const txs = d.transactions.filter(t => t.month === m && isTransactionInBudget(d, t));
