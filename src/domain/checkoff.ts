@@ -334,6 +334,12 @@ export function ignoredMovements(d: BudgetData, accountId: string, m: MonthKey):
     if (t.to.id === main && outOfBudget(t.fromAccountId)) out.push({ date: `${m}-01`, label: `${t.name} (virement)`, amount: t.amount, reason: IGNORED_REASON });
     if (t.fromAccountId === main && outOfBudget(t.to.id)) out.push({ date: `${m}-01`, label: `${t.name} (virement)`, amount: -t.amount, reason: IGNORED_REASON });
   }
+  for (const mv of d.accountMovements ?? []) {
+    if (mv.month !== m || mv.amount === 0) continue;
+    const date = `${m}-${String(mv.day).padStart(2, '0')}`;
+    if (mv.fromAccountId === main && outOfBudget(mv.toAccountId)) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (mouvement)`, amount: -mv.amount, reason: IGNORED_REASON });
+    if (mv.toAccountId === main && outOfBudget(mv.fromAccountId)) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (mouvement)`, amount: mv.amount, reason: IGNORED_REASON });
+  }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 

@@ -34,6 +34,17 @@ export function completeData(): BudgetData {
     { id: 'adj1', accountId: 'acc-main', date: '2026-12-15', amount: -12.34, label: 'écart constaté', createdOn: '2026-12-15' },
     { id: 'adj2', accountId: 'acc-main', date: '2026-11-30', amount: 5, label: 'écart constaté', createdOn: '2026-11-30', cancelledOn: '2026-12-02' },
   ];
+  // Spec 0013 : transaction importée, mouvement entre comptes et règle mémorisée.
+  d.transactions.push({ id: 't-imp', month: '2026-12', day: 3, label: 'Paiement par carte CARREFOUR', amount: 12.5, type: 'var', target: 'inconnu', accountId: 'acc-main', importAccountId: 'acc-main', fingerprint: '2026-12-03|12.50|paiement par carte carrefour', rank: 1, category: 'Alimentation' });
+  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait' }];
+  d.importAccountLinks = [
+    { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
+    { id: 'l2', accountName: 'Livret A (x1234)', connectionName: 'Banque Test', accountId: null },
+  ];
+  d.importRules = [
+    { id: 'r1', pattern: 'carrefour', nature: 'depense', target: { kind: 'var', key: 'courses' } },
+    { id: 'r2', pattern: 'retrait', nature: 'retrait', target: { kind: 'account', id: 'acc-cash' } },
+  ];
   return d;
 }
 

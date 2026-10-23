@@ -2,6 +2,9 @@ import { stableStringify } from '../application/diff';
 import type { RemoteTables } from './supabaseRepository';
 import { rowKey, TABLE_ORDER, type AnyRow, type TableName } from './supabaseSchema';
 
+/** Tables with the partial unique index (import_account_id, fingerprint, rank) of the migration csv_import (spec 0013). */
+const IMPORT_KEYED: readonly TableName[] = ['transactions', 'account_movements'];
+
 export interface MemoryRemote extends RemoteTables {
   /** Every request received, in order (`upsert:budget_lines`, `remove:transactions`...). */
   readonly calls: string[];
@@ -36,7 +39,15 @@ export function createMemoryRemote(): MemoryRemote {
     async upsert(table, rows) {
       calls.push(`upsert:${table}`);
       if (remote.failing) unreachable();
-      for (const r of rows) tables.get(table)!.set(rowKey(table, r), copy(r));
+      for (const r of rows) {
+        if (IMPORT_KEYED.includes(table) && r.fingerprint != null) {
+          const clash = [...tables.get(table)!.entries()].some(
+            ([k, o]) => k !== rowKey(table, r) && o.import_account_id === r.import_account_id && o.fingerprint === r.fingerprint && o.rank === r.rank,
+          );
+          if (clash) throw new Error(`duplicate key value violates unique constraint "${table}_import_key"`);
+        }
+        tables.get(table)!.set(rowKey(table, r), copy(r));
+      }
     },
     async remove(table, keys) {
       calls.push(`remove:${table}`);

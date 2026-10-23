@@ -92,7 +92,20 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
 
   // The assistant has no source column for savings: they are paid from the main account, which cannot also be their dedicated one (RG2).
   const mainId = rows.acc.find(a => a.isDefault)?.id ?? MAIN_ACCOUNT_ID;
-  const linkOf = (r: SetupRow, block: BlockKey) => (isValidSetupLink(r, block, mainId, rows.acc) ? { linkedAccountId: r.linkedAccountId } : {});
+  // Like an envelope, a savings/investment row without a dedicated account of its own choice gets one, of the kind of its block,
+  // opening on the first month with the balance typed in the assistant (spec 0010). An account already created by an earlier run is kept.
+  const savingsAccounts: BankAccount[] = [];
+  const takenHues = (): number[] => [...rows.acc.map(a => a.hue), ...savingsAccounts.map(a => a.hue)].filter((h): h is number => h !== undefined);
+  const savingsAccountOf = (r: SetupRow, block: BlockKey): string => {
+    const id = freeSavingsAccountId(d, r.id);
+    if (!d.accounts.some(a => a.id === id) && !savingsAccounts.some(a => a.id === id)) {
+      const used = takenHues();
+      const hue = BANK_HUES.find(h => !used.includes(h)) ?? BANK_HUES[(rows.acc.length + savingsAccounts.length) % BANK_HUES.length];
+      savingsAccounts.push({ id, name: r.name.trim() || 'Sans nom', hue, isDefault: false, openingBalance: r.balance, openingMonth: m, inBudget: true, archived: false, kind: kindForBlock(block), openingConfirmed: true });
+    }
+    return id;
+  };
+  const linkOf = (r: SetupRow, block: BlockKey) => ({ linkedAccountId: isValidSetupLink(r, block, mainId, rows.acc) ? r.linkedAccountId : savingsAccountOf(r, block) });
   const line = (block: BlockKey, r: SetupRow, section = ''): Line => ({
     key: r.id,
     block,
@@ -135,7 +148,7 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   // The accounts of the envelopes that are no longer in the draft stay, archived (spec 0011, RG22).
   for (const a of d.accounts) if (isEnvelopeAccount(a) && !envelopes.some(e => e.accountId === a.id)) a.archived = true;
   d.envelopes = envelopes;
-  d.accounts = [...(d.firstMonth === null ? accountsFromDraft(rows.acc, m) : mergeAccounts(d.accounts, accountsFromDraft(rows.acc, m))), ...envelopeAccounts];
+  d.accounts = [...(d.firstMonth === null ? accountsFromDraft(rows.acc, m) : mergeAccounts(d.accounts, accountsFromDraft(rows.acc, m))), ...envelopeAccounts, ...savingsAccounts];
   initMonth(d, m, lines, envAlloc);
 
   const before = addMonths(m, -1);
@@ -144,6 +157,9 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   if (d.firstMonth === null) d.firstMonth = m;
   return true;
 }
+
+/** Id of the account created for a savings/investment row: stable, so a second run of the assistant finds it again. */
+const freeSavingsAccountId = (_d: BudgetData, rowId: string): string => `acc-sav-${rowId}`;
 
 /**
  * A draft row's dedicated account is kept when it differs from the account paying the row, exists in the draft

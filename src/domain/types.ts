@@ -111,6 +111,57 @@ export interface Transaction {
   target: string;
   /** Bank account the money comes from (`var`, `env`) or goes to (`epa`); absent = the main account. */
   accountId?: string;
+  /** Imported from a bank file (spec 0013): the bank account the file belongs to, which can differ from `accountId` (envelope, box account). */
+  importAccountId?: string;
+  /** Imported transactions only: fingerprint of the file line (date + amount + label) and its rank among identical lines (spec 0013, RG20, RG21). */
+  fingerprint?: string;
+  rank?: number;
+  /** Category given by the bank aggregator (Linxo), kept as information only: not part of the fingerprint (spec 0013, RG37). */
+  category?: string;
+}
+
+/**
+ * Money that moves from one of the user's accounts to another (withdrawal, internal transfer), created by the CSV import (spec 0013, RG10a).
+ * Debits the source account and credits the destination on its day, in both month modes. Not a `Transaction`: it touches no line and no allocation.
+ */
+export interface AccountMovement {
+  id: string;
+  month: MonthKey;
+  day: number;
+  label: string;
+  /** Positive. */
+  amount: number;
+  fromAccountId: string;
+  toAccountId: string;
+  importAccountId?: string;
+  fingerprint?: string;
+  rank?: number;
+  category?: string;
+}
+
+/**
+ * Which account of the app an account of the bank file belongs to (spec 0013, RG32): the pair (account name, connection name)
+ * of the file, as it is written there, is matched to a bank account; `accountId: null` means « Ne pas importer ».
+ */
+export interface ImportAccountLink {
+  id: string;
+  accountName: string;
+  connectionName: string;
+  accountId: string | null;
+}
+
+/** Where an imported line goes: a `var` line (stable key), an envelope (id) or a bank account (id; withdrawals and internal transfers). */
+export type ImportTarget = { kind: 'var'; key: string } | { kind: 'env'; id: string } | { kind: 'account'; id: string };
+
+/** What an imported debit is: `depense` and `externe` become a `Transaction`, `retrait` and `interne` an `AccountMovement` (spec 0013, RG9). */
+export type ImportNature = 'depense' | 'retrait' | 'interne' | 'externe';
+
+/** Remembered rule « label contains X → nature and target » (spec 0013, RG18). `pattern` is stored normalized. */
+export interface ImportRule {
+  id: string;
+  pattern: string;
+  nature: ImportNature;
+  target: ImportTarget;
 }
 
 /**
@@ -213,6 +264,12 @@ export interface BudgetData {
   statements: Record<MonthKey, Record<string, number>>;
   transactions: Transaction[];
   transfers: Transfer[];
+  /** Movements between the user's accounts (spec 0013). Absent = none. */
+  accountMovements?: AccountMovement[];
+  /** Remembered attachment rules of the CSV import (spec 0013). Absent = none. */
+  importRules?: ImportRule[];
+  /** Matches between the accounts of the imported file and the accounts of the app (spec 0013). Absent = none. */
+  importAccountLinks?: ImportAccountLink[];
   /** Corrections of bank accounts (spec 0009). Absent = none. */
   adjustments?: Adjustment[];
   planned: PlannedItem[];
