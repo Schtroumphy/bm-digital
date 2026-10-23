@@ -1,5 +1,5 @@
 import { balanceRangeEnd, isMonthInBalanceRange } from './balanceRange';
-import { bankMovements, flowOf } from './bankMovements';
+import { flowOf, realMovements } from './bankMovements';
 import { envelopeAccountAt, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
 import type { BudgetData, Line, MonthKey, Transaction } from './types';
@@ -62,7 +62,7 @@ export const closeKey = (kind: 'acc' | 'env' | 'bank', id: string) => `${kind}:$
 /** Lines of an initialized month, or the template preview for a month not created yet. */
 export function monthLines(d: BudgetData, m: MonthKey): Line[] {
   const md = d.months[m];
-  return md?.initialized ? md.lines : d.template.lines.map(l => ({ ...l, actual: l.actual ?? null }));
+  return md?.initialized ? md.lines : d.template.lines.map(l => ({ ...l, actual: null }));
 }
 
 export function monthAlloc(d: BudgetData, m: MonthKey): Record<string, number> {
@@ -135,11 +135,19 @@ export class Ledger {
       }
       for (const e of d.envelopes) {
         const a = alloc[e.id] ?? 0;
-        // From the month its account exists, an envelope is its account: balance of the account, spending on it (spec 0011, RG9, RG10).
+        // From the month its account exists, spending is on that account (spec 0011, RG10). The envelope's own balance stays BUDGETARY
+        // (start + allocation − spent, spec 0019, RG16): the money really on its account is its real balance (`bankMonth`), which only
+        // moves when the funding is recorded as a transfer. It starts from the account's balance in its opening month and after a
+        // closed year that carried the account, else from the previous month of the envelope.
         if (envelopeAccountAt(d, e, m)) {
           const b = this.bank.get(`${m}|${e.accountId}`)!;
-          this.env.set(`${m}|${e.id}`, { start: b.start, alloc: a, spent: sumTx(d, m, 'env', e.id), balance: b.balance });
-          envBal[e.id] = b.balance;
+          const account = d.accounts.find(x => x.id === e.accountId)!;
+          const fromAccount = compareMonths(m, account.openingMonth) === 0 || prevClose?.overrides[closeKey('bank', e.accountId)] !== undefined;
+          const start = fromAccount ? b.start : envBal[e.id] ?? b.start;
+          const spent = sumTx(d, m, 'env', e.id);
+          const r = { start, alloc: a, spent, balance: round2(start + a - spent) };
+          this.env.set(`${m}|${e.id}`, r);
+          envBal[e.id] = r.balance;
           continue;
         }
         const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
@@ -167,13 +175,11 @@ export class Ledger {
   }
 
   /**
-   * Money in and out of a bank account during a month (RG13), from its movements counted at the actuals
-   * (`bankMovements`): variable expenses through their transactions only (RG14), a transfer moving money
-   * only between two bank accounts once marked « fait » (RG13bis, RG16), checked variable lines on a dedicated
-   * account (spec 0009, RG9) and active adjustments (spec 0009, RG70).
+   * Money in and out of a bank account during a month: its REAL movements only (spec 0019, RG1): expenses, entries of money, transfers
+   * and active adjustments. A check, a line's actual or an allocation never moves a real balance.
    */
   private bankFlow(id: string, m: MonthKey) {
-    return flowOf(bankMovements(this.d, id, m, 'actual'));
+    return flowOf(realMovements(this.d, id, m));
   }
 
   envMonth(id: string, m: MonthKey): EnvMonth | null {

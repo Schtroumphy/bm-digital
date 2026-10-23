@@ -61,6 +61,8 @@ describe('groupes de la clôture', () => {
   it('CA3: une ligne epa liée est représentée par son compte, au solde du compte', () => {
     const d = base([line('livret', 'epa', 'Livret A', { actual: 200, linkedAccountId: 'ep' })], { livret: 9999 });
     open(d, 'ep', 'Livret A', 'epargne', 1000);
+    // Spec 0019 : le versement de 200 est un transfert réel (le réel d'une ligne n'est plus saisi).
+    d.accountMovements = [{ id: 'm', month: DEC, day: 5, label: 'Versement', amount: 200, fromAccountId: 'acc-main', toAccountId: 'ep', target: { kind: 'line', key: 'livret' } }];
     const g = group(d, 'epargne')!;
     expect(g.rows).toHaveLength(1);
     expect(g.rows[0].account?.id).toBe('ep');

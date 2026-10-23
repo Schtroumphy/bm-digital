@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import {
   accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, isReceivedTransfer, natureLabel, prepareImport,
-  previewCounts, refreshPreview, replacedActuals, saveReceivedRules, saveSkipChoices, sessionSummary, validateImport,
+  previewCounts, refreshPreview, saveReceivedRules, saveSkipChoices, sessionSummary, validateImport,
   type ImportBatch, type ImportPreview, type ImportSummary, type LineNature, type PreviewLine, type SessionTotals,
 } from '../../application/statementImport';
 import {
@@ -182,15 +182,9 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
   // The batch runs on a copy first, only to know what it writes and to redo the preview; the real change is made by the store.
   const importLines = (ids: ReadonlySet<string>) => {
     if (!preview || !reading || busy.current || ids.size === 0) return;
-    // One confirmation for the typed actuals of fixed/credit lines that the expenses replace (spec 0014, RG6, CA20).
-    const replaced = replacedActuals(data, preview, ids, { done, marked });
-    if (replaced.length > 0) {
-      const list = replaced.map(r => `${r.name} (${monthLabel(r.month)}) : ${money(r.actual)}`).join('\n');
-      if (!window.confirm(`Ces lignes ont un réel saisi, qui sera remplacé par le montant des dépenses importées et ne sera pas restauré si vous supprimez ensuite les dépenses :\n${list}\n\nRemplacer ?`)) return;
-    }
     busy.current = true;
     setImporting(true);
-    const options = { ids, done, marked, replaceActual: replaced.length > 0 };
+    const options = { ids, done, marked };
     const copy = structuredClone(data);
     const batch = validateImport(copy, preview, newId, options);
     update(d => void validateImport(d, preview, newId, options));

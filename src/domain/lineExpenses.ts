@@ -3,9 +3,9 @@ import { round2 } from './format';
 import type { BlockKey, BudgetData, Line, MonthKey, Transaction } from './types';
 
 /*
- * Expenses on a fixed or credit line (spec 0014). The expense is a `Transaction` of type `fix` whose target is the line's key.
- * A line that carries at least one expense is « portée par ses dépenses »: its actual is their sum and its own money movement
- * (actual on the 1st, checked amount) is no longer counted in the balances, the expenses are (RG5, RG9).
+ * Expenses on a fixed or credit line (spec 0014) and entries of money on a revenue line (spec 0015). The entry is a `Transaction` of type
+ * `fix` or `rev` whose target is the line's key. The actual of the line is the sum of its entries (spec 0019, RG20): see `lineActuals`.
+ * A line that carries at least one entry keeps its account (an entry is on it).
  */
 
 /** Blocks whose lines accept an expense: fixed lines and credits (RG1). Income and savings lines do not. */
@@ -46,16 +46,6 @@ export const revenueLine = (d: BudgetData, m: MonthKey, key: string): Line | und
 /** Account of an expense on this line: the line's own, the main account when it has none (RG2). */
 export const expenseLineAccountId = (d: BudgetData, l: Pick<Line, 'accountId'>): string => accountIdOf(d, l.accountId);
 
-/** Tooltip text of a line that carries expenses (empty otherwise): how many, where its actual comes from, what its pointage does (RG7, RG10). */
-export function carriedLineNote(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block' | 'accountId'>): string {
-  if (!isCarryingBlock(l.block)) return '';
-  const n = lineExpenses(d, m, l.key).length;
-  if (n === 0) return '';
-  const account = d.accounts.find(a => a.id === expenseLineAccountId(d, l))?.name ?? '';
-  if (l.block === 'rev') return `${n} entrée${n > 1 ? 's' : ''} : le réel est leur somme (non modifiable), sur le compte ${account}.\nPointage sans effet : la ligne est portée par ses écritures.`;
-  return `${n} dépense${n > 1 ? 's' : ''} : le réel est leur somme (non modifiable), sur le compte ${account}.\nPointage sans effet : la ligne est portée par ses dépenses.`;
-}
-
 /** Why the account of a line cannot change while it carries expenses (spec 0014, RG2). */
 export const CARRIED_ACCOUNT_REFUSAL = 'Cette ligne porte des dépenses : supprimez-les ou déplacez-les avant de changer son compte.';
 
@@ -71,13 +61,4 @@ export function expenseLineBlocker(d: BudgetData, m: MonthKey, key: string): str
   if (!l) return null;
   const account = d.accounts.find(a => a.id === expenseLineAccountId(d, l));
   return account?.archived ? `Le compte de cette ligne (${account.name}) est archivé : désarchivez-le pour y enregistrer une dépense.` : null;
-}
-
-/**
- * The actual that a first expense on the line would replace (RG6): the typed actual (0 included) of a line with no expense yet,
- * or null when nothing is replaced.
- */
-export function actualReplacedBy(d: BudgetData, m: MonthKey, key: string): number | null {
-  const l = expenseLine(d, m, key) ?? revenueLine(d, m, key);
-  return l && l.actual !== null && !isLineCarried(d, m, key) ? l.actual : null;
 }

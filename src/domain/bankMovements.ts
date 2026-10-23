@@ -1,121 +1,148 @@
 import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, mainAccount, resolveBoxAccountId } from './bank';
 import { compareMonths, round2 } from './format';
-import { bankDateOf, isCarryingBlock, isLineCarried } from './lineExpenses';
-import type { BudgetData, MonthKey } from './types';
+import { bankDateOf } from './lineExpenses';
+import { isItemTransferred } from './movementTargets';
+import type { BudgetData, MonthKey, Transaction } from './types';
 
 /*
- * Every money movement of a bank account in a month, dated and signed (positive = in). It is the one place
- * where the Ledger (balances of the Comptes screen) and the estimated balance of the pointage (spec 0009)
- * agree on what moves an account. They differ only in where the lines' money comes from:
- * - `actual`: the actual of the lines (month « au réel »);
- * - `checks`: the checked amount of the lines at their checked date (month « au pointage »).
+ * The money movements of a bank account in a month, dated and signed (positive = in), in two separate chains (spec 0019):
+ * - `realMovements`: only real entries (expenses, entries of money, transfers, adjustments). They make the REAL balance, the one
+ *   compared with the bank statement (RG1);
+ * - `estimatedMovements`: the budget (checked lines and their counterparts, fictive) plus the entries that are exact for a `var`,
+ *   envelope or savings item, plus the transfers. They make the ESTIMATED balance, which is informative (RG6, RG13).
+ * A transfer is in both. Each chain reads each entry once (RG13).
  */
 
-export type MovementSource = 'actual' | 'checks';
-
 export interface BankMovement {
-  /** `YYYY-MM-DD`. Actuals and old transfers have no day: they are dated the 1st of the month. */
+  /** `YYYY-MM-DD`. */
   date: string;
   label: string;
   amount: number;
   kind: 'line' | 'check' | 'expense' | 'transfer' | 'adjustment';
+  /** Expense or entry of money: the budget item it is attached to (line or envelope name) and its nature, for the account's movement list. */
+  imputation?: { name: string; type: Transaction['type'] };
   /** Key of the line, for a line or a check. */
   lineKey?: string;
   adjustmentId?: string;
   /** The month of the budget the entry is attached to, when it differs from the month of its bank date (spec 0015, RG4): for the tooltip. */
   attachedMonth?: MonthKey;
-  /** A counterpart between two accounts (checked allocation or variable line): it moves money in both modes (RG72, RG90). */
+  /** A counterpart between two accounts (checked allocation or variable line): the fictive money sent to another account. */
   counterpart?: boolean;
+  /** Comes from a check (pointage): a fictive debit or credit that never touches the real balance (RG6). */
+  fictive?: boolean;
 }
 
 /** Where the amount counted for a line comes from (spec 0009, RG76). */
 export type CountedSource = 'actual' | 'budget';
 
 /**
- * Amount counted for a rev/cre/fix/epa/inv line: its actual when it exists (not empty, a typed 0 included),
- * otherwise its budget (RG76). The one place that decides it (RG84): the movements at the checks, the
- * « Reste à sortir » and the « Revenus attendus » all use it. Variable lines follow RG82 and do not come here.
+ * Amount counted for a checked rev/cre/fix/epa/inv line in the estimated balance: its actual (the sum of its entries) when it has
+ * one, otherwise its budget. The « Reste à sortir » and the « Revenus attendus » do NOT use it: they stay budgetary (RG7).
  */
 export function countedAmount(l: { actual: number | null; budget: number }): { amount: number; source: CountedSource } {
   return l.actual !== null ? { amount: l.actual, source: 'actual' } : { amount: l.budget, source: 'budget' };
 }
 
-/** « Mois compté au réel » or « au pointage » (spec 0009, RG59, RG61): from `settings.pointageStart` on, a month is counted from the checks. */
-export type MonthMode = 'real' | 'pointage';
-
-export const monthMode = (d: BudgetData, m: MonthKey): MonthMode => (d.settings.pointageStart !== undefined && compareMonths(m, d.settings.pointageStart) >= 0 ? 'pointage' : 'real');
-
 /** Key of an envelope's allocation check in `MonthData.checks` (a line key never contains a colon). */
 export const envelopeCheckKey = (envelopeId: string) => `env:${envelopeId}`;
 
-/** Active movements of an account in a month. A cancelled adjustment is not one. */
-export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: MovementSource): BankMovement[] {
+/** Debit of a transaction side: a withdrawal from savings and an entry of money are money in, the others money out. */
+const isMoneyIn = (type: string) => type === 'epa' || type === 'rev';
+
+/** Name of the budget item an expense or an entry is attached to; empty when it was deleted. */
+function imputationOf(d: BudgetData, t: Transaction): { name: string; type: Transaction['type'] } {
+  const md = d.months[t.month];
+  const name = t.type === 'env' ? d.envelopes.find(e => e.id === t.target)?.name : (md?.initialized ? md.lines : d.template.lines).find(l => l.key === t.target)?.name;
+  return { name: name ?? 'Supprimé', type: t.type };
+}
+
+/** Both faces of the transfers of an account dated in a month: the same in the real and the estimated balance. */
+function transferMovements(d: BudgetData, id: string, m: MonthKey): BankMovement[] {
+  const out: BankMovement[] = [];
+  const nameOf = (accountId: string) => d.accounts.find(a => a.id === accountId)?.name ?? '';
+  for (const mv of d.accountMovements ?? []) {
+    const date = bankDateOf(mv);
+    if (!date.startsWith(m) || mv.amount === 0) continue;
+    if (mv.fromAccountId === id) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (transfert)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.toAccountId === id) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (transfert)`, amount: mv.amount, kind: 'transfer', counterpart: true });
+  }
+  return out;
+}
+
+/** Real entries of an account in a month: transactions, transfers (both faces), active adjustments. Nothing from the budget (RG1, RG2). */
+export function realMovements(d: BudgetData, id: string, m: MonthKey): BankMovement[] {
   const out: BankMovement[] = [];
   const md = d.months[m];
-  const first = `${m}-01`;
+  const lines = md?.initialized ? md.lines : [];
+  // Money leaving a dedicated account when it is withdrawn from its savings line (spec 0007).
+  const linked = lines.filter(l => isSavingsBlock(l.block) && l.linkedAccountId === id);
+  for (const t of d.transactions) {
+    // Balances rank an entry by its date at the bank, not by its month of attachment (spec 0015, RG2).
+    const date = bankDateOf(t);
+    if (!date.startsWith(m)) continue;
+    const attached = date.slice(0, 7) !== t.month ? t.month : undefined;
+    if (t.type === 'epa' && linked.some(l => l.key === t.target)) {
+      out.push({ date, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
+    }
+    if (accountIdOf(d, t.accountId) !== id) continue;
+    out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
+  }
+  // A transfer is real: both faces count, whatever the budget status of the accounts (RG2, RG12).
+  out.push(...transferMovements(d, id, m));
+  for (const a of d.adjustments ?? []) {
+    if (a.accountId === id && !a.cancelledOn && a.date.startsWith(m)) out.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', adjustmentId: a.id });
+  }
+  return out;
+}
+
+/**
+ * Movements of the estimated balance (RG8, RG9, RG10, RG12): the lines checked at their date and the fictive counterparts of checked
+ * items, replaced by the transfers when the item has some; the `var`, envelope and savings expenses at their date; the transfers.
+ * A month with no check holds no line movement. No adjustment, no entry of money, no expense on a fixed/credit line (those enter by their check).
+ */
+export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): BankMovement[] {
+  const out: BankMovement[] = [];
+  const md = d.months[m];
   const main = mainAccount(d).id;
   const mine = (accountId?: string) => accountIdOf(d, accountId) === id;
   const nameOf = (accountId: string) => d.accounts.find(a => a.id === accountId)?.name ?? '';
   const lines = md?.initialized ? md.lines : [];
 
-  for (const l of lines) {
-    if (l.block === 'var') continue; // variable lines move money through their transactions only
-    // A fixed/credit line carrying expenses moves money through them, at their date: its own movement is not counted (spec 0014, RG9).
-    if (isCarryingBlock(l.block) && isLineCarried(d, m, l.key)) continue;
-    if (!mine(l.accountId)) continue;
-    const sign = l.block === 'rev' ? 1 : -1;
-    if (source === 'actual') {
-      if (l.actual) out.push({ date: first, label: `${l.name} (réel)`, amount: sign * l.actual, kind: 'line', lineKey: l.key });
-    } else {
-      const c = md.checks?.[l.key];
-      const counted = countedAmount(l);
-      if (c) out.push({ date: c.doneOn, label: `${l.name} (${l.block === 'rev' ? 'reçu' : 'pointé'}${counted.source === 'actual' ? ', réel' : ''})`, amount: sign * counted.amount, kind: 'check', lineKey: l.key });
-    }
-  }
-  // Lines whose dedicated account is this one (spec 0007, RG6): it receives their payments and funds their withdrawals.
-  // At the actuals the payment is the line's actual; at the checks it is the amount counted, on the day it is checked.
-  const linked = lines.filter(l => isSavingsBlock(l.block) && l.linkedAccountId === id);
-  for (const l of linked) {
-    if (source === 'actual') {
-      if (l.actual) out.push({ date: first, label: `${l.name} (versement, réel)`, amount: l.actual, kind: 'line', lineKey: l.key });
-    } else {
-      const c = md.checks?.[l.key];
-      if (c) out.push({ date: c.doneOn, label: `${l.name} (versement, pointé)`, amount: countedAmount(l).amount, kind: 'check', lineKey: l.key });
-    }
-  }
-  for (const t of d.transactions) {
-    if (bankDateOf(t).startsWith(m) && t.type === 'epa' && linked.some(l => l.key === t.target)) {
-      out.push({ date: bankDateOf(t), label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
-    }
-  }
-  // Counterparts: money leaving the main account for another one, once checked, in both modes (RG9, RG90).
-  // The main account is never touched by an account out of the budget, which records its own side alone (RG92).
+  // Money sent to another account, once checked, as a fictive counterpart. The main account is never touched by an account out of the
+  // budget, which records its own side alone (spec 0009, RG92; spec 0019, RG12: only for fictive counterparts).
   const counterpart = (to: string, amount: number, date: string, name: string, key: string, toName: string, done = 'pointé') => {
     if (to === main || amount === 0) return;
-    if (id === main && isAccountInBudget(d, to)) out.push({ date, label: `${name} → ${toName} (${done})`, amount: -amount, kind: 'check', lineKey: key, counterpart: true });
-    else if (id === to) out.push({ date, label: `${name} (${done})`, amount, kind: 'check', lineKey: key, counterpart: true });
+    if (id === main && isAccountInBudget(d, to)) out.push({ date, label: `${name} → ${toName} (${done})`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
+    else if (id === to) out.push({ date, label: `${name} (${done})`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
   };
-  // A checked variable line sends its budget (RG82) to its dedicated account.
+
   for (const l of lines) {
     const c = md.checks?.[l.key];
-    if (l.block === 'var' && c) counterpart(resolveBoxAccountId(d, l), l.budget, c.doneOn, l.name, l.key, nameOf(resolveBoxAccountId(d, l)));
+    if (!c) continue;
+    if (l.block === 'var') {
+      // A checked variable line sends its budget to its dedicated account, unless transfers stand for it (RG10).
+      if (!isItemTransferred(d, m, { kind: 'line', key: l.key })) counterpart(resolveBoxAccountId(d, l), l.budget, c.doneOn, l.name, l.key, nameOf(resolveBoxAccountId(d, l)));
+      continue;
+    }
+    // A checked savings/investment line is replaced by the transfers attached to it (both faces: payer debit and dedicated credit).
+    if (isSavingsBlock(l.block) && isItemTransferred(d, m, { kind: 'line', key: l.key })) continue;
+    const counted = countedAmount(l);
+    const sign = l.block === 'rev' ? 1 : -1;
+    if (mine(l.accountId)) out.push({ date: c.doneOn, label: `${l.name} (${l.block === 'rev' ? 'reçu' : 'pointé'}${counted.source === 'actual' ? ', réel' : ''})`, amount: sign * counted.amount, kind: 'check', lineKey: l.key, fictive: true });
+    if (isSavingsBlock(l.block) && l.linkedAccountId === id) out.push({ date: c.doneOn, label: `${l.name} (versement, pointé)`, amount: counted.amount, kind: 'check', lineKey: l.key, fictive: true });
   }
-  // Envelope allocations (spec 0011). They are read from the accounts of the envelopes, not from the envelopes, so that
-  // deleting an envelope leaves its past allocations in the history. From the month its account exists, an envelope receives
-  // its allocation from the main account (RG5): on the 1st in a month counted at the actuals, on the day it is checked in a
-  // month counted at the checks (RG6). The two faces are the debit of the main account and the credit of the envelope's account (RG7).
+
+  // Envelope allocations (spec 0011): read from the accounts of the envelopes, so that deleting an envelope leaves its past allocations in
+  // the history. They move only once checked (RG8), from the main account to the envelope's account.
   if (md?.initialized) {
     for (const account of d.accounts) {
       if (!account.envelopeId || account.kind !== 'enveloppe' || compareMonths(m, account.openingMonth) < 0 || account.id === main) continue;
       const amount = md.alloc[account.envelopeId] ?? 0;
-      if (amount === 0) continue; // RG8
       const key = envelopeCheckKey(account.envelopeId);
       const c = md.checks?.[key];
-      const counted = monthMode(d, m) === 'real' ? { date: first, done: 'virée' } : c ? { date: c.doneOn, done: 'pointée' } : null;
-      if (!counted) continue;
-      const kind = c && counted.done === 'pointée' ? 'check' : 'transfer';
-      if (id === main) out.push({ date: counted.date, label: `Allocation → ${account.name} (${counted.done})`, amount: -amount, kind, lineKey: key, counterpart: true });
-      else if (id === account.id) out.push({ date: counted.date, label: `Allocation ${account.name} (${counted.done})`, amount, kind, lineKey: key, counterpart: true });
+      if (amount === 0 || !c || isItemTransferred(d, m, { kind: 'env', id: account.envelopeId })) continue;
+      if (id === main) out.push({ date: c.doneOn, label: `Allocation → ${account.name} (pointée)`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
+      else if (id === account.id) out.push({ date: c.doneOn, label: `Allocation ${account.name} (pointée)`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
     }
     // Before its account exists, a checked allocation keeps the account recorded when it was checked (spec 0009, RG88, RG90, RG91; spec 0011, RG18).
     for (const e of d.envelopes) {
@@ -123,32 +150,22 @@ export function bankMovements(d: BudgetData, id: string, m: MonthKey, source: Mo
       if (!envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), 'pointée');
     }
   }
+
+  // Expenses of `var` lines, envelopes and savings accounts, at their date. A line `fix`/`cre`/`rev` is estimated by its check, never by its entries.
+  const linked = lines.filter(l => isSavingsBlock(l.block) && l.linkedAccountId === id);
   for (const t of d.transactions) {
-    // Balances rank an entry by its date at the bank, not by its month of attachment (spec 0015, RG2).
-    if (!bankDateOf(t).startsWith(m) || !mine(t.accountId)) continue;
-    // A withdrawal from savings and a revenue entry are money in; variable, envelope and line expenses are money out.
-    const income = t.type === 'epa' || t.type === 'rev';
-    const attached = bankDateOf(t).slice(0, 7) !== t.month ? t.month : undefined;
-    out.push({ date: bankDateOf(t), label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: income ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
+    if (t.type === 'fix' || t.type === 'rev') continue;
+    const date = bankDateOf(t);
+    if (!date.startsWith(m)) continue;
+    if (t.type === 'epa' && linked.some(l => l.key === t.target)) {
+      out.push({ date, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
+    }
+    if (!mine(t.accountId)) continue;
+    const attached = date.slice(0, 7) !== t.month ? t.month : undefined;
+    out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : 'dépense'})`, amount: t.type === 'epa' ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
   }
-  // Old transfers marked « fait »: inert since spec 0009 but still part of the balances (RG15, RG60).
-  for (const t of d.transfers) {
-    if (!md?.transfersDone[t.id] || t.to?.kind !== 'bank' || t.amount === 0) continue; // a 0 € transfer moves nothing (RG108)
-    // The main account is not touched by a transfer whose other side is out of the budget (RG92).
-    if (t.to.id === id && !(id === main && !isAccountInBudget(d, t.fromAccountId))) out.push({ date: first, label: `${t.name} (virement)`, amount: t.amount, kind: 'transfer' });
-    if (t.fromAccountId === id && !(id === main && !isAccountInBudget(d, t.to.id))) out.push({ date: first, label: `${t.name} (virement)`, amount: -t.amount, kind: 'transfer' });
-  }
-  // Movements between accounts created by the import (spec 0013, RG10b): a fact, so counted in both modes. The main account
-  // is not touched when the other side is out of the budget (spec 0009, RG92).
-  for (const mv of d.accountMovements ?? []) {
-    const date = bankDateOf(mv);
-    if (!date.startsWith(m) || mv.amount === 0) continue;
-    if (mv.fromAccountId === id && !(id === main && !isAccountInBudget(d, mv.toAccountId))) out.push({ date, label: `${mv.label} → ${nameOf(mv.toAccountId)} (mouvement)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
-    if (mv.toAccountId === id && !(id === main && !isAccountInBudget(d, mv.fromAccountId))) out.push({ date, label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (mouvement)`, amount: mv.amount, kind: 'transfer', counterpart: true });
-  }
-  for (const a of d.adjustments ?? []) {
-    if (a.accountId === id && !a.cancelledOn && a.date.startsWith(m)) out.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', adjustmentId: a.id });
-  }
+  // Transfers are real and also count here, on both faces (RG9, RG12).
+  out.push(...transferMovements(d, id, m));
   return out;
 }
 

@@ -18,12 +18,11 @@ export function addTemplateLine(d: BudgetData, block: BlockKey, key: string, sec
 }
 
 /** Edits a model line. Returns false for an unknown line or an invalid budget. */
-export function updateTemplateLine(d: BudgetData, key: string, patch: Partial<Pick<TemplateLine, 'name' | 'budget' | 'actual'>>): boolean {
+export function updateTemplateLine(d: BudgetData, key: string, patch: Partial<Pick<TemplateLine, 'name' | 'budget'>>): boolean {
   const l = d.template.lines.find(x => x.key === key);
   if (!l || (patch.budget !== undefined && !(patch.budget >= 0))) return false;
   Object.assign(l, patch);
   if (patch.budget !== undefined) l.budget = round2(patch.budget);
-  if (typeof patch.actual === 'number') l.actual = round2(patch.actual);
   return true;
 }
 

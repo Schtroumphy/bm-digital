@@ -58,7 +58,7 @@ const saveMonth = (m: string) => {
 };
 
 export function App({ statementSource }: { statementSource: StatementSource }) {
-  const { data, ledger, saveStatus, retrySave } = useStore();
+  const { data, ledger, saveStatus, retrySave, clearedActuals, dismissClearedActuals } = useStore();
   const { user, signOut } = useAuth();
   const { setEditing, menu, closeMenu } = useUi();
   // Until the first month exists, the only usable screen is the assistant.
@@ -125,6 +125,19 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             <div style={{ flex: 1 }} />
             <button type="button" className="btn-dark" onClick={retrySave}>
               Réessayer
+            </button>
+          </div>
+        )}
+        {clearedActuals > 0 && (
+          <div className="banner" role="status">
+            <div style={{ flex: 1 }}>
+              <div className="banner-title">
+                {clearedActuals} {clearedActuals > 1 ? 'réels saisis à la main ne comptent plus' : 'réel saisi à la main ne compte plus'}
+              </div>
+              <div className="banner-text">Le réel d’une ligne est maintenant la somme de ses écritures : saisissez les écritures correspondantes.</div>
+            </div>
+            <button type="button" className="btn-quiet" onClick={dismissClearedActuals}>
+              Compris
             </button>
           </div>
         )}

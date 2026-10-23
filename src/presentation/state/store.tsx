@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { migrateBankAccounts, migrateCheckAmounts, migratePointageStart, realignVariableActuals } from '../../domain/migrate';
+import { loadBudget } from '../../application/loadBudget';
 import { Ledger } from '../../domain/ledger';
 import type { BudgetData } from '../../domain/types';
 import type { BudgetRepository } from '../../application/ports';
@@ -15,6 +15,9 @@ interface Store {
   saveStatus: SaveStatus;
   /** Sends again everything that is not stored yet (after a failed save). */
   retrySave: () => void;
+  /** Number of actuals typed by hand that the loading emptied (spec 0019, RG22); 0 = nothing to tell. Shown once, then dismissed. */
+  clearedActuals: number;
+  dismissClearedActuals: () => void;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -32,16 +35,17 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
   // Bumped by « Réessayer » to run the loading effect again.
   const [attempt, setAttempt] = useState(0);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [clearedActuals, setClearedActuals] = useState(0);
   const tracker = useMemo(() => createSaveTracker(repository, setSaveStatus), [repository]);
 
   useEffect(() => {
     let cancelled = false;
     setLoadFailed(false);
-    repository.load().then(
-      d => {
+    loadBudget(repository, initialData).then(
+      loaded => {
         if (cancelled) return;
-        // Data saved before bank accounts existed is brought up to date here (idempotent), then the variable lines' actuals are realigned (spec 0008, RG18).
-        setData(migratePointageStart(migrateCheckAmounts(realignVariableActuals(migrateBankAccounts(d ?? initialData())))));
+        setClearedActuals(loaded.cleared);
+        setData(loaded.data);
       },
       () => {
         // A failed read is never taken for an empty account: nothing is shown but the error (spec 0012, RG12).
@@ -68,12 +72,13 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
   }, []);
 
   const retrySave = useCallback(() => tracker.retry(), [tracker]);
+  const dismissClearedActuals = useCallback(() => setClearedActuals(0), []);
 
   const ledger = useMemo(() => (data ? new Ledger(data) : null), [data]);
 
   if (loadFailed) return <LoadError onRetry={() => setAttempt(a => a + 1)} />;
   if (!data || !ledger) return <p className="auth-wait">Chargement de vos données…</p>;
-  return <StoreContext.Provider value={{ data, ledger, update, saveStatus, retrySave }}>{children}</StoreContext.Provider>;
+  return <StoreContext.Provider value={{ data, ledger, update, saveStatus, retrySave, clearedActuals, dismissClearedActuals }}>{children}</StoreContext.Provider>;
 }
 
 export function useStore(): Store {

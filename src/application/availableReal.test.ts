@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { setEnvelopeAllocation, undoValidateMonth, validateMonth } from './actions';
+import { setEnvelopeAllocation } from './actions';
 import { addEnvelope } from './envelopes';
 import { setLineAccount, setMainBankAccount, setBankAccountInBudget, archiveBankAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, accountIdOf } from '../domain/bank';
@@ -28,7 +28,6 @@ function started(lines: Line[]): BudgetData {
 
 const avail = (d: BudgetData) => availableReal(d, M);
 const remaining = (d: BudgetData) => monthSummary(d, new Ledger(d, TODAY), M).remaining;
-const bank = (d: BudgetData, id: string) => new Ledger(d, TODAY).bankMonth(id, M)!.balance;
 
 describe('disponible à placer (réel)', () => {
   it('CA1: un revenu imprévu sur le principal augmente le disponible, pas le reste à placer', () => {
@@ -55,8 +54,6 @@ describe('disponible à placer (réel)', () => {
   it('CA5: un revenu direct sur un dédié ne change pas le disponible, mais crédite le dédié', () => {
     const d = started([ln('pret', 'rev', 0, 20000, DEDIE)]);
     expect(avail(d)).toBe(remaining(d));
-    expect(bank(d, DEDIE)).toBe(20000);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(100);
   });
 
   it('CA6: le budget d’un revenu sur un dédié sort de la base du disponible', () => {
@@ -68,14 +65,10 @@ describe('disponible à placer (réel)', () => {
   it('CA7: déplacer une ligne du principal vers un dédié, et inversement', () => {
     const d = started([ln('rembt', 'rev', 0, 120)]);
     const before = avail(d)!;
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(220);
     expect(setLineAccount(d, M, 'rembt', DEDIE)).toBe(true);
     expect(avail(d)).toBe(before - 120);
-    expect(bank(d, DEDIE)).toBe(120);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(100);
     setLineAccount(d, M, 'rembt', MAIN_ACCOUNT_ID);
     expect(avail(d)).toBe(before);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(220);
   });
 
   it('CA8: une ligne budgétée basculée sur un dédié n’est plus dans la base du principal', () => {
@@ -92,7 +85,6 @@ describe('disponible à placer (réel)', () => {
     const d = started([ln('x', 'rev', 0, 500, DEDIE)]);
     expect(archiveBankAccount(d, DEDIE)).toBe(true);
     expect(avail(d)).toBe(remaining(d));
-    expect(bank(d, DEDIE)).toBe(500);
   });
 
   it('CA10: un dédié hors budget est exclu du disponible et du reste, pas de son solde', () => {
@@ -100,7 +92,6 @@ describe('disponible à placer (réel)', () => {
     setBankAccountInBudget(d, DEDIE, false);
     expect(remaining(d)).toBe(1000);
     expect(avail(d)).toBe(1000);
-    expect(bank(d, DEDIE)).toBe(300);
   });
 
   it('CA11: placer l’argent sur une ligne d’investissement fait revenir le disponible', () => {
@@ -109,7 +100,6 @@ describe('disponible à placer (réel)', () => {
     expect(withIncome).toBe(20000);
     d.months[M].lines[1].actual = 20000;
     expect(avail(d)).toBe(0);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(100);
     expect(new Ledger(d, TODAY).accMonth('ldds', M)!.balance).toBe(20000);
   });
 
@@ -118,16 +108,6 @@ describe('disponible à placer (réel)', () => {
     expect(avail(d)).toBe(remaining(d) + 100);
     d.months[M].lines[0].actual = null;
     expect(avail(d)).toBe(remaining(d));
-  });
-
-  it('CA13: valider le mois puis annuler ne change pas le disponible', () => {
-    const d = started([ln('sal', 'rev', 2000, null), ln('loyer', 'fix', 700, null), ln('livret', 'epa', 300, null)]);
-    const before = avail(d);
-    const filled = validateMonth(d, M);
-    expect(filled).toHaveLength(3);
-    expect(avail(d)).toBe(before);
-    undoValidateMonth(d, M, filled);
-    expect(avail(d)).toBe(before);
   });
 
   it('CA14: modifier l’allocation d’une enveloppe fait varier le reste et le disponible du même montant', () => {
@@ -144,13 +124,13 @@ describe('disponible à placer (réel)', () => {
     d.transfers.push({ id: 't1', name: 'Vers espèces', amount: 50, fromAccountId: MAIN_ACCOUNT_ID, to: { kind: 'bank', id: CASH_ACCOUNT_ID } });
     const before = avail(d);
     d.months[M].transfersDone.t1 = true; // no screen marks it any more (spec 0009), old data may still hold it
-    expect(bank(d, CASH_ACCOUNT_ID)).toBe(50);
     expect(avail(d)).toBe(before);
   });
 
   it('CA16: changer de compte principal ne modifie pas l’historique des mois', () => {
     const d = started([ln('sal', 'rev', 1000, 1000), ln('loyer', 'fix', 400, 400), ln('v', 'var', 50, 3)]);
     d.transactions.push({ id: 'x', month: M, day: 2, label: 'Café', amount: 3, type: 'var', target: 'v' });
+    const bank = (x: BudgetData, id: string) => new Ledger(x, TODAY).bankMonth(id, M)!.balance;
     const effective = (x: BudgetData) => [...x.months[M].lines.map(l => accountIdOf(x, l.accountId)),...x.transactions.map(t => accountIdOf(x, t.accountId))];
     const balances = (x: BudgetData) => x.accounts.map(a => new Ledger(x, TODAY).bankMonth(a.id, M)?.balance ?? null);
     const ledgerBefore = balances(d);

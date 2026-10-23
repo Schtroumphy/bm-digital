@@ -8,7 +8,7 @@ import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supa
  * Conversion between the BudgetData aggregate and the rows of the relational schema (spec 0012).
  * Pure functions: `toRows` then `fromRows` gives back the same data. Two things cannot be told apart
  * in the database and come back as « absent »: an empty optional record (`checks`, `accountBalances`,
- * `adjustments`) and a model line's `actual: null`.
+ * `adjustments`). `settings.pointage_start` and `template_lines.actual` are no longer read nor written (spec 0019).
  */
 
 const orNull = <T>(v: T | undefined): T | null => v ?? null;
@@ -30,7 +30,6 @@ export function toRows(d: BudgetData): TableRows {
     emergency_target: d.settings.emergencyTarget,
     invest_target: d.settings.investTarget,
     savings_rate_target: d.settings.savingsRateTarget,
-    pointage_start: orNull(d.settings.pointageStart),
   });
 
   d.accounts.forEach((a, position) =>
@@ -70,7 +69,6 @@ export function toRows(d: BudgetData): TableRows {
       name: l.name,
       budget: l.budget,
       position,
-      actual: orNull(l.actual),
       account_id: orNull(l.accountId),
       pay_mode: orNull(l.payMode),
       linked_account_id: orNull(l.linkedAccountId),
@@ -158,6 +156,8 @@ export function toRows(d: BudgetData): TableRows {
       category: orNull(m.category),
       detail: orNull(m.detail),
       bank_date: orNull(m.bankDate),
+      target_kind: orNull(m.target?.kind),
+      target_key: orNull(m.target ? (m.target.kind === 'line' ? m.target.key : m.target.id) : undefined),
       position,
     }),
   );
@@ -246,7 +246,6 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       section: r.section,
       name: r.name,
       budget: r.budget,
-      actual: orUndefined(r.actual),
       accountId: orUndefined(r.account_id),
       payMode: orUndefined(r.pay_mode) as PayMode | undefined,
       linkedAccountId: orUndefined(r.linked_account_id),
@@ -342,6 +341,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       category: orUndefined(r.category),
       detail: orUndefined(r.detail),
       bankDate: orUndefined(r.bank_date),
+      target: r.target_kind === 'line' && r.target_key !== null ? { kind: 'line' as const, key: r.target_key } : r.target_kind === 'env' && r.target_key !== null ? { kind: 'env' as const, id: r.target_key } : undefined,
     }),
   );
 
@@ -405,7 +405,6 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     planned,
     closes,
     settings: compact({
-      pointageStart: orUndefined(s.pointage_start),
       emergencyAccounts: s.emergency_accounts,
       emergencyTarget: s.emergency_target,
       investTarget: s.invest_target,

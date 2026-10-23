@@ -61,6 +61,8 @@ export type Database = {
           month: string
           position: number
           rank: number | null
+          target_key: string | null
+          target_kind: string | null
           to_account_id: string
           user_id: string
         }
@@ -78,6 +80,8 @@ export type Database = {
           month: string
           position?: number
           rank?: number | null
+          target_key?: string | null
+          target_kind?: string | null
           to_account_id: string
           user_id?: string
         }
@@ -95,6 +99,8 @@ export type Database = {
           month?: string
           position?: number
           rank?: number | null
+          target_key?: string | null
+          target_kind?: string | null
           to_account_id?: string
           user_id?: string
         }
@@ -521,7 +527,6 @@ export type Database = {
       template_lines: {
         Row: {
           account_id: string | null
-          actual: number | null
           block: string
           budget: number
           due_day: number | null
@@ -536,7 +541,6 @@ export type Database = {
         }
         Insert: {
           account_id?: string | null
-          actual?: number | null
           block: string
           budget?: number
           due_day?: number | null
@@ -551,7 +555,6 @@ export type Database = {
         }
         Update: {
           account_id?: string | null
-          actual?: number | null
           block?: string
           budget?: number
           due_day?: number | null

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLine, addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, setEnvelopeAllocation, setStatement, undoValidateMonth, updateLine, validateMonth } from './actions';
+import { addLine, addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, setEnvelopeAllocation, setStatement, updateLine } from './actions';
 import { addEnvelope } from './envelopes';
 import { setLineAccount, setTransactionAccount } from './bankAccounts';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth } from './monthClosing';
@@ -57,13 +57,11 @@ describe('clôturer le mois', () => {
     expect(deleteTransaction(d, 'tx')).toBe(false);
     expect(setTransactionAccount(d, 'tx', 'ded')).toBe(false);
     expect(setStatement(d, '2027-01', 'livret', 5)).toBe(false);
-    expect(undoValidateMonth(d, '2027-01', [{ key: 'sal', value: 1000 }])).toBeUndefined();
-    expect(updateLine(d, '2027-01', 'sal', { actual: 5 })).toBe(false);
+    expect(updateLine(d, '2027-01', 'sal', { name: 'x' })).toBe(false);
     expect(addLine(d, '2027-01', 'rev', 'new')).toBe(false);
     expect(setLineAccount(d, '2027-01', 'sal', 'ded')).toBe(false);
     expect(setEnvelopeAllocation(d, '2027-01', 'sante', 50)).toBe(false);
     expect(addTransaction(d, { id: 'x', month: '2027-01', day: 1, label: 'a', amount: 5, type: 'env', target: 'sante' })).toBe(false);
-    expect(validateMonth(d, '2027-01')).toEqual([]);
     expect(applyTemplate(d, '2027-01')).toBe(false);
     expect(d).toEqual(before);
   });
@@ -148,7 +146,8 @@ describe('rouvrir le mois', () => {
     const d = budgetWith('2027-01');
     closeMonth(d, '2027-01');
     reopenMonth(d, '2027-01');
-    expect(updateLine(d, '2027-01', 'sal', { actual: 1200 })).toBe(true);
+    expect(updateLine(d, '2027-01', 'sal', { name: 'Salaire' })).toBe(true);
+    d.months['2027-01'].lines.find(l => l.key === 'sal')!.actual = 1200; // in the app it is the sum of the entries
     expect(availableReal(d, '2027-01')).toBe(200);
   });
 

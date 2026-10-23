@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { lineStates } from './importFilters';
-import { lineProblem, prepareImport, replacedActuals, validateImport, type PreviewLine } from './statementImport';
+import { lineProblem, prepareImport, validateImport, type PreviewLine } from './statementImport';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { emptyData } from '../domain/empty';
 import type { StatementRow } from '../domain/statement';
@@ -67,24 +67,16 @@ describe('import vers une ligne fixe ou crédit (spec 0014)', () => {
     expect(d.months[M].lines[0].actual).toBe(72);
   });
 
-  it('CA20/RG6/RG20: « Réel saisi à remplacer », une seule entrée par ligne dans la confirmation ; sans confirmation rien n’est écrit', () => {
+  it('CA20 (0019) : plus de « Réel saisi à remplacer » ; le réel de chaque ligne est la somme de ses écritures importées', () => {
     const d = budget([ln('edf', 'fix', { actual: 60 }), ln('gaz', 'fix')]);
     const p0 = prep(d, [row('PRLV EDF', 62), row('PRLV EDF 2', 3, { date: '2026-10-06' }), row('PRLV GAZ', 41)]);
     const p = { ...p0, lines: p0.lines.map(l => toLine(l.row.label.includes('GAZ') ? 'gaz' : 'edf')(l)) };
-    expect(lineStates(d, p.lines.find(l => l.row.label === 'PRLV EDF')!)).toContain('reel_remplace');
-    expect(lineStates(d, p.lines.find(l => l.row.label === 'PRLV GAZ')!)).not.toContain('reel_remplace');
-    const all = new Set(p.lines.map(l => l.id));
-    expect(replacedActuals(d, p, all)).toEqual([{ month: M, key: 'edf', name: 'edf', actual: 60 }]);
-    // Annulé (pas de replaceActual) : les lignes concernées sont refusées, pas écrites.
-    const refused = validateImport(d, p, newId, {});
-    expect(refused.failedIds).toHaveLength(2);
-    expect(d.months[M].lines[0].actual).toBe(60);
-    // Confirmé : le réel devient la somme des dépenses.
-    const d2 = budget([ln('edf', 'fix', { actual: 60 }), ln('gaz', 'fix')]);
-    const done = validateImport(d2, p, newId, { replaceActual: true });
+    expect(lineStates(d, p.lines.find(l => l.row.label === 'PRLV EDF')!)).not.toContain('reel_remplace');
+    const done = validateImport(d, p, newId);
     expect(done.expenses).toBe(3);
-    expect(d2.months[M].lines[0].actual).toBe(65);
-    expect(d2.months[M].lines[1].actual).toBe(41);
+    expect(done.failedIds).toEqual([]);
+    expect(d.months[M].lines[0].actual).toBe(65);
+    expect(d.months[M].lines[1].actual).toBe(41);
   });
 
   it('CA21: une règle mémorisée préremplit la cible ; elle est ignorée si la ligne manque du mois ou est d’un autre compte', () => {

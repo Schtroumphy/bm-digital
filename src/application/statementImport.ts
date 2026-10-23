@@ -2,9 +2,11 @@ import { CASH_ACCOUNT_ID, accountIdOf, activeBankAccounts, fixedTransactionAccou
 import { compareMonths } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
-import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, MonthKey, Transaction } from '../domain/types';
+import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, MonthKey, MovementTarget, Transaction } from '../domain/types';
 import { balanceDateWarning } from '../domain/balanceRange';
-import { actualReplacedBy, bankDateOf, expenseLine, expenseLineAccountId, revenueLine } from '../domain/lineExpenses';
+import { bankDateOf, expenseLine, expenseLineAccountId, revenueLine } from '../domain/lineExpenses';
+import { syncLineActual } from '../domain/lineActuals';
+import { defaultTransferTarget, isValidTransferTarget } from '../domain/transfers';
 import { addLine, addTransaction } from './actions';
 import { findImportAccountLink, isLinkableAccount, linkedAccountOf, setImportAccountLink } from './accountLinks';
 
@@ -66,6 +68,21 @@ export interface PreviewLine {
   suggestedPattern: string;
   /** Name of the revenue line created by « Nouvelle ligne de revenu » (spec 0015, RG9); empty = the label of the line. */
   newLineName: string;
+  /**
+   * Withdrawal and internal transfer only (spec 0019, RG14, RG15, CA23): the budget item the transfer stands for. `undefined` = the user has not chosen,
+   * the default of the destination applies (`transferAttachment`); `null` = the user chose « aucune ».
+   */
+  attach?: MovementTarget | null;
+}
+
+/**
+ * The budget item a withdrawal or internal transfer will be attached to when written: the user's choice when it still fits, else (not chosen) the
+ * envelope or the savings/investment line of the destination account (RG15). Null when there is none.
+ */
+export function transferAttachment(d: BudgetData, l: Pick<PreviewLine, 'nature' | 'target' | 'month' | 'accountId' | 'attach'>): MovementTarget | null {
+  if ((l.nature !== 'retrait' && l.nature !== 'interne') || l.target?.kind !== 'account') return null;
+  const wanted = l.attach === undefined ? defaultTransferTarget(d, l.month, l.target.id, l.accountId ?? undefined) : l.attach;
+  return wanted && isValidTransferTarget(d, l.month, l.target.id, wanted) ? wanted : null;
 }
 
 /** An account of the file seen in the lines. */
@@ -285,7 +302,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     const old = before.get(fresh.id);
     // The corrections already made on an unchanged line (same account, same rank) are kept.
     // A locked line stays unchecked whatever the old state was (RG83).
-    lines.push(old && old.accountId === accountId && old.rank === rank ? { ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName } : fresh);
+    lines.push(old && old.accountId === accountId && old.rank === rank ? { ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach } : fresh);
   });
   // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
   lines.sort((a, b) => a.row.date.localeCompare(b.row.date) || Number(a.id) - Number(b.id));
@@ -458,29 +475,6 @@ export interface ImportOptions {
   done?: ReadonlySet<string>;
   /** Accounts marked « traité »: their lines are left alone (RG72). */
   marked?: ReadonlySet<string>;
-  /** The user confirmed that the typed actuals of fixed/credit lines are replaced by their expenses (spec 0014, RG6). Without it such lines are refused. */
-  replaceActual?: boolean;
-}
-
-/** A typed actual that importing the chosen lines would replace (spec 0014, RG6). */
-export interface ReplacedActual {
-  month: MonthKey;
-  key: string;
-  name: string;
-  actual: number;
-}
-
-/** The actuals that the lines about to be imported would replace, one entry per fixed/credit line, for the single confirmation (RG6, RG20). */
-export function replacedActuals(d: BudgetData, preview: ImportPreview, ids: ReadonlySet<string>, scope: ImportScope = {}): ReplacedActual[] {
-  const out = new Map<string, ReplacedActual>();
-  for (const l of preview.lines) {
-    if (!ids.has(l.id) || !l.checked || isLocked(l) || lineProblem(d, l) || scope.done?.has(l.id) || scope.marked?.has(l.pairKey)) continue;
-    if ((!isExpenseNature(l.nature) && l.nature !== 'revenu') || l.target?.kind !== 'line') continue;
-    const actual = actualReplacedBy(d, l.month, l.target.key);
-    const line = expenseLine(d, l.month, l.target.key) ?? revenueLine(d, l.month, l.target.key);
-    if (actual !== null && line) out.set(`${l.month}|${line.key}`, { month: l.month, key: line.key, name: line.name, actual });
-  }
-  return [...out.values()];
 }
 
 /**
@@ -529,7 +523,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
         created = true;
       }
       const tx: Transaction = { id: newId('t'), ...base, type: 'rev', target: key, accountId: sourceId };
-      if (addTransaction(d, tx, { replaceActual: options.replaceActual })) {
+      if (addTransaction(d, tx)) {
         batch.revenues++;
         imported.push(l);
       } else {
@@ -543,7 +537,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
           : t.kind === 'line'
             ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId }
             : { id: newId('t'), ...base, type: 'env', target: targetId };
-      if (addTransaction(d, tx, { replaceActual: options.replaceActual })) {
+      if (addTransaction(d, tx)) {
         batch.expenses++;
         imported.push(l);
       } else {
@@ -552,8 +546,10 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
         batch.failedIds.push(l.id);
       }
     } else {
-      const mv: AccountMovement = { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId };
+      const attach = transferAttachment(d, l);
+      const mv: AccountMovement = { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId, ...(attach ? { target: attach } : {}) };
       (d.accountMovements ??= []).push(mv);
+      if (attach?.kind === 'line') syncLineActual(d, l.month, attach.key);
       if (l.nature === 'retrait') batch.withdrawals++;
       else batch.internalTransfers++;
       imported.push(l);

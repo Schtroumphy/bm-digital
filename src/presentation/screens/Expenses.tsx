@@ -5,17 +5,18 @@ import { DetailInput } from '../components/DetailInput';
 import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
 import { addTransaction, deleteTransaction, deleteTransactions, setStatement, setTransactionDetail } from '../../application/actions';
-import { deleteAccountMovement, setAccountMovementDetail, updateAccountMovement } from '../../application/accountMovements';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
-import { actualReplacedBy, bankDateOf, expenseLineBlocker, isExpenseLineBlock, lineExpensesTotal } from '../../domain/lineExpenses';
+import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
+import { defaultTransferTarget, similarPointedItem, transferItems } from '../../domain/transfers';
+import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, updateAccountMovement } from '../../application/accountMovements';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
-import type { MonthKey, TxType } from '../../domain/types';
+import type { MonthKey, MovementTarget, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
 /** Sum of the expenses of a list: an entry of money (`rev`) is never an expense (spec 0015). */
@@ -94,6 +95,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '' });
   const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string }>({ q: '', type: 'all', accountId: 'all' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
+  const [transfer, setTransfer] = useState(false);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
   const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
@@ -168,9 +171,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   } else if (target && form.type === 'fix') {
     const l = lines.find(x => x.key === target)!;
     const cur = l.actual ?? 0;
-    const carried = lineExpensesTotal(data, month, target) !== null;
     impact = [
-      [`${l.name} · réel`, `${money(cur)} → ${money(carried ? cur + amount : amount)}`],
+      [`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`],
       ['Reste à sortir', 'inchangé (budgétaire)'],
     ];
   } else if (target) {
@@ -182,12 +184,9 @@ function EntryTab({ month }: { month: MonthKey }) {
   }
 
   const add = () => {
-    if (!amount || amount < 0 || !target || locked || accountRefused || lineBlocker) return;
-    // A typed actual on a fixed/credit line is replaced only after an explicit confirmation (spec 0014, RG6).
-    const replaced = form.type === 'fix' ? actualReplacedBy(data, month, target) : null;
-    if (replaced !== null && !window.confirm(`Cette ligne a un réel saisi de ${money(replaced)}. L’enregistrer le remplacera par le montant des dépenses et il ne sera pas restauré si vous supprimez ensuite la dépense. Remplacer ?`)) return;
+    if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail }, { replaceActual: replaced !== null }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail }),
     );
     // Picking another account is a one-off: the next expense follows its box again.
     setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '' }));
@@ -205,30 +204,37 @@ function EntryTab({ month }: { month: MonthKey }) {
     <div className="dep-layout">
       <div className="panel-lg form-card">
         <div className="form-title">Nouvelle dépense</div>
-        <div className="form-row has-detail">
+        <div className="form-row">
           <label className="field-w">
             <span className="field-label">Libellé</span>
             <input className="text-input" value={form.label} placeholder="Ex. Pharmacie" onChange={e => setForm(f => ({ ...f, label: e.target.value }))} onKeyDown={e => e.key === 'Enter' && add()} />
-          </label>
-          <label className="field-w">
-            <span className="field-label">Détail</span>
-            <DetailInput value={form.detail} onChange={detail => setForm(f => ({ ...f, detail }))} onEnter={add} />
           </label>
           <label className="field-w">
             <span className="field-label">Montant</span>
             <input className="text-input is-amount" value={form.amount} placeholder="0,00 €" inputMode="decimal" onChange={e => setForm(f => ({ ...f, amount: sanitizeAmountInput(e.target.value) }))} onKeyDown={e => e.key === 'Enter' && add()} />
           </label>
         </div>
+        <label className="field-w">
+          <span className="field-label">Détail <span className="field-optional">facultatif</span></span>
+          <DetailInput value={form.detail} onChange={detail => setForm(f => ({ ...f, detail }))} onEnter={add} />
+        </label>
         <div>
           <div className="field-label is-gap">Type</div>
-          <div className="chips">
+          <div className="chips is-wrap">
             {(['var', 'env', 'epa', 'fix'] as const).map(t => (
-              <Chip key={t} on={form.type === t} onClick={() => setForm(f => ({ ...f, type: t, target: '' }))}>
-                {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit' }[t]}
+              <Chip key={t} on={!transfer && form.type === t} onClick={() => { setTransfer(false); setForm(f => ({ ...f, type: t, target: '' })); }}>
+                {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Fixe / crédit' }[t]}
               </Chip>
             ))}
+            <Chip on={transfer} onClick={() => setTransfer(true)}>
+              Transfert
+            </Chip>
           </div>
         </div>
+        {transfer ? (
+          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '' }))} />
+        ) : (
+          <>
         <div>
           <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : form.type === 'fix' ? 'Ligne fixe ou crédit' : 'Compte d’épargne débité'}</div>
           <div className="chips is-wrap">
@@ -267,6 +273,8 @@ function EntryTab({ month }: { month: MonthKey }) {
           <Icon name="plus" size={15} stroke={3} />
           Ajouter la dépense
         </div>
+          </>
+        )}
       </div>
 
       <div className="dep-side">
@@ -363,7 +371,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   );
 }
 
-/** Movements between accounts created by the import (spec 0013, RG10d): edited (label, amount) or deleted, never created here. */
+/** Transfers of the month (spec 0013, RG10d; spec 0019): created by the import or by the « Transfert » form, edited (label, amount) or deleted here. */
 function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean }) {
   const { data, update } = useStore();
   const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string } | null>(null);
@@ -379,6 +387,11 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
     setEditingDetail(null);
   };
   const nameOf = (id: string) => data.accounts.find(a => a.id === id)?.name ?? 'Supprimé';
+  // Tooltip of a transfer: the budget item it stands for, if any (list lines carry their extra information in the tooltip, spec 0019).
+  const targetLabel = (target?: MovementTarget) => {
+    if (!target) return 'Transfert libre : sans ligne de budget';
+    return transferItems(data, month).find(i => (target.kind === 'line' ? i.target.kind === 'line' && i.target.key === target.key : i.target.kind === 'env' && i.target.id === target.id))?.label ?? 'Poste de budget supprimé';
+  };
   const save = () => {
     if (!editing) return;
     update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail }));
@@ -387,7 +400,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
   return (
     <div className="panel-lg">
       <div className="tx-head">
-        <div className="tx-title">Mouvements entre comptes de {monthLabel(month)}</div>
+        <div className="tx-title">Transferts de {monthLabel(month)}</div>
         <b>{money(movements.reduce((a, m) => a + m.amount, 0))}</b>
       </div>
       {[...movements]
@@ -415,7 +428,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
               <div className="mv-grid tx-row">
                 <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
                 <EntryLabel entry={m} onOpen={openDetail} />
-                <span className="muted ellipsis">
+                <span className="muted ellipsis" title={targetLabel(m.target)}>
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                 </span>
                 <b className="num">{money(m.amount)}</b>
@@ -437,6 +450,18 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
                   <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: m.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />
                 </div>
               )}
+              {/* A transfer without target that looks like a checked item: possible double count (spec 0019, RG11). */}
+              {(() => {
+                const similar = similarPointedItem(data, m);
+                return similar && !locked ? (
+                  <div className="sim-signal">
+                    Semblable à un pointage : {similar.label}.{' '}
+                    <button type="button" className="link-btn" onClick={() => update(d => void setTransferTarget(d, m.id, similar.target))}>
+                      Rattacher
+                    </button>
+                  </div>
+                ) : null;
+              })()}
             </Fragment>
           ),
         )}
@@ -555,5 +580,78 @@ function Spark({ values }: { values: number[] }) {
         <circle cx={last[0]} cy={last[1]} r="3" fill="#fff" stroke="var(--t-base)" strokeWidth="2" />
       </svg>
     </div>
+  );
+}
+
+/**
+ * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget item the transfer stands for
+ * (optional; the envelope or the savings line of the destination is proposed). The label, detail and amount are those of the form.
+ */
+function TransferFields({ month, locked, label, detail, amount, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; onDone: () => void }) {
+  const { data, update } = useStore();
+  const accounts = data.accounts.filter(a => !a.archived);
+  const main = accounts.find(a => a.isDefault) ?? accounts[0];
+  const [fromId, setFromId] = useState(main?.id ?? '');
+  const [toChoice, setToChoice] = useState('');
+  const [day, setDay] = useState(String(defaultDay(month)));
+  // `undefined`: not chosen yet, the default of the destination applies; `''`: « aucune ».
+  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  const toId = toChoice && toChoice !== fromId && accounts.some(a => a.id === toChoice) ? toChoice : accounts.find(a => a.id !== fromId)?.id ?? '';
+  const items = transferItems(data, month).filter(i => i.toAccountId === toId);
+  const valueOf = (t: MovementTarget | null | undefined) => (t ? (t.kind === 'line' ? `line:${t.key}` : `env:${t.id}`) : '');
+  const value = chosen !== undefined ? chosen : valueOf(defaultTransferTarget(data, month, toId, fromId));
+  const item = items.find(i => valueOf(i.target) === value);
+  const dayNumber = Number(day);
+  const ready = !!fromId && !!toId && fromId !== toId && amount > 0 && Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31 && !locked;
+  const add = () => {
+    if (!ready) return;
+    update(d => void addTransfer(d, { id: newId('m'), month, day: dayNumber, label: label.trim() || 'Transfert', amount, fromAccountId: fromId, toAccountId: toId, ...(item ? { target: item.target } : {}), detail }));
+    setChosen(undefined);
+    onDone();
+  };
+  const accountChips = (current: string, pick: (id: string) => void, exclude?: string) => (
+    <div className="chips is-wrap">
+      {accounts.filter(a => a.id !== exclude).map(a => (
+        <Chip key={a.id} on={current === a.id} onClick={() => pick(a.id)}>
+          <span className="acc-item">
+            <AccountDot account={a} />
+            {a.name}
+          </span>
+        </Chip>
+      ))}
+    </div>
+  );
+  return (
+    <>
+      <div>
+        <div className="field-label is-gap">De</div>
+        {accountChips(fromId, id => { setFromId(id); setChosen(undefined); })}
+      </div>
+      <div>
+        <div className="field-label is-gap">Vers</div>
+        {accountChips(toId, id => { setToChoice(id); setChosen(undefined); }, fromId)}
+      </div>
+      <div className="form-row">
+        <label className="field-w">
+          <span className="field-label">Jour</span>
+          <input className="text-input" inputMode="numeric" value={day} onChange={e => setDay(e.target.value.replace(/\D/g, ''))} />
+        </label>
+        <label className="field-w">
+          <span className="field-label">Rattacher à (facultatif)</span>
+          <select className="text-input" value={value} onChange={e => setChosen(e.target.value)}>
+            <option value="">Aucun (transfert libre)</option>
+            {items.map(i => (
+              <option key={valueOf(i.target)} value={valueOf(i.target)}>{i.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {item?.pointedOn && <div className="impact">Cette ligne est pointée : le transfert remplacera sa contrepartie fictive dans le solde estimé.</div>}
+      {locked && <div className="alert-box">Ce mois est clôturé : aucun transfert ne peut y être créé.</div>}
+      <div className={`btn-dark is-block${ready ? '' : ' is-disabled'}`} onClick={add}>
+        <Icon name="plus" size={15} stroke={3} />
+        Ajouter le transfert
+      </div>
+    </>
   );
 }
