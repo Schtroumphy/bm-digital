@@ -1,3 +1,4 @@
+import { actualReplacedBy } from '../domain/lineExpenses';
 import { normalizeLabel, fullLabelOf } from '../domain/statement';
 import type { BudgetData, ImportTarget, MonthKey } from '../domain/types';
 import { changeMonth, changeNature, isImportMonth, isIncome, lineProblem, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
@@ -10,7 +11,7 @@ import { changeMonth, changeNature, isImportMonth, isIncome, lineProblem, target
 /** States of a line, shown as chips and used as a filter (RG47). A line can have several. */
 export type LineState =
   | 'nouveau' | 'a_rattacher' | 'a_qualifier' | 'compte_a_rattacher' | 'doublon' | 'doublon_probable'
-  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee';
+  | 'semblable_importee' | 'saisie_manuelle' | 'mois_different' | 'decochee' | 'entree' | 'importee' | 'reel_remplace';
 
 const NONE: ReadonlySet<string> = new Set();
 
@@ -27,9 +28,10 @@ export const STATE_LABEL: Record<LineState, string> = {
   decochee: 'Décochée',
   entree: 'Entrée d’argent',
   importee: 'Importée',
+  reel_remplace: 'Réel saisi à remplacer',
 };
 
-export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee'];
+export const STATE_ORDER: LineState[] = ['nouveau', 'a_rattacher', 'a_qualifier', 'compte_a_rattacher', 'doublon', 'doublon_probable', 'semblable_importee', 'saisie_manuelle', 'mois_different', 'decochee', 'entree', 'importee', 'reel_remplace'];
 
 /**
  * States of a line. « Nouveau » is a line with nothing left to do that is not already imported; « Décochée » is an unchecked debit;
@@ -45,6 +47,8 @@ export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<stri
   else if (problem) out.push('a_rattacher');
   else if (!l.duplicate) out.push('nouveau');
   if (l.duplicate) out.push('doublon');
+  // The target is a fixed/credit line whose typed actual the first expense would replace (spec 0014, RG6): informative, not blocking.
+  if (l.target?.kind === 'line' && !l.duplicate && actualReplacedBy(d, l.month, l.target.key) !== null) out.push('reel_remplace');
   if (l.similarImported === 'probable') out.push('doublon_probable');
   if (l.similarImported === 'semblable') out.push('semblable_importee');
   if (l.similarManual) out.push('saisie_manuelle');

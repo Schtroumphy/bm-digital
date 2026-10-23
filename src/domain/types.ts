@@ -98,8 +98,9 @@ export interface EnvHistory {
  * - `var`: variable expense, adds to the actual of a `var` line (target = line key)
  * - `env`: spent from an envelope (target = envelope id)
  * - `epa`: withdrawal from a savings/investment account (target = line key)
+ * - `fix`: expense on a fixed or credit line (target = line key, spec 0014); on the account of the line
  */
-export type TxType = 'var' | 'env' | 'epa';
+export type TxType = 'var' | 'env' | 'epa' | 'fix';
 
 export interface Transaction {
   id: string;
@@ -150,8 +151,8 @@ export interface ImportAccountLink {
   accountId: string | null;
 }
 
-/** Where an imported line goes: a `var` line (stable key), an envelope (id) or a bank account (id; withdrawals and internal transfers). */
-export type ImportTarget = { kind: 'var'; key: string } | { kind: 'env'; id: string } | { kind: 'account'; id: string };
+/** Where an imported line goes: a `var` line or a fixed/credit `line` (stable key), an envelope (id) or a bank account (id; withdrawals and internal transfers). */
+export type ImportTarget = { kind: 'var'; key: string } | { kind: 'line'; key: string } | { kind: 'env'; id: string } | { kind: 'account'; id: string };
 
 /** What an imported debit is: `depense` and `externe` become a `Transaction`, `retrait` and `interne` an `AccountMovement` (spec 0013, RG9). */
 export type ImportNature = 'depense' | 'retrait' | 'interne' | 'externe';

@@ -36,6 +36,9 @@ export function completeData(): BudgetData {
   ];
   // Spec 0013 : transaction importée, mouvement entre comptes et règle mémorisée.
   d.transactions.push({ id: 't-imp', month: '2026-12', day: 3, label: 'Paiement par carte CARREFOUR', amount: 12.5, type: 'var', target: 'inconnu', accountId: 'acc-main', importAccountId: 'acc-main', fingerprint: '2026-12-03|12.50|paiement par carte carrefour', rank: 1, category: 'Alimentation' });
+  // Spec 0014 : dépense sur une ligne fixe et règle vers une ligne fixe.
+  const fixLine = dec.lines.find(l => l.block === 'fix')!;
+  d.transactions.push({ id: 't-fix', month: '2026-12', day: 5, label: 'Prélèvement', amount: 62, type: 'fix', target: fixLine.key, accountId: fixLine.accountId ?? 'acc-main' });
   d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait' }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
@@ -44,6 +47,7 @@ export function completeData(): BudgetData {
   d.importRules = [
     { id: 'r1', pattern: 'carrefour', nature: 'depense', target: { kind: 'var', key: 'courses' } },
     { id: 'r2', pattern: 'retrait', nature: 'retrait', target: { kind: 'account', id: 'acc-cash' } },
+    { id: 'r-fix', pattern: 'edf', nature: 'depense', target: { kind: 'line', key: fixLine.key } },
   ];
   return d;
 }

@@ -4,24 +4,25 @@ import { lineStates, STATE_LABEL, type LineState } from '../../application/impor
 import { bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget } from '../../domain/types';
+import { expenseLineAccountId } from '../../domain/lineExpenses';
 import { useStore } from '../state/store';
 
 /** One line of the import preview: checkbox, date, label, amount, nature, target, month and state chips (spec 0013). */
 
 const NATURES: LineNature[] = ['depense', 'retrait', 'interne', 'externe', 'a_qualifier'];
 
-export const targetValue = (t: ImportTarget | null) => (t ? `${t.kind}:${t.kind === 'var' ? t.key : t.id}` : '');
+export const targetValue = (t: ImportTarget | null) => (t ? `${t.kind}:${t.kind === 'var' || t.kind === 'line' ? t.key : t.id}` : '');
 export function targetFrom(value: string): ImportTarget | null {
   const i = value.indexOf(':');
   if (i < 0) return null;
   const [kind, id] = [value.slice(0, i), value.slice(i + 1)];
-  return kind === 'var' ? { kind: 'var', key: id } : kind === 'env' ? { kind: 'env', id } : { kind: 'account', id };
+  return kind === 'var' ? { kind: 'var', key: id } : kind === 'line' ? { kind: 'line', key: id } : kind === 'env' ? { kind: 'env', id } : { kind: 'account', id };
 }
 
 /** Colour family of a state chip: blocking (yellow), duplicate (grey), informative (blue), month (violet), entry of money (green), neutral. */
 const CHIP_TONE: Record<LineState, string> = {
   nouveau: 'neutral', a_rattacher: 'warn', a_qualifier: 'warn', compte_a_rattacher: 'warn', doublon: 'gray', doublon_probable: 'info',
-  semblable_importee: 'info', saisie_manuelle: 'info', mois_different: 'violet', decochee: 'gray', entree: 'green', importee: 'gray',
+  semblable_importee: 'info', saisie_manuelle: 'info', mois_different: 'violet', decochee: 'gray', entree: 'green', importee: 'gray', reel_remplace: 'info',
 };
 export const chipClass = (s: LineState) => `state-chip is-${CHIP_TONE[s]}`;
 
@@ -44,6 +45,12 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
   // A line of an envelope's account can only be spent from that envelope (spec 0011, RG2).
   const fromEnvelope = isEnvelopeAccount(account);
   const monthLines = fromEnvelope ? [] : data.months[l.month]?.lines.filter(x => x.block === 'var') ?? [];
+  // Fixed lines and credits of the month on the account of the imported line (spec 0014, RG3, RG17); none for an envelope's account.
+  const fixedLines: [string, typeof monthLines][] = fromEnvelope || !l.accountId
+    ? []
+    : ([['Lignes fixes', 'fix'], ['Crédits', 'cre']] as const)
+        .map(([title, block]) => [title, (data.months[l.month]?.lines ?? []).filter(x => x.block === block && expenseLineAccountId(data, x) === l.accountId)] as [string, typeof monthLines])
+        .filter(([, group]) => group.length > 0);
   const envelopes = fromEnvelope ? data.envelopes.filter(e => e.accountId === l.accountId) : data.envelopes;
   const destinations = destinationAccounts(data, l.nature, l.accountId);
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
@@ -113,6 +120,15 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
                         ))}
                       </optgroup>
                     )}
+                    {fixedLines.map(([title, group]) => (
+                      <optgroup key={title} label={title}>
+                        {group.map(x => (
+                          <option key={x.key} value={`line:${x.key}`}>
+                            {x.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                     <optgroup label="Enveloppes">
                       {envelopes.map(e => (
                         <option key={e.id} value={`env:${e.id}`}>

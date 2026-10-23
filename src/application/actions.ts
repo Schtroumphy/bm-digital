@@ -1,6 +1,7 @@
 import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { lineNeedsActual, varActualFromTx } from '../domain/budget';
+import { expenseLineBlocker, expenseLine, expenseLineAccountId, isLineCarried, lineExpensesTotal } from '../domain/lineExpenses';
 import { isMonthLocked } from '../domain/ledger';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
@@ -237,6 +238,8 @@ export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Parti
   if (isMonthLocked(d, m)) return false;
   const l = d.months[m]?.lines.find(x => x.key === key);
   if (!l) return false;
+  // The actual of a fixed/credit line that carries expenses is their sum: it cannot be typed (spec 0014, RG7).
+  if (patch.actual !== undefined && isLineCarried(d, m, key)) return false;
   Object.assign(l, patch);
   return true;
 }
@@ -278,7 +281,8 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
   if (!md?.initialized || isMonthLocked(d, m)) return;
   for (const { key, value } of filled) {
     const l = md.lines.find(x => x.key === key);
-    if (l && l.actual === value) l.actual = null;
+    // A line that carries expenses has an actual that is their sum: it is never emptied here (spec 0014).
+    if (l && l.actual === value && !isLineCarried(d, m, key)) l.actual = null;
   }
 }
 
@@ -291,8 +295,9 @@ export function undoValidateMonth(d: BudgetData, m: MonthKey, filled: ValidatedL
  * Without an account, the transaction takes the one resolved from its box (spec 0006, RG3):
  * the account is written down, so a later change of the box does not move it (RG6).
  */
-export function addTransaction(d: BudgetData, input: Transaction): boolean {
+export function addTransaction(d: BudgetData, input: Transaction, options: { replaceActual?: boolean } = {}): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
+  if (input.type === 'fix') return addLineExpense(d, input, options.replaceActual === true);
   const given = d.accounts.find(a => a.id === input.accountId);
   if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
   // A variable expense on a line with an assigned account stays on it: another account is refused (spec 0006 amended, 0011 RG10).
@@ -310,10 +315,33 @@ export function addTransaction(d: BudgetData, input: Transaction): boolean {
   return true;
 }
 
+/**
+ * Expense on a fixed or credit line (spec 0014): refused on a locked month, on a line that is not `fix`/`cre`, on another account than
+ * the line's (RG2) or on an envelope's account. The actual of the line becomes the sum of its expenses (RG5). A typed actual on a line
+ * with no expense yet is replaced only when `replaceActual` is true, after the user confirmed (RG6); otherwise the expense is refused.
+ */
+function addLineExpense(d: BudgetData, input: Transaction, replaceActual: boolean): boolean {
+  const line = expenseLine(d, input.month, input.target);
+  if (!line || expenseLineBlocker(d, input.month, input.target)) return false;
+  const accountId = expenseLineAccountId(d, line);
+  if (input.accountId !== undefined && input.accountId !== accountId) return false;
+  if (isEnvelopeAccount(d.accounts.find(a => a.id === accountId))) return false;
+  if (line.actual !== null && !isLineCarried(d, input.month, input.target) && !replaceActual) return false;
+  d.transactions.push({ ...input, accountId });
+  line.actual = lineExpensesTotal(d, input.month, input.target);
+  return true;
+}
+
 export function deleteTransaction(d: BudgetData, id: string): boolean {
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month)) return false;
   d.transactions = d.transactions.filter(x => x.id !== id);
+  if (t.type === 'fix') {
+    // The actual follows the expenses left; the last one removed empties it, a replaced typed actual is not restored (RG7, RG12).
+    const line = d.months[t.month]?.lines.find(x => x.key === t.target);
+    if (line) line.actual = lineExpensesTotal(d, t.month, t.target);
+    return true;
+  }
   if (t.type !== 'var') return true;
   const l = d.months[t.month]?.lines.find(x => x.key === t.target);
   if (!l) return true;

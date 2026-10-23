@@ -164,7 +164,7 @@ export function toRows(d: BudgetData): TableRows {
       pattern: r.pattern,
       nature: r.nature,
       target_kind: r.target.kind,
-      target_id: r.target.kind === 'var' ? r.target.key : r.target.id,
+      target_id: r.target.kind === 'var' || r.target.kind === 'line' ? r.target.key : r.target.id,
       position,
     }),
   );
@@ -338,7 +338,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
   );
 
   const importRules: ImportRule[] = byPosition(rows.import_rules).map(r => {
-    const target: ImportTarget = r.target_kind === 'var' ? { kind: 'var', key: r.target_id } : r.target_kind === 'env' ? { kind: 'env', id: r.target_id } : { kind: 'account', id: r.target_id };
+    const target: ImportTarget = r.target_kind === 'var' ? { kind: 'var', key: r.target_id } : r.target_kind === 'line' ? { kind: 'line', key: r.target_id } : r.target_kind === 'env' ? { kind: 'env', id: r.target_id } : { kind: 'account', id: r.target_id };
     return { id: r.id, pattern: r.pattern, nature: r.nature as ImportNature, target };
   });
 

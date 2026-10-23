@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import {
   accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, natureLabel, prepareImport,
-  previewCounts, refreshPreview, saveSkipChoices, sessionSummary, validateImport,
+  previewCounts, refreshPreview, replacedActuals, saveSkipChoices, sessionSummary, validateImport,
   type ImportBatch, type ImportPreview, type ImportSummary, type LineNature, type PreviewLine, type SessionTotals,
 } from '../../application/statementImport';
 import {
@@ -14,6 +14,7 @@ import type { StatementSource } from '../../application/ports';
 import { bankAccount, isEnvelopeAccount } from '../../domain/bank';
 import { money, monthLabel } from '../../domain/format';
 import type { StatementReading } from '../../domain/statement';
+import { isExpenseLineBlock } from '../../domain/lineExpenses';
 import { newId, useStore } from '../state/store';
 import { AccountLinks } from './AccountLinks';
 import { ImportRow, targetFrom } from './ImportRow';
@@ -181,9 +182,15 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
   // The batch runs on a copy first, only to know what it writes and to redo the preview; the real change is made by the store.
   const importLines = (ids: ReadonlySet<string>) => {
     if (!preview || !reading || busy.current || ids.size === 0) return;
+    // One confirmation for the typed actuals of fixed/credit lines that the expenses replace (spec 0014, RG6, CA20).
+    const replaced = replacedActuals(data, preview, ids, { done, marked });
+    if (replaced.length > 0) {
+      const list = replaced.map(r => `${r.name} (${monthLabel(r.month)}) : ${money(r.actual)}`).join('\n');
+      if (!window.confirm(`Ces lignes ont un réel saisi, qui sera remplacé par le montant des dépenses importées et ne sera pas restauré si vous supprimez ensuite les dépenses :\n${list}\n\nRemplacer ?`)) return;
+    }
     busy.current = true;
     setImporting(true);
-    const options = { ids, done, marked };
+    const options = { ids, done, marked, replaceActual: replaced.length > 0 };
     const copy = structuredClone(data);
     const batch = validateImport(copy, preview, newId, options);
     update(d => void validateImport(d, preview, newId, options));
@@ -731,7 +738,11 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
   const editable = shown.filter(l => !isIncome(l));
   const natureNow = (nature || 'depense') as LineNature;
   const varLines = new Map<string, string>();
-  for (const m of importMonths(data)) for (const l of data.months[m].lines) if (l.block === 'var') varLines.set(l.key, l.name);
+  const fixedLines = new Map<string, string>();
+  for (const m of importMonths(data)) for (const l of data.months[m].lines) {
+    if (l.block === 'var') varLines.set(l.key, l.name);
+    else if (isExpenseLineBlock(l.block)) fixedLines.set(l.key, l.name);
+  }
   const apply = () => {
     const change: BulkChange = {};
     if (nature) change.nature = nature as LineNature;
@@ -780,6 +791,13 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
             <optgroup label="Lignes variables">
               {[...varLines].map(([k, name]) => (
                 <option key={k} value={`var:${k}`}>
+                  {name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Lignes fixes et crédits">
+              {[...fixedLines].map(([k, name]) => (
+                <option key={k} value={`line:${k}`}>
                   {name}
                 </option>
               ))}

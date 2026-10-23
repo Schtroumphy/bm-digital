@@ -3,6 +3,7 @@ import { compareMonths } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
 import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, MonthKey, Transaction } from '../domain/types';
+import { actualReplacedBy, expenseLine, expenseLineAccountId } from '../domain/lineExpenses';
 import { addTransaction } from './actions';
 import { findImportAccountLink, isLinkableAccount, linkedAccountOf, setImportAccountLink } from './accountLinks';
 
@@ -121,6 +122,11 @@ export function targetIsValid(d: BudgetData, sourceId: string | null, nature: Li
     const own = ownEnvelopeTarget(d, sourceId);
     if (own) return target.kind === 'env' && own.kind === 'env' && target.id === own.id;
     if (target.kind === 'var') return !!d.months[month]?.lines.some(l => l.block === 'var' && l.key === target.key);
+    // A fixed/credit line, only when it is on the account of the imported line (spec 0014, RG3).
+    if (target.kind === 'line') {
+      const line = expenseLine(d, month, target.key);
+      return !!line && expenseLineAccountId(d, line) === sourceId;
+    }
     return target.kind === 'env' && d.envelopes.some(e => e.id === target.id);
   }
   if (nature === 'retrait' || nature === 'interne') {
@@ -388,6 +394,29 @@ export interface ImportOptions {
   done?: ReadonlySet<string>;
   /** Accounts marked « traité »: their lines are left alone (RG72). */
   marked?: ReadonlySet<string>;
+  /** The user confirmed that the typed actuals of fixed/credit lines are replaced by their expenses (spec 0014, RG6). Without it such lines are refused. */
+  replaceActual?: boolean;
+}
+
+/** A typed actual that importing the chosen lines would replace (spec 0014, RG6). */
+export interface ReplacedActual {
+  month: MonthKey;
+  key: string;
+  name: string;
+  actual: number;
+}
+
+/** The actuals that the lines about to be imported would replace, one entry per fixed/credit line, for the single confirmation (RG6, RG20). */
+export function replacedActuals(d: BudgetData, preview: ImportPreview, ids: ReadonlySet<string>, scope: ImportScope = {}): ReplacedActual[] {
+  const out = new Map<string, ReplacedActual>();
+  for (const l of preview.lines) {
+    if (!ids.has(l.id) || !l.checked || lineProblem(d, l) || scope.done?.has(l.id) || scope.marked?.has(l.pairKey)) continue;
+    if (!isExpenseNature(l.nature) || l.target?.kind !== 'line') continue;
+    const actual = actualReplacedBy(d, l.month, l.target.key);
+    const line = expenseLine(d, l.month, l.target.key);
+    if (actual !== null && line) out.set(`${l.month}|${line.key}`, { month: l.month, key: line.key, name: line.name, actual });
+  }
+  return [...out.values()];
 }
 
 /**
@@ -434,13 +463,15 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
       importAccountId: sourceId, fingerprint: l.fingerprint, rank: ranks.get(l)!, ...(l.row.category ? { category: l.row.category } : {}),
     };
     const t = l.target!;
-    const targetId = t.kind === 'var' ? t.key : t.id;
+    const targetId = t.kind === 'var' || t.kind === 'line' ? t.key : t.id;
     if (isExpenseNature(l.nature)) {
       const tx: Transaction =
         t.kind === 'var'
           ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId }
-          : { id: newId('t'), ...base, type: 'env', target: targetId };
-      if (addTransaction(d, tx)) {
+          : t.kind === 'line'
+            ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId }
+            : { id: newId('t'), ...base, type: 'env', target: targetId };
+      if (addTransaction(d, tx, { replaceActual: options.replaceActual })) {
         batch.expenses++;
         imported.push(l);
       } else {
