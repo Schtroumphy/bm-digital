@@ -4,6 +4,9 @@ import { EditableAmount } from '../components/Editable';
 import { Icon } from '../components/Icon';
 import { HUE, MUTED, tone, toneVars } from '../components/tone';
 import { addTransaction, deleteTransaction, setStatement } from '../../application/actions';
+import { deleteAccountMovement, updateAccountMovement } from '../../application/accountMovements';
+import type { StatementSource } from '../../application/ports';
+import { ImportWizard } from './ImportWizard';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { monthSummary, variableRemaining } from '../../domain/budget';
@@ -14,21 +17,28 @@ import { newId, useStore } from '../state/store';
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne' };
 
-export function ExpensesScreen({ month }: { month: MonthKey }) {
+export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
   const [tab, setTab] = useState<'saisie' | 'soldes'>('saisie');
+  const [importing, setImporting] = useState(false);
+  if (importing) return <ImportWizard source={statementSource} onClose={() => setImporting(false)} />;
   return (
     <>
-      <div className="tabs">
-        {(
-          [
-            ['saisie', 'Saisie des dépenses'],
-            ['soldes', 'Soldes épargnes'],
-          ] as const
-        ).map(([id, label]) => (
-          <div key={id} className={`tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
-            {label}
-          </div>
-        ))}
+      <div className="import-bar">
+        <div className="tabs">
+          {(
+            [
+              ['saisie', 'Saisie des dépenses'],
+              ['soldes', 'Soldes épargnes'],
+            ] as const
+          ).map(([id, label]) => (
+            <div key={id} className={`tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
+              {label}
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn-outline" onClick={() => setImporting(true)}>
+          Importer
+        </button>
       </div>
       {tab === 'saisie' ? <EntryTab month={month} /> : <BalancesTab month={month} />}
     </>
@@ -231,7 +241,71 @@ function EntryTab({ month }: { month: MonthKey }) {
           {txs.length === 0 && <div className="empty">Aucune dépense saisie ce mois-ci.</div>}
           <div style={{ height: 8 }} />
         </div>
+        <MovementsBlock month={month} locked={locked} />
       </div>
+    </div>
+  );
+}
+
+/** Movements between accounts created by the import (spec 0013, RG10d): edited (label, amount) or deleted, never created here. */
+function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean }) {
+  const { data, update } = useStore();
+  const [editing, setEditing] = useState<{ id: string; label: string; amount: string } | null>(null);
+  const movements = (data.accountMovements ?? []).filter(m => m.month === month);
+  if (movements.length === 0) return null;
+  const nameOf = (id: string) => data.accounts.find(a => a.id === id)?.name ?? 'Supprimé';
+  const save = () => {
+    if (!editing) return;
+    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0 }));
+    setEditing(null);
+  };
+  return (
+    <div className="panel-lg">
+      <div className="tx-head">
+        <div className="tx-title">Mouvements entre comptes de {monthLabel(month)}</div>
+        <b>{money(movements.reduce((a, m) => a + m.amount, 0))}</b>
+      </div>
+      {[...movements]
+        .sort((a, b) => b.day - a.day)
+        .map(m =>
+          editing?.id === m.id ? (
+            <div key={m.id} className="mv-grid tx-row">
+              <span className="muted">{dayLabel(m.month, m.day)}</span>
+              <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
+              <span className="muted ellipsis">
+                {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
+              </span>
+              <input className="text-input is-amount" value={editing.amount} inputMode="decimal" onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
+              <span className="icon-btn" title="Enregistrer" onClick={save}>
+                <Icon name="check" size={14} />
+              </span>
+            </div>
+          ) : (
+            <div key={m.id} className="mv-grid tx-row">
+              <span className="muted">{dayLabel(m.month, m.day)}</span>
+              <span className="ellipsis" style={{ fontWeight: 500 }}>
+                {m.label}
+              </span>
+              <span className="muted ellipsis">
+                {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
+              </span>
+              <b className="num">{money(m.amount)}</b>
+              {locked ? (
+                <span />
+              ) : (
+                <span style={{ display: 'flex', gap: 4 }}>
+                  <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ',') })}>
+                    <span style={{ fontSize: 11 }}>Modifier</span>
+                  </span>
+                  <span className="icon-btn" title="Supprimer" onClick={() => update(d => void deleteAccountMovement(d, m.id))}>
+                    <Icon name="close" size={14} />
+                  </span>
+                </span>
+              )}
+            </div>
+          ),
+        )}
+      <div style={{ height: 8 }} />
     </div>
   );
 }

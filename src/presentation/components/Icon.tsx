@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 /** Thin line icons (Lucide geometry). */
 const ICONS = {
   budget: <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />,
+  history: <path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l4 2" />,
   list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
   mail: <path d="M4 6h16v12H4zM4 7l8 6 8-6" />,
   calendar: <path d="M8 2v4M16 2v4M3 6h18v15H3zM3 10h18" />,

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { StatementSource } from '../application/ports';
 import { Icon, type IconName } from './components/Icon';
 import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
 import { useAuth } from './state/auth';
@@ -56,7 +57,7 @@ const saveMonth = (m: string) => {
   }
 };
 
-export function App() {
+export function App({ statementSource }: { statementSource: StatementSource }) {
   const { data, ledger, saveStatus, retrySave } = useStore();
   const { user, signOut } = useAuth();
   const { setEditing, menu, closeMenu } = useUi();
@@ -182,7 +183,7 @@ export function App() {
         </header>
 
         {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} />}
-        {screen === 'dep' && <ExpensesScreen month={month} />}
+        {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}

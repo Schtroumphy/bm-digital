@@ -339,7 +339,7 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
                   // Savings are paid from the main account, which therefore cannot be their dedicated one (spec 0007, RG2).
                   return (
                     <select key={c.label} className="su-select" value={r.linkedAccountId ?? ''} onChange={e => set(r.id, { linkedAccountId: e.target.value || undefined })}>
-                      <option value="">Aucun</option>
+                      <option value="">Nouveau compte</option>
                       {draft.rows.acc.filter(a => a.id !== mainRowId && (a.accountKind ?? 'courant') === kindForBlock(list)).map(a => <option key={a.id} value={a.id}>{a.name.trim() || 'Sans nom'}</option>)}
                     </select>
                   );
