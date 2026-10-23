@@ -586,6 +586,92 @@ Ligne importée (visible via le filtre d'état) : `☐(désactivée) 05 oct. LA 
 - Ni confirmation ni annulation d'un import partiel ; bouton désactivé pendant l'import ; double clic sans effet (RG77, RG78).
 - Correspondances de comptes rattachées et règles mémorisées enregistrées seulement pour les couples et lignes effectivement importés ; un choix « Ne pas importer » est mémorisé dès le premier lot ou à « Terminer l'import » (RG74).
 
+## Amendement 6 — lignes déjà importées affichées « déjà traitées » et verrouillées (validé, 2026-10-23)
+
+Retour du développeur au test de l'assistant : « Plutôt que d'apparaître décochée, elles devraient s'afficher comme déjà traitée (barrée par exemple) ». Il parle des lignes déjà importées (doublons). À la question « lesquelles ne sont pas signalées : dépenses, entrées d'argent, ou les deux », il a répondu « Les deux » (voir RG89 pour les entrées). Cet amendement AMENDE RG22 (doublon décoché, marqué « Doublon », forçable) et RG24 (la case forçable comme recours), ainsi que l'affichage de RG70 (ligne « Importée » grisée) ; il ne touche ni la clé de déduplication (RG20, RG21) ni le calcul de l'état. Les règles RG1 à RG81 non citées ne changent pas.
+
+Décisions validées par le développeur : (a) une ligne déjà importée s'affiche comme « déjà traitée » : texte barré et grisé ; (b) elle est VERROUILLÉE : sa case est désactivée, on ne peut plus la forcer pour la réimporter ; (c) cette modification d'affichage est un amendement de la 0013.
+
+### Constat sur le code livré (vérifié)
+
+- Un doublon (`duplicate`) naît décoché et reste cochable : l'utilisateur peut le forcer ; `validateImport` lui donne alors le prochain rang libre (RG22). L'aperçu le montre avec la pastille grise « Doublon » et la ligne atténuée comme n'importe quelle ligne décochée (`is-off`) : rien ne le distingue visuellement d'une ligne décochée par choix.
+- Une ligne importée pendant la session (`ImportRow`, mode `imported`) est déjà grisée, avec une case désactivée « Ligne déjà importée », les colonnes nature et cible à « — » et la pastille « Importée ». Elle n'est pas barrée.
+- L'état de session « Importée » (RG70) et l'état « Doublon » (déduplication, RG22) sont deux états distincts qui désignent la même réalité pour l'utilisateur : la ligne est déjà dans le budget.
+
+### Règles de l'amendement
+
+- RG82. [Amende RG22] « Déjà importée ». Une ligne de débit dont (empreinte, rang, compte d'import) existe déjà (état « Doublon », importée lors d'une session précédente) et une ligne importée pendant la session (état « Importée », RG70) s'affichent de la même façon : « déjà traitées ». Le libellé, les notes et le montant sont barrés et grisés ; la date est grisée ; les colonnes nature, rattachement et mois affichent « — » (ou la valeur en lecture seule, sans liste déroulante) ; la pastille d'état est grise. Le texte de la pastille est fixé en RG87.
+- RG83. [Amende RG22 et RG24] Verrouillage. Une ligne « déjà importée » est verrouillée : sa case est décochée ET désactivée (non cochable à la souris comme au clavier) et ses listes (nature, rattachement, mois) sont désactivées. Elle ne peut plus être forcée pour être réimportée. L'ancienne « case forçable » n'existe plus comme recours (voir RG88).
+- RG84. Les actions en masse ne la touchent pas. « Tout cocher » et l'action en masse (RG56, RG57) ne la cochent ni ne la modifient (même règle que les entrées d'argent, RG60). Elle ne compte ni dans « Importer N lignes », ni dans « à compléter », ni dans « K lignes cochées sont masquées par les filtres » (RG68) : une ligne verrouillée n'est jamais « cochée ».
+- RG85. Garde côté données. `validateImport` n'écrit jamais une ligne déjà importée, même si elle arrive cochée : l'idempotence de RG77 devient absolue pour les lignes non nouvelles (plus d'exception « doublon forcé »). La règle du « prochain rang libre » de RG22 et RG24 n'est plus atteignable depuis l'écran.
+- RG86. Informatifs, non barrés. « Doublon probable » (« Semblable déjà importée », la ligne n'est pas identique à une ligne importée) et « Saisie manuelle semblable » (RG23) restent des indices : la ligne n'est ni barrée, ni verrouillée, ni décochée à cause d'eux. Elle garde son comportement actuel (cochable, importable).
+- RG87. États, filtres, compteurs, récapitulatif.
+  - États : « Doublon » et « Importée » restent deux états distincts dans la logique et la déduplication (aucune migration). Libellés validés : « Déjà importée » pour un doublon d'une session précédente (remplace « Doublon »), « Importée » pour une ligne importée dans la session en cours (inchangé, RG70). Les lignes verrouillées n'ont pas l'état « Décochée » (RG47) : elles ne sont pas décochées par choix.
+  - Filtre d'état (famille « état », RG47) : l'entrée « Doublon » est renommée comme ci-dessus, son compteur reste le nombre de lignes de cet état ; l'entrée « Importée » est inchangée. Les compteurs restent calculés sur toutes les lignes de l'aperçu (RG50).
+  - Visibilité par défaut : inchangée (les lignes « Importée » de la session sont masquées par défaut, RG70 ; les doublons d'une session précédente restent listés, barrés, et ne sont pas masqués par défaut). Décision validée par le développeur.
+  - Compte « traité » (RG71) : une ligne verrouillée compte comme traitée, comme avant (« Importée » ou « Doublon » non forcé). Elle n'est jamais dans « N lignes restantes ». Comme il n'y a plus de doublon forcé, un compte dont toutes les lignes sont verrouillées ou importées est toujours « traité ».
+  - Récapitulatif (RG27, RG80) : « doublons ignorés » devient « Déjà importées (non réimportées) » et garde son compteur ; « décochées ou incomplètes » n'inclut pas les lignes verrouillées.
+- RG88. Accessibilité. Le barré et le grisé ne sont jamais le seul indice : (1) la pastille texte « Déjà importée » ou « Importée » est toujours présente ; (2) la case désactivée porte `aria-label` « Déjà importée, non réimportable » et la ligne une infobulle (`title`) « Déjà importée dans votre budget : elle ne peut pas être importée à nouveau » ; (3) le contraste du texte grisé et barré est d'au moins 4,5:1 sur le fond de la ligne (le gris est plus lisible que le gris « désactivé » habituel, le barré ne doit pas rendre la ligne illisible) ; (4) l'indice reste lisible sans couleur (lecteur d'écran : la pastille et l'`aria-label` annoncent l'état).
+- RG89. Entrées d'argent. Sur `develop`, les entrées d'argent ne sont que listées (RG59, RG66) : sans empreinte, sans rang, jamais « Doublon », déjà non cochables (RG60). Cet amendement ne les change donc pas ; le périmètre implémentable ici est celui des DÉBITS (dépenses, retraits, transferts). La réponse « Les deux » du développeur est appliquée aux entrées par la spec 0015 (note de renvoi ci-dessous, sans modifier la 0015).
+- RG90. Recours pour un faux doublon. Verrouiller supprime le recours prévu par RG22 et RG24 : forcer un FAUX doublon (même date, montant et libellé qu'un autre achat réel, ou rangs divergents entre deux fichiers, limite acceptée de RG24). Décision validée par le développeur : le recours est la saisie manuelle de la dépense dans l'onglet Saisie ; aucun déverrouillage par ligne n'est ajouté. Limite acceptée : une dépense saisie à la main n'a pas d'empreinte, donc aucun lien avec la banque pour le double pointage (spec 0017). Un message d'aide dans l'infobulle de la ligne verrouillée (RG88) peut le rappeler : « Pour une dépense réellement identique, la saisir à la main dans l'onglet Saisie. »
+
+### Wireframes
+
+#### Design validé
+
+Réutilise les tokens et classes existants : `import-grid`, `import-row`, `is-off`, `state-chip is-gray`, `--muted`, `--ink` (`src/presentation/app.css`, `ImportRow.tsx`). Nouveauté : une classe `is-done` (texte barré `text-decoration: line-through`, couleur grise à contraste ≥ 4,5:1, curseur par défaut). Aucun nouveau composant, aucune dépendance.
+
+```
+ ☐ Date    Libellé / notes                    Montant    Nature     Rattacher à   Mois    État
+ ── 1. Nouvelle ligne (cochable, inchangée) ──────────────────────────────────────────────────
+ ☑ 05 oct. LA CREPERIE EXEMPLE                    2,95   Dépense v  Courses v     oct. v  [Nouveau]
+ ── 2. Importée pendant cette session (visible via le filtre « Importée ») ───────────────────
+ ▫ 05 oct. ~~LA CREPERIE EXEMPLE~~                ~~2,95~~  —        —             oct.    [Importée]
+ ── 3. Doublon : importée lors d'une session précédente ──────────────────────────────────────
+ ▫ 06 oct. ~~PRLV EDF~~                          ~~62,00~~  —        —             oct.    [Déjà importée]
+   (title) « Déjà importée dans votre budget : elle ne peut pas être importée à nouveau »
+ ── 4. Indice informatif, NON barrée ─────────────────────────────────────────────────────────
+ ☑ 07 oct. BOULANGERIE EXEMPLE                    3,40   Dépense v  Courses v     oct. v  [Semblable déjà importée]
+```
+(▫ = case désactivée et décochée ; ~~x~~ = texte barré et grisé. États de la ligne : nouvelle, importée en session, déjà importée, lecture seule au survol/focus avec infobulle. Pas d'état vide propre à cet amendement.)
+
+### Impact sur le code livré
+
+- `statementImport.ts` : `prepareImport` produit les doublons décochés ET non forçables (drapeau « verrouillée » dérivé de `duplicate`) ; `previewCounts`, « Tout cocher » et l'action en masse ignorent les lignes verrouillées ; `validateImport` n'écrit aucune ligne `duplicate`, cochée ou non (suppression de la branche « doublon forcé » et du calcul du prochain rang libre, ou conservation défensive sans accès depuis l'écran : choix de l'implementer, à justifier).
+- `importFilters.ts` : libellé de l'état « Doublon » ; pas d'état « Décochée » sur une ligne verrouillée.
+- `ImportRow.tsx` : le rendu « imported » (déjà grisé, case désactivée) est généralisé aux lignes `duplicate` ; texte barré, listes désactivées, `aria-label` et infobulle (RG88).
+- `ImportWizard.tsx` : récapitulatif et libellés (RG87).
+- `app.css` : classe `is-done` (barré, gris, contraste).
+- Aucun changement de modèle, de schéma Supabase, de dépendance ni de règle mémorisée.
+
+### Critères d'acceptation de l'amendement
+
+- CA87. Given un fichier contenant une ligne déjà importée lors d'une session précédente, When j'ouvre l'aperçu, Then elle est affichée barrée et grisée, avec la pastille « Déjà importée », sa case est décochée et désactivée, et ses listes (nature, rattachement, mois) sont désactivées. (Auto sur l'état verrouillé de `prepareImport`, Man sur l'écran)
+- CA88. Given une ligne importée pendant la session, Then elle a le même rendu barré et grisé avec la pastille « Importée ». (Man)
+- CA89. Given une ligne verrouillée, When j'essaie de la cocher (souris ou clavier), Then rien ne se passe ; When je clique « Tout cocher » ou l'action en masse, Then elle reste décochée et inchangée. (Auto sur les fonctions de cochage, Man)
+- CA90. Given une ligne verrouillée transmise cochée à `validateImport`, Then aucune écriture n'est faite pour elle et elle ne compte pas dans le lot. (Auto)
+- CA91. Given un fichier réimporté entièrement, Then toutes ses lignes de débit sont verrouillées, « Importer N lignes » vaut 0, et le compte est « traité ». (Auto)
+- CA92. Given une ligne « Semblable déjà importée » ou « Saisie manuelle semblable », Then elle n'est ni barrée, ni verrouillée, ni décochée à cause de l'indice, et reste importable. (Auto, Man)
+- CA93. Given des lignes verrouillées et un filtre actif, Then elles ne comptent ni dans « K lignes cochées sont masquées par les filtres », ni dans « N lignes restantes » ; Given le filtre d'état « Déjà importée », Then seules ces lignes sont affichées et le compteur est exact. (Auto)
+- CA94. Given le récapitulatif, Then « Déjà importées (non réimportées) » affiche le nombre de lignes verrouillées et elles ne figurent pas dans « décochées ou incomplètes ». (Auto sur les compteurs)
+- CA95. Given une ligne verrouillée, Then elle porte la pastille texte, une case avec `aria-label` « Déjà importée, non réimportable » et une infobulle ; le contraste du texte grisé est ≥ 4,5:1 ; l'information ne repose pas sur le seul barré ou la seule couleur. (Man par le reviewer, vérification du contraste)
+- CA96. Given les entrées d'argent, Then leur affichage et leur comportement (RG59, RG60, RG66) sont inchangés. (Auto)
+- CA97. Les règles de dédup RG20 et RG21, les règles d'import des lignes non verrouillées et RG1 à RG81 non citées ne changent pas ; `npm run build` et les tests passent, les tests de « doublon forcé » (RG22) sont remplacés par CA90. (Auto)
+
+### Note de renvoi vers la spec 0015 (sans la modifier)
+
+La 0015 (branche `feat/income_entries_bank_date`, pas encore dans `develop`) importe les entrées d'argent et les déduplique avec le sens (débit ou crédit). Quand elle sera rebasée sur `develop`, elle devra reprendre cet amendement pour les entrées : une entrée déjà importée s'affiche « déjà traitée » (barrée, grisée, pastille texte), est verrouillée (case désactivée, non forçable), exclue de « Tout cocher », des compteurs « restantes » et du récapitulatif « décochées ou incomplètes », avec la même accessibilité (RG88). Le recours pour un faux doublon (saisie manuelle, RG90) lui est applicable. Les amendements 4 (RG60, RG66) seront à amender dans la 0015.
+
+### Décisions de l'amendement 6 (validées par le développeur)
+
+- Recours pour un faux doublon : la saisie manuelle dans l'onglet Saisie ; aucun déverrouillage par ligne. Limite : pas d'empreinte, donc pas de lien avec la banque pour la spec 0017 (RG90).
+- Périmètre : débits seulement sur `develop` ; la spec 0015 reprendra les entrées d'argent via la note de renvoi (RG89).
+- Deux pastilles distinctes : « Déjà importée » (doublon d'une session précédente) et « Importée » (session en cours) (RG87).
+- Les doublons d'une session précédente restent listés et barrés par défaut (RG87).
+- Design de la ligne (wireframe) validé.
+
+Aucune question ouverte.
+
 ## Suite prévue : revenus, entrées d'argent et date bancaire (spec 0015, hors périmètre)
 
 L'import réel des entrées d'argent (rattachement à une ligne de revenu `rev`, avec le principe de la 0014) et une date bancaire réelle distincte du mois de rattachement, pour TOUTES les écritures (dépenses, retraits, mouvements, revenus), sont la spec `0015-revenus-entrees-et-date-bancaire.md`, après la 0014. La qualification des virements reçus (« Revenu » quand l'autre compte n'est pas dans l'export) y est traitée. La 0013 ne fait que les montrer (amendement 4).
