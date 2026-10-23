@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccountPicker } from '../components/AccountPicker';
+import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
@@ -406,12 +406,10 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                   <LineCheckBox month={month} line={l} locked={locked} today={today} />
                   {block === 'var' && <PayModePicker data={data} box={l} disabled={locked} onChange={patch => update(d => setLinePayment(d, month, l.key, patch))} />}
                   {isSavings && (
-                    <>
-                      <span className="acc-source">
-                        <AccountPicker data={data} accountId={l.accountId} exclude={l.linkedAccountId} disabled={locked} hint="Compte débité" onPick={id => update(d => void setLineAccount(d, month, l.key, id))} />
-                      </span>
-                      <LinkedAccountPicker data={data} linkedAccountId={l.linkedAccountId} block={l.block} sourceId={accountIdOf(data, l.accountId)} disabled={locked} onPick={id => update(d => void setLineLinkedAccount(d, month, l.key, id))} />
-                    </>
+                    <span className="acc-stack">
+                      <AccountPicker data={data} accountId={l.accountId} exclude={l.linkedAccountId} alwaysVisible disabled={locked} hint="Compte débité" onPick={id => update(d => void setLineAccount(d, month, l.key, id))} />
+                      <LinkedAccountPicker data={data} linkedAccountId={l.linkedAccountId} block={l.block} sourceId={accountIdOf(data, l.accountId)} stacked disabled={locked} onPick={id => update(d => void setLineLinkedAccount(d, month, l.key, id))} />
+                    </span>
                   )}
                   {hasAccount && <AccountPicker data={data} accountId={l.accountId} disabled={locked || carriedBy(l) > 0} hint={carriedBy(l) > 0 ? CARRIED_ACCOUNT_REFUSAL : block === 'rev' && !isOnMainAccount(data, l.accountId) ? 'Ne compte pas dans le disponible à placer' : undefined} onPick={id => update(d => setLineAccount(d, month, l.key, id))} />}
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={[l.name, lineTooltip(data, month, l, today)].filter(Boolean).join('\n')} disabled={locked}>
@@ -668,6 +666,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
               onClick={canEdit ? () => setEditing(`ea:${e.id}`) : undefined}
             >
               <div className="env-tile-head">
+                <AccountDot account={data.accounts.find(a => a.id === e.accountId)} />
                 <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void renameEnvelope(d, e.id, name))} className="env-tile-name" inputClassName="cell-input is-text">
                   {e.name}
                 </EditableText>

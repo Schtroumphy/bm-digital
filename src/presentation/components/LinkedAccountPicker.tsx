@@ -12,16 +12,18 @@ interface Props {
   /** The account the line is paid from: it cannot also be the dedicated one (spec 0007, RG2). */
   sourceId: string;
   disabled?: boolean;
+  /** Drawn over the source dot of the line (no arrow): the two dots overlap slightly. */
+  stacked?: boolean;
   /** `undefined` = « Aucun ». */
   onPick: (accountId: string | undefined) => void;
 }
 
 /**
- * Dedicated-account dot of a savings or investment line (spec 0007, RG13): the arrow and the account
+ * Dedicated-account dot of a savings or investment line (spec 0007, RG13): the account
  * that receives the payments. Clicking opens the active accounts of the right kind except the source, plus « Aucun ».
  * An archived dedicated account keeps showing, greyed out.
  */
-export function LinkedAccountPicker({ data, linkedAccountId, block, sourceId, disabled, onPick }: Props) {
+export function LinkedAccountPicker({ data, linkedAccountId, block, sourceId, disabled, stacked, onPick }: Props) {
   const [open, setOpen] = useState(false);
   const current = data.accounts.find(a => a.id === linkedAccountId);
   const choices = activeBankAccounts(data).filter(a => a.id !== sourceId && kindOf(a) === kindForBlock(block));
@@ -32,7 +34,7 @@ export function LinkedAccountPicker({ data, linkedAccountId, block, sourceId, di
         title={current ? `Reçoit les versements : ${current.name}${current.archived ? ' (archivé)' : ''}` : 'Aucun compte dédié'}
         onClick={disabled ? undefined : () => setOpen(o => !o)}
       >
-        <span className="acc-arrow">→</span>
+        {!stacked && <span className="acc-arrow">→</span>}
         {current ? <AccountDot account={current} /> : <span className="dot is-10 is-empty" />}
       </span>
       {open && (

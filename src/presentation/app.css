@@ -602,7 +602,10 @@ input, button { font-family: inherit; }
 .acc-arrow { color: rgba(32, 30, 29, 0.4); font-size: 12px; }
 .acc-trigger.is-archived { opacity: 0.45; }
 .dot.is-empty { background: transparent; border: 1.5px dashed rgba(32, 30, 29, 0.35); box-sizing: border-box; }
-.acc-source { display: inline-flex; opacity: 0.55; }
+/* Source and dedicated account of a savings line: two dots, the second drawn over the first with a white ring. */
+.acc-stack { display: inline-flex; align-items: center; flex: none; }
+.acc-stack .acc-picker + .acc-picker { margin-left: -12px; }
+.acc-stack .acc-picker + .acc-picker .dot { box-shadow: 0 0 0 1.5px #fff; }
 .line-grid.is-balance { grid-template-columns: minmax(0, 1fr) 62px 70px 88px; }
 .history-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(4, 110px); column-gap: 10px; padding: 0 22px; }
 .history-row { align-items: center; min-height: 34px; border-top: 1px solid rgba(32, 30, 29, 0.05); }

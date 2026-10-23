@@ -12,6 +12,8 @@ interface PickerProps {
   data: BudgetData;
   /** Account of the operation; absent = the main account. */
   accountId?: string;
+  /** Keeps the dot visible even for the main account (default: hidden until hover). */
+  alwaysVisible?: boolean;
   /** Also writes the account's name next to the dot. */
   showName?: boolean;
   disabled?: boolean;
@@ -26,12 +28,12 @@ interface PickerProps {
  * The account dot of a line or transaction. Clicking it opens a menu of the
  * active accounts (an archived account only shows up as the current one).
  */
-export function AccountPicker({ data, accountId, showName, disabled, hint, exclude, onPick }: PickerProps) {
+export function AccountPicker({ data, accountId, alwaysVisible, showName, disabled, hint, exclude, onPick }: PickerProps) {
   const [open, setOpen] = useState(false);
   const current = bankAccount(data, accountId);
   const currentId = accountIdOf(data, accountId);
   // The main account is the default: its dot is hidden (shown on hover) to keep lines light.
-  const quiet = !showName && currentId === mainAccount(data).id;
+  const quiet = !showName && !alwaysVisible && currentId === mainAccount(data).id;
   return (
     <span className="acc-picker" onClick={e => e.stopPropagation()}>
       <span className={`acc-trigger${disabled ? ' is-disabled' : ''}${quiet ? ' is-quiet' : ''}`} title={hint} onClick={disabled ? undefined : () => setOpen(o => !o)}>
