@@ -23,7 +23,7 @@ Inclus :
 - Enregistrement comme `Transaction` (dépenses) ou mouvement entre comptes via le mécanisme de sauvegarde existant (spec 0012).
 - Briques séparées de l'écran (lecture, normalisation, déduplication, rattachement) réutilisables par une automatisation.
 
-Exclus : « double pointage » (spec 0017 prévue), dépenses sur lignes fixes et crédits (spec 0014 prévue), import réel des revenus et date bancaire (spec 0015 prévue ; l'amendement 4 les rend seulement visibles, voir « Suite prévue »), saisie manuelle d'un mouvement entre comptes hors import (le modèle est créé ici, l'écran de saisie libre reste à décider), automatisation (connexion bancaire, import planifié), revenus et virements reçus, pointage des lignes fixes ou crédits (spec 0009), autres banques ou formats (OFX, PDF) tout en gardant la table de correspondance des colonnes isolée, annulation d'un import validé (suppression à la main), identifiant de lot, pagination de l'aperçu, revue comptes/objectifs, bilan annuel.
+Exclus : « double pointage » (spec 0018 prévue), dépenses sur lignes fixes et crédits (spec 0014 prévue), import réel des revenus et date bancaire (spec 0015 prévue ; l'amendement 4 les rend seulement visibles, voir « Suite prévue »), saisie manuelle d'un mouvement entre comptes hors import (le modèle est créé ici, l'écran de saisie libre reste à décider), automatisation (connexion bancaire, import planifié), revenus et virements reçus, pointage des lignes fixes ou crédits (spec 0009), autres banques ou formats (OFX, PDF) tout en gardant la table de correspondance des colonnes isolée, annulation d'un import validé (suppression à la main), identifiant de lot, pagination de l'aperçu, revue comptes/objectifs, bilan annuel.
 
 ## Format du fichier (observé sur un exemple anonymisé)
 
@@ -490,7 +490,7 @@ Le développeur veut pouvoir rattacher une ligne importée à une ligne fixe (`f
 
 ## Questions ouvertes
 
-Aucune question bloquante, y compris sur l'amendement 1. Le développeur a confirmé : mouvement entre comptes créé dans cette spec, P7, dépenses sur lignes fixes et crédits en spec 0014, revenus et date bancaire en spec 0015, double pointage en spec 0017. Points proposés (tranchés par défaut pour avancer), à confirmer à la validation de la spec :
+Aucune question bloquante, y compris sur l'amendement 1. Le développeur a confirmé : mouvement entre comptes créé dans cette spec, P7, dépenses sur lignes fixes et crédits en spec 0014, revenus et date bancaire en spec 0015, virements internes liés en spec 0016, sorties d'épargne en spec 0017, double pointage en spec 0018. Points proposés (tranchés par défaut pour avancer), à confirmer à la validation de la spec :
 - P1. Virement émis : « À qualifier », signalé, décoché et non importable tant que le développeur n'a pas choisi interne ou externe (RG10). Validé sur le principe par le développeur.
 - P2. Avoirs et tous les crédits : ignorés, jamais rattachés à une dépense pour la réduire (RG8).
 - P3 (remplacé par décision du développeur). Retrait au distributeur : qualifié Retrait, destination proposée Espèces, modifiable ligne par ligne (RG9, RG10, RG10a).
@@ -590,8 +590,8 @@ Ligne importée (visible via le filtre d'état) : `☐(désactivée) 05 oct. LA 
 
 L'import réel des entrées d'argent (rattachement à une ligne de revenu `rev`, avec le principe de la 0014) et une date bancaire réelle distincte du mois de rattachement, pour TOUTES les écritures (dépenses, retraits, mouvements, revenus), sont la spec `0015-revenus-entrees-et-date-bancaire.md`, après la 0014. La qualification des virements reçus (« Revenu » quand l'autre compte n'est pas dans l'export) y est traitée. La 0013 ne fait que les montrer (amendement 4).
 
-## Suite prévue : double pointage (spec 0017, hors périmètre)
+## Suite prévue : double pointage (spec 0018, hors périmètre)
 
-Décidé par le développeur : le « double pointage » sera une spec séparée (0017, après la 0016), avec un rapprochement automatique modifiable à la main. Il n'est pas rédigé ici. Raison : il modifie le modèle de pointage de la spec 0009 (cases, couleurs, mode de mois, `LineCheck`) et touche chaque écran qui affiche une case. Idée de départ : une écriture importée apparaît « importée » dans une couleur, et devient « validée » dans une autre quand un mouvement saisi et enregistré lui correspond.
+Décidé par le développeur : le « double pointage » sera une spec séparée (0018, après les 0014 à 0017), avec un rapprochement automatique modifiable à la main. Il n'est pas rédigé ici. Raison : il modifie le modèle de pointage de la spec 0009 (cases, couleurs, mode de mois, `LineCheck`) et touche chaque écran qui affiche une case. Idée de départ : une écriture importée apparaît « importée » dans une couleur, et devient « validée » dans une autre quand un mouvement saisi et enregistré lui correspond.
 
 Ce que la 0013 garde pour le brancher : l'empreinte et le rang de chaque transaction et de chaque mouvement entre comptes importés (RG20, RG24), qui identifient une écriture comme venant de la banque et la rendent retrouvable. Aucune autre préparation n'est faite ici.
