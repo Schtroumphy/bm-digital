@@ -18,6 +18,8 @@ export function completeData(): BudgetData {
     { id: 'acc-old', name: 'Ancien compte', hue: 10, isDefault: false, openingBalance: 5, openingMonth: '2026-10', inBudget: true, archived: false },
   ];
   d.months['2026-11'].closed = true;
+  // Spec 0025 : lignes d'« Investir » choisies et échéances des objectifs.
+  d.settings = { ...d.settings, investAccounts: ['l-ep'], emergencyDue: '2027-12-31', investDue: '2028-06-30' };
   const dec = d.months['2026-12'];
   dec.lines[0] = { ...dec.lines[0], accountId: 'acc-sav', payMode: 'especes', linkedAccountId: 'acc-inv', dueDay: 5, execMode: 'prelevement' };
   d.template.lines[0] = { ...d.template.lines[0], accountId: 'acc-sav', payMode: 'virtuel', linkedAccountId: 'acc-inv', dueDay: 28, execMode: 'informatif' };
@@ -147,6 +149,26 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(loaded.accountMovements!.find(m => m.id === 'm2')).not.toHaveProperty('target');
       expect(loaded.accountMovements!.find(m => m.id === 'm3')!.target).toEqual({ kind: 'line', key: 'l-ep' });
       expect(loaded).toEqual(data);
+    });
+
+    it('spec 0025 : investAccounts et les échéances sont restitués ; absents, ils restent absents', async () => {
+      const repo = open();
+      const data = completeData();
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.settings.investAccounts).toEqual(['l-ep']);
+      expect(loaded.settings.emergencyDue).toBe('2027-12-31');
+      expect(loaded.settings.investDue).toBe('2028-06-30');
+      const old = structuredClone(data);
+      delete old.settings.investAccounts;
+      delete old.settings.emergencyDue;
+      delete old.settings.investDue;
+      await repo.save(old);
+      const reloaded = (await repo.load())!;
+      expect(reloaded.settings).not.toHaveProperty('investAccounts');
+      expect(reloaded.settings).not.toHaveProperty('emergencyDue');
+      expect(reloaded.settings).not.toHaveProperty('investDue');
+      expect(reloaded).toEqual(old);
     });
 
     it('des sauvegardes rapprochées s’appliquent dans l’ordre : la dernière gagne', async () => {

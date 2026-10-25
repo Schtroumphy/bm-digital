@@ -30,6 +30,9 @@ export function toRows(d: BudgetData): TableRows {
     emergency_target: d.settings.emergencyTarget,
     invest_target: d.settings.investTarget,
     savings_rate_target: d.settings.savingsRateTarget,
+    invest_accounts: orNull(d.settings.investAccounts),
+    emergency_due: orNull(d.settings.emergencyDue),
+    invest_due: orNull(d.settings.investDue),
   });
 
   d.accounts.forEach((a, position) =>
@@ -418,6 +421,9 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       emergencyTarget: s.emergency_target,
       investTarget: s.invest_target,
       savingsRateTarget: s.savings_rate_target,
+      investAccounts: orUndefined(s.invest_accounts),
+      emergencyDue: orUndefined(s.emergency_due),
+      investDue: orUndefined(s.invest_due),
     }),
   };
 }
