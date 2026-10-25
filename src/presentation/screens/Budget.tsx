@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
@@ -269,10 +270,42 @@ function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: st
   );
 }
 
+const BUBBLE_WIDTH = 300;
+
+/** Bubble of a line's details, beside the row (right if there is room, else left); closed by its cross, a click outside or Escape. */
+function DetailsBubble({ title, text, rect, onClose }: { title: string; text: string; rect: DOMRect; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+  const room = window.innerWidth - rect.right;
+  const left = room >= BUBBLE_WIDTH + 12 ? rect.right + 8 : Math.max(8, rect.left - BUBBLE_WIDTH - 8);
+  return createPortal(
+    <div ref={ref} className="details-bubble" style={{ left, top: Math.max(8, rect.top), width: BUBBLE_WIDTH }}>
+      <div className="details-bubble-head">
+        <div className="popover-title">{title}</div>
+        <div className="icon-btn" onClick={onClose}>
+          <Icon name="close" size={14} />
+        </div>
+      </div>
+      <div className="details-bubble-text">{text}</div>
+    </div>,
+    document.body,
+  );
+}
+
 function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; month: MonthKey; locked: boolean; today: string; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
+  const [details, setDetails] = useState<{ key: string; rect: DOMRect } | null>(null);
   const [horizonOpen, setHorizonOpen] = useState(false);
   useEffect(() => {
     if (!horizonOpen) return;
@@ -348,17 +381,17 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
               <div
                 key={l.key}
                 className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}`}
-                title={lineTooltip(data, month, l, today) || undefined}
                 onMouseEnter={() => setHover(l.key)}
                 onMouseLeave={() => setHover(null)}
-                onContextMenu={
-                  locked
-                    ? undefined
-                    : e => {
-                        setHover(null);
-                        openMenu(e, l.name, [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => deleteLine(d, month, l.key)) }]);
-                      }
-                }
+                onContextMenu={e => {
+                  setDetails(null);
+                  setHover(null);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  openMenu(e, l.name, [
+                    ...(lineTooltip(data, month, l, today) ? [{ label: 'Détails', onSelect: () => setDetails({ key: l.key, rect }) }] : []),
+                    ...(locked ? [] : [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => deleteLine(d, month, l.key)) }]),
+                  ]);
+                }}
               >
                 <div className="line-name-wrap">
                   <LineCheckBox month={month} line={l} locked={locked} today={today} />
@@ -403,11 +436,18 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                     <div style={{ width: `${l.actual !== null && l.budget ? Math.min(100, (l.actual / l.budget) * 100) : 0}%`, background: l.actual !== null && l.actual > l.budget ? 'oklch(0.66 0.17 25)' : undefined }} />
                   </div>
                 )}
+                {details?.key === l.key && (
+                  <DetailsBubble title={l.name} text={lineTooltip(data, month, l, today)} rect={details.rect} onClose={() => setDetails(null)} />
+                )}
                 {hist && (
                   <div className="popover">
                     <div className="popover-title">{l.name}</div>
                     <div className="popover-row">
-                      <span>Cumul {parseMonth(month).year}</span>
+                      <span>Budget cumulé {parseMonth(month).year}</span>
+                      <b>{money(hist.cumulBudget)}</b>
+                    </div>
+                    <div className="popover-row">
+                      <span>Réel cumulé {parseMonth(month).year}</span>
                       <b>{money(hist.cumul)}</b>
                     </div>
                     <div className="popover-row">

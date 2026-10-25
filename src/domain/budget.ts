@@ -242,15 +242,18 @@ export function envelopeAlerts(d: BudgetData, ledger: Ledger, year: number, mont
   return out;
 }
 
-/** Popover figures for a line: year-to-date actual, and the previous month's écart (restant for a variable line). */
+/** Popover figures for a line: year-to-date budget and actual (the first month equals its own cells), and the previous month's écart (restant for a variable line). */
 export function lineHistory(d: BudgetData, m: MonthKey, key: string) {
   const { year } = parseMonth(m);
   let cumul = 0;
+  let cumulBudget = 0;
   for (const [k, md] of Object.entries(d.months)) {
     if (!md.initialized || parseMonth(k).year !== year || compareMonths(k, m) > 0) continue;
-    cumul += md.lines.find(l => l.key === key)?.actual ?? 0;
+    const line = md.lines.find(l => l.key === key);
+    cumul += line?.actual ?? 0;
+    cumulBudget += line?.budget ?? 0;
   }
   const prev = d.months[addMonths(m, -1)];
   const pl = prev?.initialized ? prev.lines.find(l => l.key === key) : undefined;
-  return { cumul: round2(cumul), prevGap: pl ? (pl.block === 'var' ? lineRemaining(pl) : lineGap(pl)) : null };
+  return { cumul: round2(cumul), cumulBudget: round2(cumulBudget), prevGap: pl ? (pl.block === 'var' ? lineRemaining(pl) : lineGap(pl)) : null };
 }
