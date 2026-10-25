@@ -2,7 +2,7 @@ import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, main
 import { compareMonths, round2 } from './format';
 import { bankDateOf } from './lineExpenses';
 import { creditDateOf, debitDateOf, hasEnvelopesDebit, isEnvelopesPool, movementAccountName } from './internalTransfers';
-import { isItemTransferred } from './movementTargets';
+import { isCashFunding, isItemTransferred } from './movementTargets';
 import type { BudgetData, MonthKey, Transaction } from './types';
 
 /*
@@ -49,6 +49,9 @@ export function countedAmount(l: { actual: number | null; budget: number }): { a
 /** Key of an envelope's allocation check in `MonthData.checks` (a line key never contains a colon). */
 export const envelopeCheckKey = (envelopeId: string) => `env:${envelopeId}`;
 
+/** An envelope expense paid in cash (spec 0026): it moves no bank account. */
+const isCashExpense = (t: Transaction) => t.type === 'env' && t.payMode === 'especes';
+
 /** Debit of a transaction side: a withdrawal from savings and an entry of money are money in, the others money out. */
 const isMoneyIn = (type: string) => type === 'epa' || type === 'rev';
 
@@ -69,7 +72,8 @@ function transferMovements(d: BudgetData, id: string, m: MonthKey): BankMovement
   for (const mv of d.accountMovements ?? []) {
     if (mv.amount === 0) continue;
     if (mv.fromAccountId === id && !isEnvelopesPool(id) && debitDateOf(mv).startsWith(m)) out.push({ date: debitDateOf(mv), label: `${mv.label} → ${nameOf(mv.toAccountId)} (transfert)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
-    if (mv.toAccountId === id && !isEnvelopesPool(id) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (transfert)`, amount: mv.amount, kind: 'transfer', counterpart: true });
+    // The cash funding of an envelope credits its cash balance, not its account (spec 0026, RG4).
+    if (mv.toAccountId === id && !isEnvelopesPool(id) && !isCashFunding(d, mv) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (transfert)`, amount: mv.amount, kind: 'transfer', counterpart: true });
   }
   return out;
 }
@@ -89,7 +93,8 @@ export function realMovements(d: BudgetData, id: string, m: MonthKey): BankMovem
     if (t.type === 'epa' && linked.some(l => l.key === t.target)) {
       out.push({ date, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
     }
-    if (accountIdOf(d, t.accountId) !== id) continue;
+    // An envelope expense paid in cash leaves the envelope's cash balance, never its account (spec 0026, RG6).
+    if (isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
     out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
   }
   // A transfer is real: both faces count, whatever the budget status of the accounts (RG2, RG12).
@@ -108,7 +113,7 @@ export function attachedMovements(d: BudgetData, id: string, m: MonthKey): BankM
   const out: BankMovement[] = [];
   for (const t of d.transactions) {
     const date = bankDateOf(t);
-    if (t.month !== m || date.startsWith(m) || accountIdOf(d, t.accountId) !== id) continue;
+    if (t.month !== m || date.startsWith(m) || isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
     out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
   }
   return out;
@@ -181,7 +186,7 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
     if (t.type === 'epa' && linked.some(l => l.key === t.target)) {
       out.push({ date, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
     }
-    if (!mine(t.accountId)) continue;
+    if (isCashExpense(t) || !mine(t.accountId)) continue;
     const attached = date.slice(0, 7) !== t.month ? t.month : undefined;
     out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : 'dépense'})`, amount: t.type === 'epa' ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
   }

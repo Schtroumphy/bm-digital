@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
+import { EnvelopeBalances } from '../components/EnvelopeBalances';
+import { OPENING_MESSAGE } from '../components/hints';
 import { Icon } from '../components/Icon';
-import { deleteEnvelope, envelopeBalance, renameEnvelope } from '../../application/envelopes';
+import { deleteEnvelope, envelopeBalance, openingBalanceRefusal, openingCashRefusal, renameEnvelope, setEnvelopeOpeningBalance, setEnvelopeOpeningCash } from '../../application/envelopes';
 import { toneVars } from '../components/tone';
 import { envelopeAlerts } from '../../domain/budget';
+import { envelopeCash, envelopeTotal } from '../../domain/envelopeCash';
+import { cashHistory, virtualHistory } from '../../domain/envelopeHistory';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
 import { isMonthLocked, monthAlloc } from '../../domain/ledger';
 import type { Envelope, MonthKey } from '../../domain/types';
 import { useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
-const CASH = 'oklch(0.82 0.12 85)';
+const LOCKED_HINT = 'Le mois de départ de cette enveloppe est clos ou verrouillé : le départ n’est plus modifiable.';
+const HISTORY_COLUMNS = '1fr 90px 90px';
 
 /** Header total: what is allocated to all envelopes this month. */
 export function EnvelopesTotal({ month }: { month: MonthKey }) {
@@ -25,10 +30,10 @@ export function EnvelopesTotal({ month }: { month: MonthKey }) {
   );
 }
 
-/** Header total of the Envelopes tab: the sum of every envelope's balance this month. */
+/** Header total of the Envelopes tab: the sum of every envelope's total (virtual + cash) this month. */
 export function EnvelopesBalanceTotal({ month }: { month: MonthKey }) {
   const { data, ledger } = useStore();
-  const total = round2(data.envelopes.reduce((a, e) => a + (ledger.envMonth(e.id, month)?.balance ?? 0), 0));
+  const total = round2(data.envelopes.reduce((a, e) => a + envelopeTotal(ledger.envMonth(e.id, month)?.balance ?? 0, envelopeCash(data, e.id, month)), 0));
   return (
     <div className="header-total">
       <span className="kpi-label">Total</span>
@@ -37,7 +42,7 @@ export function EnvelopesBalanceTotal({ month }: { month: MonthKey }) {
   );
 }
 
-export function EnvelopesScreen({ month }: { month: MonthKey }) {
+export function EnvelopesScreen({ month, onFundCash }: { month: MonthKey; onFundCash: (envelopeId: string) => void }) {
   const { data, ledger, update } = useStore();
   const { openMenu, setEditing } = useUi();
   const [open, setOpen] = useState<string | null>(null);
@@ -55,7 +60,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
           const balance = em?.balance ?? 0;
           const planned = data.planned.filter(p => p.envelopeId === e.id && p.year === year && p.month === m0).reduce((a, p) => a + p.amount, 0);
           const alert = alerts.find(a => a.envelopeId === e.id);
-          const cash = Math.min(e.cash, Math.max(0, balance));
+          const cash = envelopeCash(data, e.id, month);
           const series = Array.from({ length: 12 }, (_, i) => ledger.envMonth(e.id, addMonths(month, i - 11))?.balance);
           return (
             <div
@@ -92,7 +97,8 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
               <div className="env-card-mid">
                 <div>
                   <div className="kpi-label">Provision</div>
-                  <div className="env-card-solde">{money(balance)}</div>
+                  <div className="env-card-solde">{money(envelopeTotal(balance, cash))}</div>
+                  <EnvelopeBalances virtual={balance} cash={cash} />
                 </div>
                 <div style={{ width: 168 }}>
                   <AreaSpark values={series} />
@@ -135,34 +141,12 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
                   <div className="stat-value">{money(planned)}</div>
                 </div>
               </div>
-              <SplitBar cash={cash} balance={balance} />
             </div>
           );
         })}
       </div>
-      {drawerEnv && <EnvelopeDrawer env={drawerEnv} month={month} onClose={() => setOpen(null)} />}
+      {drawerEnv && <EnvelopeDrawer env={drawerEnv} month={month} onClose={() => setOpen(null)} onFundCash={onFundCash} />}
     </>
-  );
-}
-
-function SplitBar({ cash, balance }: { cash: number; balance: number }) {
-  return (
-    <div className="split">
-      <div className="split-bar">
-        <div style={{ width: `${balance > 0 ? (cash / balance) * 100 : 0}%`, background: CASH }} />
-        <div style={{ flex: 1, background: 'var(--t-base)' }} />
-      </div>
-      <div className="split-legend">
-        <span>
-          <span className="dot" style={{ background: CASH }} />
-          Espèces <b>{money(cash)}</b>
-        </span>
-        <span>
-          <span className="dot" style={{ background: 'var(--t-base)' }} />
-          Virtuel <b>{money(round2(balance - cash))}</b>
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -186,11 +170,26 @@ function AreaSpark({ values }: { values: (number | undefined)[] }) {
   );
 }
 
-function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKey; onClose: () => void }) {
+function EnvelopeDrawer({ env, month, onClose, onFundCash }: { env: Envelope; month: MonthKey; onClose: () => void; onFundCash: (envelopeId: string) => void }) {
   const { data, ledger, update } = useStore();
   const balance = ledger.envMonth(env.id, month)?.balance ?? 0;
-  const cash = Math.min(env.cash, Math.max(0, balance));
-  const patch = (fn: (e: Envelope) => void) => update(d => fn(d.envelopes.find(x => x.id === env.id)!));
+  const cash = envelopeCash(data, env.id, month);
+  const alloc = ledger.envMonth(env.id, month)?.alloc ?? 0;
+  // The opening cash is typed only here and in the assistant, and only while the envelope's opening month is open (spec 0026, RG8).
+  const account = data.accounts.find(a => a.id === env.accountId);
+  const openingLocked = !account || isMonthLocked(data, account.openingMonth);
+  const setOpening = (v: number | null) => {
+    const refused = openingCashRefusal(data, env.id, v ?? 0);
+    if (refused) return void window.alert(OPENING_MESSAGE[refused]);
+    update(d => void setEnvelopeOpeningCash(d, env.id, v ?? 0));
+  };
+  const setOpeningBalance = (v: number | null) => {
+    const refused = openingBalanceRefusal(data, env.id, v ?? 0);
+    if (refused) return void window.alert(OPENING_MESSAGE[refused]);
+    update(d => void setEnvelopeOpeningBalance(d, env.id, v ?? 0));
+  };
+  const [tab, setTab] = useState<'virtuel' | 'especes'>('virtuel');
+  const rows = tab === 'virtuel' ? virtualHistory(data, env.id, month) : cashHistory(data, env.id, month);
   const hist = [5, 4, 3, 2, 1, 0]
     .map(k => addMonths(month, -k))
     .map(m => ({ m, r: ledger.envMonth(env.id, m) }))
@@ -215,38 +214,49 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
             </div>
           </div>
           <div className="drawer-kicker">Provision · {monthLabel(month)}</div>
-          <div className="drawer-solde">{money(balance)}</div>
+          <div className="drawer-solde">{money(envelopeTotal(balance, cash))}</div>
+          <EnvelopeBalances virtual={balance} cash={cash} />
         </div>
 
-        <div className="drawer-section">Répartition de la provision</div>
+        <div className="drawer-section">Deux soldes séparés</div>
         <div className="drawer-body">
-          <div className="split-bar is-lg">
-            <div style={{ width: `${balance > 0 ? (cash / balance) * 100 : 0}%`, background: CASH }} />
-            <div style={{ flex: 1, background: 'var(--t-base)' }} />
-          </div>
           <div className="split-cards">
-            <div className="split-card is-cash">
-              <div className="split-card-label">
-                <Icon name="cash" size={14} />
-                En espèces
-              </div>
-              <EditableAmount
-                id={`cash:${env.id}`}
-                value={cash}
-                onCommit={v => patch(e => void (e.cash = Math.max(0, Math.min(v ?? 0, balance))))}
-                className="split-card-value is-editable"
-                inputClassName="cell-input is-cash"
-              >
-                {money(cash)}
-              </EditableAmount>
-            </div>
             <div className="split-card">
               <div className="split-card-label is-ink">
                 <Icon name="creditCard" size={14} />
-                Virtuel (compte)
+                Virtuel
               </div>
-              <div className="split-card-value">{money(round2(balance - cash))}</div>
-              <div className="split-card-note">solde moins espèces</div>
+              <div className="split-card-value">{money(balance)}</div>
+              <div className="split-card-note">
+                alloué {money(alloc)} · départ{' '}
+                <EditableAmount id={`open:${env.id}`} value={account?.openingBalance ?? 0} disabled={openingLocked} title={openingLocked ? LOCKED_HINT : 'Cliquer pour modifier le départ virtuel'} onCommit={setOpeningBalance} className="is-editable" inputClassName="cell-input is-alloc">
+                  {money(account?.openingBalance ?? 0)}
+                </EditableAmount>
+              </div>
+            </div>
+            <div className="split-card is-cash">
+              <div className="split-card-label">
+                <Icon name="cash" size={14} />
+                Espèces (à part)
+              </div>
+              <div className="split-card-value">{money(cash)}</div>
+              <div className="split-card-note">
+                départ{' '}
+                <EditableAmount
+                  id={`cash:${env.id}`}
+                  value={env.openingCash}
+                  disabled={openingLocked}
+                  title={openingLocked ? LOCKED_HINT : 'Cliquer pour modifier le départ en espèces'}
+                  onCommit={setOpening}
+                  className="is-editable"
+                  inputClassName="cell-input is-cash"
+                >
+                  {money(env.openingCash)}
+                </EditableAmount>
+              </div>
+              <button type="button" className="btn-outline" disabled={isMonthLocked(data, month)} onClick={() => onFundCash(env.id)}>
+                + Alimenter
+              </button>
             </div>
           </div>
         </div>
@@ -267,6 +277,33 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
               <b className="num">{money(r!.balance)}</b>
             </div>
           ))}
+        </div>
+
+        <div className="drawer-section is-spaced">Mouvements</div>
+        <div className="drawer-body is-table">
+          <div className="tabs" role="tablist">
+            {([['virtuel', 'Virtuel'], ['especes', 'Espèces']] as const).map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {tab === 'virtuel' && <div className="muted is-small">Le dernier solde est celui du compte de l’enveloppe ; le chiffre de la carte Virtuel est le solde budgétaire (départ + allocation − dépenses), qui peut différer tant qu’une allocation n’est pas transférée.</div>}
+          <div className="hist-grid hist-head" style={{ gridTemplateColumns: HISTORY_COLUMNS }}>
+            <span>Date · Libellé</span>
+            <span className="num">Montant</span>
+            <span className="num">{tab === 'virtuel' ? 'Solde compte' : 'Solde'}</span>
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} className="hist-grid hist-row" style={{ gridTemplateColumns: HISTORY_COLUMNS }}>
+              <span style={{ fontWeight: 500 }}>
+                <span className="muted is-small">{r.date.slice(8, 10)}/{r.date.slice(5, 7)}</span> {r.label}
+              </span>
+              <span className="num">{money(r.amount)}</span>
+              <b className="num">{money(r.balance)}</b>
+            </div>
+          ))}
+          {rows.length === 0 && <div className="empty">Aucun mouvement</div>}
         </div>
 
         <div className="drawer-section is-spaced">Transactions liées</div>

@@ -1,6 +1,8 @@
 import { freeEnvelopeAccountId, newEnvelopeAccount } from '../domain/bank';
 import { compareMonths, currentMonthKey, round2 } from '../domain/format';
+import { lowestCashBalance } from '../domain/envelopeHistory';
 import { isMonthLocked, Ledger } from '../domain/ledger';
+import { setBankAccountOpening } from './bankAccounts';
 import type { BudgetData } from '../domain/types';
 
 /*
@@ -22,7 +24,7 @@ export function addEnvelope(d: BudgetData, id: string, name = 'Nouvelle envelopp
   const month = d.firstMonth !== null && compareMonths(today, d.firstMonth) < 0 ? d.firstMonth : today;
   const accountId = freeEnvelopeAccountId(d, id);
   d.accounts.push(newEnvelopeAccount(accountId, id, name, hue, 0, month));
-  d.envelopes.push({ id, name, hue, cash: 0, accountId });
+  d.envelopes.push({ id, name, hue, openingCash: 0, accountId });
   return true;
 }
 
@@ -34,6 +36,51 @@ export function renameEnvelope(d: BudgetData, id: string, name: string): boolean
   const account = d.accounts.find(a => a.id === e.accountId);
   if (account) account.name = e.name;
   return true;
+}
+
+export type OpeningResult = 'ok' | 'unknown' | 'invalid' | 'locked';
+export type OpeningCashResult = OpeningResult | 'negative';
+
+/**
+ * Why an opening cash cannot be set (spec 0026, RG1, RG8), or null when it can: an unknown envelope, an amount that is not a number ≥ 0
+ * (`invalid`), an opening month that is locked or closed (`locked`), an opening that would make the cash balance negative on some date
+ * (`negative`, D11). It is not bounded by the virtual balance (RG7).
+ */
+export function openingCashRefusal(d: BudgetData, id: string, amount: number): Exclude<OpeningCashResult, 'ok'> | null {
+  const e = d.envelopes.find(x => x.id === id);
+  const account = e && d.accounts.find(a => a.id === e.accountId);
+  if (!account) return 'unknown';
+  if (!Number.isFinite(amount) || amount < 0) return 'invalid';
+  if (isMonthLocked(d, account.openingMonth)) return 'locked';
+  if (lowestCashBalance(d, id, round2(amount)) < 0) return 'negative';
+  return null;
+}
+
+/** Sets the cash held by an envelope at its opening, or changes nothing and tells why (see `openingCashRefusal`). */
+export function setEnvelopeOpeningCash(d: BudgetData, id: string, amount: number): OpeningCashResult {
+  const refusal = openingCashRefusal(d, id, amount);
+  if (refusal) return refusal;
+  d.envelopes.find(x => x.id === id)!.openingCash = round2(amount);
+  return 'ok';
+}
+
+/**
+ * Why the virtual starting balance of an envelope cannot be set (spec 0026, RG13, RG15), or null when it can: an unknown envelope, a value that
+ * is not a number (`invalid`), a locked or closed opening month (`locked`). It may be negative.
+ */
+export function openingBalanceRefusal(d: BudgetData, id: string, amount: number): Exclude<OpeningResult, 'ok'> | null {
+  const account = d.accounts.find(a => a.id === d.envelopes.find(x => x.id === id)?.accountId);
+  if (!account) return 'unknown';
+  if (!Number.isFinite(amount)) return 'invalid';
+  return isMonthLocked(d, account.openingMonth) ? 'locked' : null;
+}
+
+/** Sets the virtual starting balance of an envelope: the opening balance of its account, the same data as in the Comptes screen (RG14). */
+export function setEnvelopeOpeningBalance(d: BudgetData, id: string, amount: number): OpeningResult {
+  const refusal = openingBalanceRefusal(d, id, amount);
+  if (refusal) return refusal;
+  setBankAccountOpening(d, d.envelopes.find(x => x.id === id)!.accountId, { balance: round2(amount) });
+  return 'ok';
 }
 
 export type DeleteEnvelopeResult = 'ok' | 'unknown' | 'not_empty';

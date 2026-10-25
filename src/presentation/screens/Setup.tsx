@@ -6,10 +6,8 @@ import {
   addRow,
   addSuggested,
   canRemoveRow,
-  cashExceedsBalance,
   emptyDraft,
   exampleDraft,
-  hasCashOverflow,
   removeRow,
   setMainRow,
   setupSummary,
@@ -98,7 +96,7 @@ const LISTS: Record<SetupListId, ListConfig> = {
     label: 'Enveloppes', hue: 280, icon: 'mail', help: 'Enveloppes semi virtuelles : une part en espèces, le reste sur le compte.',
     emptyTitle: 'Aucune enveloppe', emptyText: 'Chaque enveloppe démarre avec un solde, dont une part en espèces, et reçoit une allocation chaque mois.',
     add: 'Ajouter une enveloppe',
-    cols: [NAME, { label: 'Solde au départ', field: 'balance' }, { label: 'dont espèces', field: 'cash' }, { label: 'Alloué par mois', field: 'amount' }],
+    cols: [NAME, { label: 'Solde au départ', field: 'balance' }, { label: 'Espèces au départ', field: 'cash' }, { label: 'Alloué par mois', field: 'amount' }],
     main: 'balance',
   },
   inv: {
@@ -204,9 +202,7 @@ export function SetupScreen({ draft, setDraft, onOpenBudget }: { draft: SetupDra
   };
 
   const warn =
-    step.id === 'env' && hasCashOverflow(draft)
-      ? 'La part en espèces dépasse le solde sur une enveloppe.'
-      : step.id === 'fin' && !allowed
+    step.id === 'fin' && !allowed
         ? 'Ce mois n’est plus autorisé : choisis-en un autre à l’étape Période.'
         : step.id === 'fin' && summary.emptyLists.length
           ? `Étapes vides : ${summary.emptyLists.map(id => LISTS[id].label).join(', ')}.`
@@ -373,7 +369,7 @@ function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDr
                       ))}
                     </div>
                   );
-                return <MoneyInput key={c.label} value={r[c.field]} invalid={c.field === 'cash' && cashExceedsBalance(r)} onCommit={v => set(r.id, { [c.field]: v })} />;
+                return <MoneyInput key={c.label} value={r[c.field]} onCommit={v => set(r.id, { [c.field]: v })} />;
               })}
               {canRemoveRow(draft, list, r.id) ? (
                 <span className="icon-btn" title="Supprimer" onClick={() => setDraft(d => removeRow(d, list, r.id))}><Icon name="close" size={14} /></span>

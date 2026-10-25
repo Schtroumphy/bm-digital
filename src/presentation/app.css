@@ -293,6 +293,8 @@ input, button { font-family: inherit; }
 .env-tile-solde { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
 .env-tile-alloc { font-size: 11px; color: var(--muted); }
 .env-tile-alloc b { color: var(--ink); }
+/* cash line of the Budget tile (spec 0026, RG26): set apart from the virtual balance above it */
+.env-tile-alloc.is-cash { margin-top: 6px; }
 .env-add {
   border-radius: 12px; border: 1.5px dashed oklch(0.82 0.06 300); display: flex; align-items: center; justify-content: center;
   gap: 5px; color: oklch(0.45 0.1 300); font-weight: 600; cursor: pointer; min-height: 62px;
@@ -409,6 +411,9 @@ input, button { font-family: inherit; }
 .split-card-value { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; }
 .split-card-value.is-editable { cursor: text; display: inline-block; border-bottom: 1.5px dashed oklch(0.72 0.13 85); }
 .split-card-note { font-size: 10.5px; color: rgba(32, 30, 29, 0.55); }
+/* starting balances typed in place in the detail cards (spec 0026): visibly editable, plain when the starting month is locked */
+.split-card-note .is-editable { display: inline-block; cursor: text; font-size: 13px; font-weight: 700; color: var(--ink); border-bottom: 1.5px dashed oklch(0.72 0.13 85); }
+.split-card-note .is-editable[data-disabled] { cursor: default; border-bottom-color: transparent; }
 .hist-grid { display: grid; grid-template-columns: 1fr 80px 80px 84px; }
 .hist-head { padding: 4px 0; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
 .hist-row { height: 32px; align-items: center; border-top: 1px solid rgba(32, 30, 29, 0.06); }
@@ -417,6 +422,7 @@ input, button { font-family: inherit; }
 /* ── dépenses screen ───────────────────────────────────── */
 .tabs { display: flex; gap: 4px; background: #fff; border: 1px solid rgba(32, 30, 29, 0.09); border-radius: 999px; padding: 3px; width: max-content; }
 .tab { padding: 6px 16px; border-radius: 99px; cursor: pointer; font-weight: 700; color: rgba(32, 30, 29, 0.65); }
+button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .tab.is-active { background: var(--ink); color: #fff; }
 .dep-layout { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 22px; align-items: start; }
 .form-card { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
@@ -787,12 +793,17 @@ input, button { font-family: inherit; }
 .cpt-open:focus-visible::after { outline: 3px solid var(--violet-ink); outline-offset: 2px; }
 .cpt-tag { flex: none; padding: 1px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; background: var(--t-soft); color: var(--t-ink); }
 .cpt-solde { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.cpt-pair { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 6px 20px; }
+.cpt-pair > div { min-width: 0; }
+.cpt-pair > div:last-child { text-align: right; }
+.cpt-pair .cpt-solde { font-size: 24px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cpt-flow { display: flex; align-items: center; gap: 8px; }
 .cpt-tip { position: relative; z-index: 1; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(32, 30, 29, 0.45); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: rgba(32, 30, 29, 0.7); cursor: help; }
 .cpt-label-tip { display: flex; align-items: center; gap: 8px; }
 .cpt-name { flex: 1; font-weight: 700; font-size: 14px; }
 .cpt-hue { cursor: pointer; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px rgba(32, 30, 29, 0.2); }
 .cpt-palette { padding: 6px 0; }
+.cpt-opening[data-disabled] { cursor: default; }
 .cpt-opening { display: inline-block; min-width: 120px; margin: 4px 0 6px; padding: 6px 12px; border: 1.5px solid rgba(32, 30, 29, 0.2); border-radius: 12px; font-size: 20px; font-weight: 700; text-align: right; cursor: text; }
 .cpt-switches { display: flex; flex-direction: column; gap: 8px; }
 .cpt-switch { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1.5px solid rgba(32, 30, 29, 0.15); background: #fff; color: var(--ink); font-size: 12.5px; text-align: left; cursor: pointer; }
@@ -803,7 +814,8 @@ input, button { font-family: inherit; }
 .cpt-track > span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
 .cpt-track.is-on { background: var(--violet-ink); }
 .cpt-track.is-on > span { left: 18px; }
-.cpt-card-foot { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.cpt-card-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.cpt-foot-pair { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .cpt-archive { margin-left: auto; border: 0; background: none; font-family: inherit; font-size: 12.5px; }
 .cpt-archive.is-disabled, .cpt-archive:disabled { opacity: 0.45; cursor: default; }
 .cpt-aside { flex: 1 1 400px; max-width: 560px; min-width: 0; background: #fff; border: 1px solid var(--hairline); border-radius: 16px; box-shadow: 0 8px 28px rgba(32, 30, 29, 0.08); display: flex; flex-direction: column; overflow: hidden; }

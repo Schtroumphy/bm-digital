@@ -22,7 +22,7 @@ function budget(lines: Line[]): BudgetData {
   const d = emptyData();
   d.firstMonth = M;
   d.accounts = [...defaultBankAccounts('2026-09'), { id: SWILE, name: 'Swile', hue: 10, isDefault: false, openingBalance: 0, openingMonth: '2026-09', inBudget: true, archived: false }, newEnvelopeAccount('acc-env-vac', 'vac', 'Vacances', 200, 0, '2026-09')];
-  d.envelopes = [{ id: 'vac', name: 'Vacances', hue: 200, cash: 0, accountId: 'acc-env-vac' }];
+  d.envelopes = [{ id: 'vac', name: 'Vacances', hue: 200, openingCash: 0, accountId: 'acc-env-vac' }];
   d.months[M] = { initialized: true, lines, alloc: {}, transfersDone: {} };
   d.importAccountLinks = [
     { id: 'l1', accountName: PAIR[0], connectionName: PAIR[1], accountId: MAIN_ACCOUNT_ID },

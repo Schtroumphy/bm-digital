@@ -604,6 +604,7 @@ export type Database = {
           import_account_id: string | null
           label: string
           month: string
+          pay_mode: string | null
           position: number
           rank: number | null
           source: string | null
@@ -624,6 +625,7 @@ export type Database = {
           import_account_id?: string | null
           label: string
           month: string
+          pay_mode?: string | null
           position?: number
           rank?: number | null
           source?: string | null
@@ -644,6 +646,7 @@ export type Database = {
           import_account_id?: string | null
           label?: string
           month?: string
+          pay_mode?: string | null
           position?: number
           rank?: number | null
           source?: string | null

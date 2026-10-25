@@ -42,7 +42,7 @@ function budget(): BudgetData {
     newEnvelopeAccount(ENV, 'sante', 'Santé', 200, 0, '2026-09'),
   ];
   d.accounts[0].openingBalance = 1000;
-  d.envelopes = [{ id: 'sante', name: 'Santé', hue: 200, cash: 0, accountId: ENV }];
+  d.envelopes = [{ id: 'sante', name: 'Santé', hue: 200, openingCash: 0, accountId: ENV }];
   d.months[M] = { initialized: true, lines: [], alloc: { sante: 50 }, transfersDone: {} };
   d.months['2026-11'] = { initialized: true, lines: [], alloc: {}, transfersDone: {} };
   d.importAccountLinks = [

@@ -30,7 +30,7 @@ function budget(lines: Line[] = [ln('salaire', 'rev', 2400), ln('edf', 'fix', 62
   d.firstMonth = SEP;
   d.accounts = [...defaultBankAccounts(SEP), { id: SWILE, name: 'Swile', hue: 10, isDefault: false, openingBalance: 0, openingMonth: SEP, inBudget: true, archived: false }, newEnvelopeAccount('acc-env-vac', 'vac', 'Vacances', 200, 0, SEP)];
   d.accounts[0].openingBalance = 1000;
-  d.envelopes = [{ id: 'vac', name: 'Vacances', hue: 200, cash: 0, accountId: 'acc-env-vac' }];
+  d.envelopes = [{ id: 'vac', name: 'Vacances', hue: 200, openingCash: 0, accountId: 'acc-env-vac' }];
   for (const m of [SEP, OCT]) d.months[m] = { initialized: true, lines: structuredClone(lines), alloc: {}, transfersDone: {} };
   d.importAccountLinks = [
     { id: 'l1', accountName: PAIR[0], connectionName: PAIR[1], accountId: MAIN_ACCOUNT_ID },

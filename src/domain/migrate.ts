@@ -1,5 +1,5 @@
 import { defaultBankAccounts, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
-import { currentMonthKey } from './format';
+import { currentMonthKey, round2 } from './format';
 import { hasStaleActuals, manualActualCount, syncLineActuals } from './lineActuals';
 import type { BudgetData, TemplateLine, Transaction, Transfer } from './types';
 
@@ -66,4 +66,18 @@ export function migrateCheckAmounts(d: BudgetData): BudgetData {
     })) };
   }
   return { ...d, months };
+}
+
+/**
+ * Spec 0026, RG10, D5: the `cash` of an envelope, saved by an earlier version, becomes its opening cash, an additional balance: the virtual
+ * balance is left as it is and the cash is not bounded by it. No entry is created and existing expenses stay paid in `virtuel`. Pure and
+ * idempotent: the data given is returned untouched when nothing has to change, and it is never mutated.
+ */
+export function migrateEnvelopeOpeningCash(d: BudgetData): BudgetData {
+  const legacy = (e: BudgetData['envelopes'][number]) => 'cash' in e || typeof e.openingCash !== 'number';
+  if (!d.envelopes.some(legacy)) return d;
+  return { ...d, envelopes: d.envelopes.map(e => {
+    const { cash, ...rest } = e as typeof e & { cash?: number };
+    return { ...rest, openingCash: Math.max(0, round2(e.openingCash ?? cash ?? 0)) };
+  }) };
 }

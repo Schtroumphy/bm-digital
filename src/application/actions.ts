@@ -3,6 +3,7 @@ import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { syncLineActual } from '../domain/lineActuals';
 import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId } from '../domain/lineExpenses';
+import { exceedsEnvelopeCash } from '../domain/envelopeCash';
 import { isMonthLocked } from '../domain/ledger';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
@@ -143,7 +144,7 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
     const kept = keptAccount(r.id);
     const accountId = kept ?? freeEnvelopeAccountId(d, r.id, envelopeAccounts.map(a => a.id));
     if (!kept) envelopeAccounts.push(newEnvelopeAccount(accountId, r.id, name, hue, r.balance, m));
-    return { id: r.id, name, hue, cash: Math.min(r.cash, r.balance), accountId };
+    return { id: r.id, name, hue, openingCash: r.cash, accountId };
   });
   const envAlloc = Object.fromEntries(rows.env.map(r => [r.id, r.amount]));
 
@@ -260,6 +261,8 @@ export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
  * expense on a line with an assigned account is refused on any other account.
  * Without an account, the transaction takes the one resolved from its box (spec 0006, RG3):
  * the account is written down, so a later change of the box does not move it (RG6).
+ * An envelope expense may be paid in cash (`payMode: 'especes'`, spec 0026, RG5); it is refused when it exceeds the cash balance of the envelope (RG7), whatever its virtual balance.
+ * The mode only exists on an envelope expense: it is dropped elsewhere, and `virtuel` is written as no mode at all.
  */
 export function addTransaction(d: BudgetData, input: Transaction): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
@@ -270,11 +273,14 @@ export function addTransaction(d: BudgetData, input: Transaction): boolean {
   const fixed = input.type === 'var' ? fixedTransactionAccountId(d, input) : undefined;
   if (fixed && input.accountId !== undefined && input.accountId !== fixed) return false;
   const envelope = input.type === 'env' ? d.envelopes.find(e => e.id === input.target) : undefined;
+  const inCash = !!envelope && input.payMode === 'especes';
+  if (inCash && exceedsEnvelopeCash(d, envelope.id, input.month, input.amount)) return false;
   const t = envelope
     ? { ...input, accountId: envelope.accountId }
     : input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   const detail = normalizeDetail(input.detail);
-  const { detail: _raw, ...rest } = t;
+  const { detail: _raw, payMode: _mode, ...base } = t;
+  const rest = inCash ? { ...base, payMode: 'especes' as const } : base;
   d.transactions.push(detail === undefined ? rest : { ...rest, detail });
   // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).
   if (t.type === 'var') syncLineActual(d, t.month, t.target);
@@ -292,7 +298,7 @@ function addLineExpense(d: BudgetData, input: Transaction): boolean {
   if (input.accountId !== undefined && input.accountId !== accountId) return false;
   if (isEnvelopeAccount(d.accounts.find(a => a.id === accountId))) return false;
   const detail = normalizeDetail(input.detail);
-  const { detail: _raw, ...rest } = input;
+  const { detail: _raw, payMode: _mode, ...rest } = input;
   d.transactions.push(detail === undefined ? { ...rest, accountId } : { ...rest, accountId, detail });
   syncLineActual(d, input.month, input.target);
   return true;

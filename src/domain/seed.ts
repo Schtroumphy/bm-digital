@@ -161,7 +161,7 @@ export function seedData(): BudgetData {
     firstMonth: '2026-10',
     template,
     months,
-    envelopes: ENVELOPES.map(({ id, name, hue, cash }) => ({ id, name, hue, cash, accountId: envelopeAccountId(id) })),
+    envelopes: ENVELOPES.map(({ id, name, hue, cash }) => ({ id, name, hue, openingCash: cash, accountId: envelopeAccountId(id) })),
     // Each envelope opens its account on the first month with its balance at the end of September.
     accounts: [...defaultBankAccounts('2026-10'), ...ENVELOPES.map(e => newEnvelopeAccount(envelopeAccountId(e.id), e.id, e.name, e.hue, ENV_BALANCES[e.id][8], '2026-10'))],
     envHistory,
