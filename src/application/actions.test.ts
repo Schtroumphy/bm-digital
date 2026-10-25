@@ -32,7 +32,7 @@ describe('actions', () => {
     addTransaction(d, { id: 'x', month: '2026-12', day: 3, label: 'Pharmacie', amount: 15, type: 'env', target: 'sante', accountId: CASH_ACCOUNT_ID });
     const l = new Ledger(d, '2026-10');
     expect(monthSummary(d, l, '2026-12').realSavings).toBe(1600);
-    expect(l.envMonth('sante', '2026-12')!.balance).toBe(25);
+    expect(l.envMonth('sante', '2026-12')!.balance).toBe(45);
   });
 
   it('applying the model to a new month keeps expenses already recorded', () => {

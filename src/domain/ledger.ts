@@ -147,7 +147,7 @@ export class Ledger {
           const spent = sumTx(d, m, 'env', e.id);
           const r = { start, alloc: a, spent, balance: round2(start + a - spent) };
           this.env.set(`${m}|${e.id}`, r);
-          envBal[e.id] = r.balance;
+          envBal[e.id] = Math.max(0, r.balance); // an overspent envelope does not carry a debt into the next month
           continue;
         }
         const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
@@ -157,7 +157,7 @@ export class Ledger {
         const opening = d.envHistory[m]?.[e.id];
         const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - spent) };
         this.env.set(`${m}|${e.id}`, r);
-        envBal[e.id] = r.balance;
+        envBal[e.id] = Math.max(0, r.balance); // an overspent envelope does not carry a debt into the next month
       }
       for (const a of accs) {
         const start = prevClose?.overrides[closeKey('acc', a.key)] ?? accBal[a.key] ?? 0;
@@ -206,13 +206,13 @@ export class Ledger {
     if (known) return round2(known.start + known.alloc);
     const last = this.months[this.months.length - 1];
     if (compareMonths(m, last) < 0) return null;
-    let bal = this.envMonth(id, last)?.balance ?? 0;
+    let bal = Math.max(0, this.envMonth(id, last)?.balance ?? 0);
     const perMonth = this.d.template.envAlloc[id] ?? 0;
     for (let k = addMonths(last, 1); ; k = addMonths(k, 1)) {
       const avail = bal + perMonth;
       if (k === m) return round2(avail);
       const p = parseMonth(k);
-      bal = avail - this.d.planned.filter(x => x.envelopeId === id && x.year === p.year && x.month === p.month).reduce((s, x) => s + x.amount, 0);
+      bal = Math.max(0, avail - this.d.planned.filter(x => x.envelopeId === id && x.year === p.year && x.month === p.month).reduce((s, x) => s + x.amount, 0));
     }
   }
 }
