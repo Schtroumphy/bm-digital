@@ -509,8 +509,11 @@ export type Database = {
       settings: {
         Row: {
           emergency_accounts: string[]
+          emergency_due: string | null
           emergency_target: number
           first_month: string | null
+          invest_accounts: string[] | null
+          invest_due: string | null
           invest_target: number
           pointage_start: string | null
           savings_rate_target: number
@@ -518,8 +521,11 @@ export type Database = {
         }
         Insert: {
           emergency_accounts?: string[]
+          emergency_due?: string | null
           emergency_target?: number
           first_month?: string | null
+          invest_accounts?: string[] | null
+          invest_due?: string | null
           invest_target?: number
           pointage_start?: string | null
           savings_rate_target?: number
@@ -527,8 +533,11 @@ export type Database = {
         }
         Update: {
           emergency_accounts?: string[]
+          emergency_due?: string | null
           emergency_target?: number
           first_month?: string | null
+          invest_accounts?: string[] | null
+          invest_due?: string | null
           invest_target?: number
           pointage_start?: string | null
           savings_rate_target?: number

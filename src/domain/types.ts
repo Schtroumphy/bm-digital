@@ -286,6 +286,12 @@ export interface Settings {
   emergencyTarget: number;
   investTarget: number;
   savingsRateTarget: number;
+  /** Savings/investment lines counted for the « Investir » goal (spec 0025); absent = every `inv` line. */
+  investAccounts?: string[];
+  /** Due date of the emergency fund goal, `YYYY-MM-DD`; absent = to be defined (spec 0025). */
+  emergencyDue?: string;
+  /** Due date of the « Investir » goal, `YYYY-MM-DD`; absent = to be defined (spec 0025). */
+  investDue?: string;
 }
 
 export interface BudgetData {

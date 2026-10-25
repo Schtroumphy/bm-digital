@@ -142,6 +142,15 @@ export function surplus(d: BudgetData, m: MonthKey): number {
   return round2(real('rev') - (real('cre') + real('fix') + real('var') + real('epa') + real('inv') + allocSum));
 }
 
+/**
+ * Lines counted for a goal in amount: the ticked ones (`emergencyAccounts`, `investAccounts`).
+ * `investAccounts` absent means every `inv` line (spec 0025, RG3).
+ */
+export function goalAccountKeys(d: BudgetData, goal: 'emergency' | 'invest'): string[] {
+  if (goal === 'emergency') return d.settings.emergencyAccounts;
+  return d.settings.investAccounts ?? accounts(d).filter(a => a.block === 'inv').map(a => a.key);
+}
+
 export interface MonthSummary {
   /** Margin of the account from the real figures (see `surplus`). */
   surplus: number;
@@ -195,8 +204,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
     envelopeSpent,
     savingsOut,
     realSavings,
-    emergency: sum(d.settings.emergencyAccounts.map(bal)),
-    investTotal: sum(accounts(d).filter(a => a.block === 'inv').map(a => bal(a.key))),
+    emergency: sum(goalAccountKeys(d, 'emergency').map(bal)),
+    investTotal: sum(goalAccountKeys(d, 'invest').map(bal)),
   };
 }
 
