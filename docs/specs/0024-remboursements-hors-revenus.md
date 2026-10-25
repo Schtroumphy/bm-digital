@@ -1,184 +1,152 @@
-# 0024 — Remboursements : une entrée d'argent « hors revenus » qui réduit une dépense
+# 0024 — Entrée d'argent sur une enveloppe (hors revenus)
 
-- Statut : brouillon (points à valider listés dans « Décisions proposées »)
-- Date : 2026-10-23
-- Branche prévue : feat/remboursements_hors_revenus
-- Dépend de : 0013, 0015, 0016 et 0019 (toutes implémentées sur `feat/virements_internes_lies`). Ne touche pas aux specs 0017, 0021, 0022, 0023.
+- Statut : brouillon (amendée le 2026-10-25, périmètre restreint au cas enveloppe ; à valider)
+- Date : 2026-10-23, amendée 2026-10-25
+- Branche prévue : feat/entree_sur_enveloppe
+- Dépend de : 0011, 0013, 0015, 0016 et 0019 (implémentées sur `feat/virements_internes_lies`). Ne touche pas aux specs 0017, 0021, 0022, 0023.
+- Note : le nom de fichier est conservé (`0024-remboursements-hors-revenus`) ; le titre et le périmètre ont changé. La version large (remboursement sur ligne `var`/`fix`/`cre`, « Aucune ligne », réel négatif de ligne, règles mémorisées, solde estimé `fix`/`cre`) est renvoyée à une spec ultérieure (voir « Reporté »).
 
 ## Contexte et objectif
 
-Une entrée d'argent de source externe n'est pas toujours un revenu. « Refund Temu +40,58 € » sur le compte Shopping 2026 rembourse en partie des dépenses déjà faites : ce n'est pas un salaire. Aujourd'hui (0015 RG18, 0016 RG23) toute entrée externe est un « Revenu » rattaché à une ligne `rev`. Conséquences : le remboursement gonfle les « Revenus » du mois, le « Disponible à placer » et les « Revenus attendus », alors qu'il ne fait que compenser une dépense ; et la dépense d'origine garde un réel brut trop élevé.
+Import de `refund_temu.csv` : « Refund Temu +40,58 € » sur le compte d'enveloppe « Shopping 2026 ». L'aperçu le classe « Revenu », mais un compte d'enveloppe n'a aucune ligne de revenu et « Nouvelle ligne de revenu » n'y est pas proposée. L'entrée reste « À rattacher », le bouton affiche « Importer 0 ligne » : impossible d'importer. Même blocage en saisie manuelle : la puce « Entrée d'argent » de l'écran Opérations ne cible que des lignes de revenu.
 
-Objectif :
-1. Une nature d'entrée dédiée « Remboursement », distincte de « Revenu », proposée et modifiable ligne par ligne dans l'aperçu d'import.
-2. Un remboursement crédite le compte (solde réel et solde estimé, à la date bancaire) mais ne compte jamais comme revenu.
-3. Il se rattache à une ligne de dépense (ou une enveloppe) du mois, dont il réduit le réel net ; ou à aucune ligne (crédit libre sur le compte).
-
-Principe directeur (0014, 0019) : le budget est une information ; les écritures et les comptes sont la réalité. Le réel d'une ligne reste la somme de ses écritures (0019, RG20), les remboursements s'y retranchent.
+Objectif : pouvoir enregistrer une entrée d'argent sur une enveloppe, à l'import et à la main. Elle crédite le compte de l'enveloppe, réduit le « dépensé » net de l'enveloppe et ne compte jamais comme revenu.
 
 ## Périmètre
 
 Inclus :
-- Nature d'import « Remboursement » (crédit externe), proposée par mots-clés, modifiable, avec cible et source facultative.
-- Nouveau type d'écriture « Remboursement » : entrant, rattaché à une ligne de dépense (`var`, `fix`, `cre`), à une enveloppe, ou sans cible.
-- Réel net d'une ligne ou d'une enveloppe (dépenses moins remboursements) et effets sur totaux, bilan, clôture, restant des variables.
-- Exclusion explicite des revenus : « Revenus », « Disponible à placer », « Revenus attendus ».
-- Soldes, déduplication, filtres, récapitulatif, règles mémorisées, schéma (migration additive).
-- Amendements des specs 0015, 0016 et 0019.
+- Nature d'import « Entrée sur enveloppe » pour un crédit externe sur un compte d'enveloppe ; « Revenu » n'y est plus proposé.
+- Nouveau type d'écriture « Entrée sur enveloppe » (entrant, rattaché à une enveloppe).
+- Source facultative.
+- Saisie manuelle depuis l'écran Opérations, via la puce « Entrée d'argent ».
+- Dépensé net d'enveloppe (sans plancher), soldes, déduplication, filtres, récapitulatif, affichage, suppression, schéma (migration additive).
 
-Exclus :
-- Lien informatif avec la dépense d'origine (décision du développeur : le remboursement est partiel, aucun lien, aucun choix de dépense précise). Le rattachement est à la LIGNE, pas à une écriture.
-- Saisie manuelle libre d'un remboursement depuis l'écran Saisie (hors import) : voir D8.
-- Remboursement dont la ligne de dépense est d'un autre mois que le mois de rattachement choisi (le mois de rattachement se règle sur la ligne d'aperçu, comme pour les revenus).
-- Création d'une « nouvelle ligne de dépense » depuis l'aperçu (non proposée).
-- Lignes `epa`/`inv` comme cible (les sorties d'épargne ont leur spec : 0017).
+Exclus (voir « Reporté ») :
+- Cible ligne `var`/`fix`/`cre`, « Aucune ligne », réel négatif de ligne de budget, sélecteur de dépense d'origine.
+- Entrée sur une enveloppe depuis un compte autre que le sien (compte principal, etc.).
+- Règles mémorisées pour cette nature.
+- Détection par mots-clés (refund, avoir…).
+- Requalification d'une écriture existante.
 
 ## État des lieux (vérifié)
 
-- `ImportNature` = `depense | retrait | interne | externe | revenu | recu` (`domain/types.ts`). `revenu` crée une `Transaction` de type `rev`, cible = clé de ligne `rev`, `source` facultative (0016 RG3).
-- `TxType` = `var | env | epa | fix | rev`. Seul `rev` est entrant ; les lectures des dépenses distinguent le sens via `type !== 'rev'` (par exemple `spentOf` dans `Expenses.tsx`).
-- `lineActuals.ts` : le réel dérivé d'une ligne `var` = somme des `var` ; `fix`/`cre` = somme des `fix` ; `rev` = somme des `rev`. Un réel d'enveloppe (« dépensé ») = somme des `env` (`budget.ts`).
-- Contraintes SQL : `transactions.type in ('var','env','epa','fix','rev')` ; `import_rules.nature in ('depense','retrait','interne','externe','revenu','recu')` ; `import_rules.target_kind in ('var','line','env','account')`.
-- Solde estimé (0019) : lit les `var`, `env`, `epa` et transferts à leur date ; ne lit PAS les `fix`/`cre`/`rev` (ces lignes entrent par leur pointage, au montant compté).
+- `ImportRow.tsx` : pour un compte d'enveloppe, `revenueLines` est vide et « + Nouvelle ligne de revenu » est masquée ; `natureOptions` d'un crédit = `revenu`, `recu`.
+- `TxType` = `var | env | epa | fix | rev`; `rev` seul est entrant. `spentOf` (`Expenses.tsx`) filtre `type !== 'rev'`; `signedAmount` signe `rev` et `epa` en positif.
+- Contraintes SQL : `transactions.type in ('var','env','epa','fix','rev')`; `import_rules.nature` sans nouvelle valeur dans ce lot (règles reportées).
+- Dépensé d'enveloppe = somme des `env` (`budget.ts`). Solde estimé (0019) lit les `env` à leur date.
+- Écran Opérations : puce `Entrée d’argent` (type `rev`), cible = lignes de revenu, libellé de champ « Ligne de revenu », « Reçu sur », bouton « Ajouter l’entrée ».
 
 ## Règles de gestion
 
-Nature et proposition à l'import
-- RG1. Toute entrée d'argent (crédit externe) a une nature parmi « Revenu », « Remboursement », « Virement interne » (0016). Elle est modifiable ligne par ligne par un sélecteur « Nature » de l'aperçu.
-- RG2. Nature proposée, par ordre de priorité : (1) règle mémorisée (RG17) ; (2) appariement ou compte d'enveloppe de la 0016 (« Virement interne ») ; (3) libellé ou notes évoquant un remboursement (mots-clés : « remboursement », « refund », « rembours », « avoir », « rbt ») : « Remboursement » ; (4) « Revenu » sinon, avec l'indice « virement possible » de la 0015 RG17 le cas échéant. Aucune détection n'est définitive : l'utilisateur tranche. Un doute (« avoir » dans un libellé de salaire) se corrige par le sélecteur, puis par la règle mémorisée.
-- RG3. Une entrée « Remboursement » est décochée tant que sa cible n'est pas choisie (RG5), comme un revenu sans ligne (0015 RG18). « Aucune ligne » est un choix explicite qui la rend cochable.
+Import
+- RG1. Pour un crédit externe dont le compte résolu est un compte d'enveloppe, la nature proposée est « Entrée sur enveloppe » (aucun mot-clé). Le sélecteur Nature propose « Entrée sur enveloppe » et « Virement interne » (0016, inchangé). « Revenu » n'est pas proposé pour ce compte.
+- RG2. Pour un compte non enveloppe, le comportement actuel est inchangé (« Revenu » ou « Virement interne »; « Entrée sur enveloppe » n'est pas proposée).
+- RG3. La cible est fixe : l'enveloppe dont le compte est le compte résolu. Aucun sélecteur « Rattacher à » n'est affiché pour cette nature (texte non modifiable avec le nom de l'enveloppe). L'entrée est donc cochée d'office dès qu'elle n'a pas d'autre problème (doublon, mois clos, etc.).
+- RG4. Si le compte d'enveloppe n'a plus d'enveloppe associée, ou si le compte est archivé ou non rattaché, l'entrée est non importable avec le même message que pour une dépense d'enveloppe (0014, 0013).
+- RG5. Écriture créée : entrante, montant positif, type « Entrée sur enveloppe », compte résolu, cible = id de l'enveloppe, mois de rattachement (choisi sur la ligne), date bancaire (0015 RG1), détail (0020), source facultative.
+- RG6. Source facultative (reprise de 0016 RG3) : texte libre prérempli avec le libellé court (« Temu »), modifiable, enregistré avec l'écriture, hors empreinte et hors calcul. Affichée sur la ligne d'aperçu pour cette nature.
 
-Cible
-- RG4. Cibles proposées pour un remboursement : (a) les lignes `var`, `fix` et `cre` du mois de rattachement dont le compte (`accountId`, absent = principal) est le compte résolu de la ligne importée (mêmes règles que la 0014 pour les dépenses de ligne) ; (b) l'enveloppe dont le compte est le compte résolu, si celui-ci est un compte d'enveloppe (cible présélectionnée) ; (c) « Aucune ligne (crédit libre sur le compte) ». Ne sont pas proposées : lignes `rev`, `epa`, `inv`, lignes d'un autre compte, et « Nouvelle ligne ».
-- RG5. La cible est choisie par l'utilisateur dans l'aperçu (liste groupée « Lignes de dépense », « Enveloppe », « Aucune ligne »). Un remboursement n'a pas de lien avec une dépense précise : aucun sélecteur de dépense, aucun montant maximum, aucune vérification que la dépense d'origine existe.
-- RG6. Compte archivé : un remboursement dont le compte résolu est archivé est refusé, comme une dépense de ligne (0014). Compte non rattaché (« Ne pas importer ») : non importable, comme aujourd'hui.
+Saisie manuelle (écran Opérations)
+- RG7. La puce « Entrée d’argent » permet de choisir comme cible soit une ligne de revenu (comportement actuel, type `rev`), soit une enveloppe (groupe « Enveloppes » du sélecteur), qui crée une entrée sur enveloppe.
+- RG8. Quand une enveloppe est choisie, le compte « Reçu sur » est le compte de l'enveloppe, affiché non modifiable. Libellé, montant, jour, détail et source facultative comme pour les autres entrées. Le bouton reste « Ajouter l’entrée ».
+- RG9. Refus : mois verrouillé ou clos, enveloppe sans compte ou compte archivé, montant nul ou négatif (mêmes règles que les autres ajouts).
 
-Écriture créée
-- RG7. Un remboursement importé crée une écriture entrante « Remboursement » (nouveau type de `Transaction`, montant positif) sur le compte résolu, avec : mois de rattachement (choisi sur la ligne), date bancaire (0015 RG1), cible (clé de ligne, id d'enveloppe, ou aucune), détail (0020), et une « source » facultative.
-- RG8. Source facultative (reprise de la 0016, RG3) : texte libre prérempli avec le libellé court (« Temu »), modifiable, enregistré avec l'écriture. Information seulement : hors empreinte, hors calcul. La RG3 de la 0016 s'étend aux deux natures « Revenu » et « Remboursement ».
-
-Effet sur le budget (réel net)
-- RG9. Réel d'une ligne de dépense = Σ dépenses de la ligne − Σ remboursements de la ligne, dans le mois de rattachement (extension de 0019 RG20). Une ligne qui n'a que des remboursements a donc un réel négatif.
-- RG10. Pas de plancher : le réel net n'est jamais ramené à 0 (décision proposée D1). Un réel négatif s'affiche avec son signe ; le restant d'une ligne `var` (budget − réel, 0008) augmente du montant remboursé et peut dépasser le budget.
-- RG11. Réel d'une enveloppe (« dépensé ») = Σ dépenses `env` − Σ remboursements de l'enveloppe, même règle (RG9, RG10). Son solde propre (alloc − dépensé) augmente d'autant.
-- RG12. Lecture dérivée : les totaux de l'écran Budget, le bilan du mois, les totaux de dépenses, l'« épargne réelle » et la clôture d'année lisent ce réel net, sans autre changement (0019 RG24, RG23). Mois clos : même règle (somme des écritures).
-- RG13. Un remboursement sans cible (crédit libre) n'a aucun effet sur le budget : ni réel de ligne, ni totaux, ni bilan. Seuls les soldes changent.
-- RG14. Hors revenus : un remboursement n'entre jamais dans « Revenus » (réel ni budget), « Disponible à placer (réel) » (0005 : il ne lit que les lignes `rev`, `epa`, `inv`), « Revenus attendus » (0009) ni le pointage « reçu ». Il ne crée ni ligne `rev` ni écart de revenu.
-- RG15. « Reste à sortir » reste purement budgétaire (0019 RG7) : un remboursement ne le change pas. Seul le « restant des variables » d'une ligne `var` (RG10) et le solde d'une enveloppe (RG11) bougent.
-- RG16. Total de la liste « Opérations de {mois} » (0015 RG26) : la somme des dépenses seules, brute, un remboursement n'y est pas retranché ; l'infobulle du total le précise et donne le total des remboursements du mois (décision proposée D2).
-
-Règles mémorisées, déduplication, filtres
-- RG17. Règle mémorisée (0013 RG18) : la nature « Remboursement » mémorise le motif du libellé et la cible : une ligne de dépense par sa clé stable, une enveloppe par son id, ou le choix explicite « Aucune ligne ». Une règle dont la ligne n'existe pas dans le mois de rattachement, dont le compte ne correspond plus, ou dont le compte est archivé n'est pas appliquée : la nature est préremplie, la cible reste à choisir. La source (RG8) n'est pas mémorisée (comme 0016, écart RG20).
-- RG18. Déduplication : comme un revenu (0015 RG20, RG24) : empreinte avec le sens `+`, rang, compte d'import, unicité (compte d'import, empreinte, rang). Requalifier une même ligne entre « Revenu » et « Remboursement » ne change pas son empreinte : un remboursement déjà importé est un « Doublon » quelle que soit la nature proposée au réimport. Ressemblance (0015 RG23) inchangée.
-- RG19. Filtres de nature de l'aperçu : « Remboursement » s'ajoute à « Revenu » et « Virement interne ». Les filtres d'état (« À rattacher », « Doublon », « Mois différent de la date », « Date hors soldes »…) s'appliquent sans changement ; une entrée « Remboursement » sans cible est « À rattacher ».
-- RG20. Récapitulatif : une ligne distincte « Remboursements » (nombre et total), à côté de « Entrées d'argent (revenus) », « Virements internes » (0016 RG21). Un compte est « traité » (0013 RG71) quand ses remboursements à importer sont importés ou déjà importés.
-
-Soldes
-- RG21. Solde réel (0019 RG1) : le remboursement est une écriture réelle ; il crédite le compte résolu à sa date bancaire (0015 RG2), dans le mois de sa date, même clos.
-- RG22. Solde estimé : le remboursement est compté à sa date bancaire (décision du développeur) quand il compense une dépense que l'estimé compte déjà, c'est-à-dire quand sa cible est une ligne `var`, une enveloppe ou aucune ligne. Quand sa cible est une ligne `fix` ou `cre`, la dépense d'origine n'entre pas dans l'estimé (0019, définition : ces lignes entrent par leur pointage) : le remboursement n'y entre pas non plus, pour ne pas compter un crédit sans son débit (décision proposée D3). Aucun autre double compte.
-- RG23. Compte hors budget : écriture réelle ; elle crédite son compte dans les deux soldes selon RG21 et RG22. L'isolation de la 0009 (RG92) ne vaut que pour les contreparties fictives, inchangée (0019 RG12).
-
-Gestion après import
-- RG24. Un remboursement est visible dans l'écran Saisie (liste « Opérations de {mois} ») avec le type « Remboursement », sa source en détail et sa cible ; supprimable (réel de la ligne recalculé) ; son montant, son libellé et sa cible ne sont pas modifiables hors suppression et réimport, comme les autres écritures importées de ce type (0015 RG5 pour la date). Mois verrouillé ou clos : ajout et suppression refusés ; une écriture existante garde son effet sur les soldes (0015 RG15).
-- RG25. Suppression d'une ligne de budget qui porte des remboursements : même comportement que pour ses dépenses (le garde-fou existant s'applique aux deux).
-- RG26. Affichage dans les comptes : « <libellé> (remboursement) » en entrée, avec la source ; jamais « Revenu » ni « Dépense ».
+Effets
+- RG10. Dépensé d'enveloppe = Σ dépenses `env` − Σ entrées sur enveloppe, dans le mois, sans plancher. Il peut être négatif et s'affiche avec son signe. Le solde de l'enveloppe (alloc − dépensé) augmente du montant de l'entrée.
+- RG11. Lecture dérivée : les totaux de dépensé de l'écran Budget, le bilan du mois, l'« épargne réelle » et la clôture d'année lisent ce dépensé net, sans autre changement. Mois clos : somme des écritures.
+- RG12. Hors revenus : cette écriture n'entre jamais dans « Revenus » (réel ni budget), « Disponible à placer (réel) », « Revenus attendus » ni le pointage « reçu ». Elle ne crée aucune ligne `rev`.
+- RG13. « Reste à sortir » reste budgétaire : inchangé.
+- RG14. Soldes : solde réel (0019) : crédit du compte de l'enveloppe à la date bancaire, dans le mois de cette date, même clos. Solde estimé : même chose (compense des `env` que l'estimé compte déjà). Aucun double compte.
+- RG15. Déduplication : comme un revenu (0015 RG20, RG24) : empreinte avec le sens `+`, rang, compte d'import. Un doublon reste « Doublon » quelle que soit la nature proposée au réimport.
+- RG16. Filtres de nature de l'aperçu : « Entrée sur enveloppe » s'ajoute. Récapitulatif : ligne « Entrées sur enveloppe » (nombre, total) distincte de « Entrées d'argent (revenus) ». Un compte est « traité » (0013 RG71) quand ses entrées à importer sont importées ou déjà importées.
+- RG17. Écran Opérations : type « Entrée sur enveloppe », montant en entrée (positif), source en détail, filtre de type. Le total de la liste (0015 RG26) reste la somme des dépenses seules, brute; l'infobulle donne le total des entrées sur enveloppe du mois. Supprimable (dépensé recalculé, clés de déduplication libérées); montant, libellé et cible non modifiables hors suppression/réimport.
+- RG18. Comptes : « <libellé> (entrée sur enveloppe) » en entrée, avec la source; jamais « Revenu » ni « Dépense ».
+- RG19. Suppression d'une enveloppe qui porte de telles écritures : même garde-fou que pour ses dépenses.
 
 ## Parcours utilisateur
 
-Nominal : l'aperçu liste « REFUND TEMU +40,58 € » du compte Shopping 2026 ; la nature proposée est « Remboursement » (mot « refund »), cible à choisir ; je choisis la ligne `var` « Shopping » du mois, source « Temu ». J'importe : le compte Shopping 2026 monte de 40,58 € à la date bancaire ; le réel de « Shopping » baisse de 40,58 € (réel net) et son restant monte d'autant ; « Revenus » et « Disponible à placer » ne bougent pas. Réimport : doublon.
+Nominal (import) : l'aperçu liste « REFUND TEMU +40,58 € » du compte Shopping 2026 ; nature « Entrée sur enveloppe », cible « Shopping 2026 » fixe, source « Temu », case cochée. J'importe : le compte monte de 40,58 € à la date bancaire, le dépensé de l'enveloppe baisse de 40,58 €, « Revenus » et « Disponible à placer » ne bougent pas. Réimport : doublon.
+
+Nominal (saisie) : sur Opérations, je clique « Entrée d’argent », je choisis l'enveloppe « Shopping 2026 », le compte « Reçu sur » se fixe sur son compte, je saisis 40,58 € et j'ajoute.
 
 Cas limites :
-- Libellé sans mot-clé (« PAYPAL EUROPE ») : proposé « Revenu » ; je passe à « Remboursement » ; la règle mémorisée le fera pour la suite.
-- « Avoir » dans un libellé de salaire : proposé « Remboursement » ; je requalifie « Revenu ».
-- Remboursement supérieur aux dépenses de la ligne : réel net négatif, accepté et affiché avec son signe (RG10).
-- Remboursement d'un achat d'un mois précédent : rattaché au mois choisi, la ligne du mois de rattachement le reçoit ; si la ligne d'origine n'existe plus ce mois-ci, « Aucune ligne » (crédit libre).
-- Aucune ligne de dépense convenable : « Aucune ligne » rend l'entrée importable ; seul le solde du compte bouge.
-- Cible = ligne `fix`/`cre` : réel net de la ligne réduit ; solde estimé non crédité (D3).
-- Compte d'enveloppe : l'enveloppe est présélectionnée ; son dépensé baisse.
-- Mois de rattachement clos ou verrouillé : ligne signalée, non importable (0013 RG12).
-- Ligne ciblée supprimée avant l'import : cible vide, entrée « À rattacher ».
-- Entrée requalifiée entre « Revenu » et « Remboursement » avant validation : la cible choisie est vidée si elle n'est plus proposée par la nouvelle nature.
+- Entrée supérieure au dépensé : dépensé négatif affiché avec son signe.
+- Mois de rattachement clos ou verrouillé : ligne signalée, non importable ; saisie refusée.
+- Crédit sur un compte d'enveloppe qui est en fait un virement : le choix « Virement interne » reste disponible.
+- Changement de compte ou de nature dans l'aperçu : la nature est recalculée selon RG1/RG2.
 
 ## Design
 
-Design proposé, à valider (aucune maquette fournie). Réutiliser `organic.css`, les pastilles, filtres et lignes d'aperçu de la 0013 (amendement 3), 0015 et 0016.
+Design proposé, validé par le développeur (aucune maquette). Réutiliser `organic.css`, pastilles, filtres et lignes d'aperçu (0013, 0015, 0016).
 
-Aperçu d'import, ligne de remboursement :
+Aperçu, compte d'enveloppe :
 ```
- ☐ 14 oct.  REFUND TEMU                      +40,58  [Shopping 2026]  Nature [Remboursement v]  Rattacher à [Choisir… v]  Source [Temu ____]  Mois [oct. v]   [À rattacher]
- ☑ 14 oct.  REFUND TEMU                      +40,58  [Shopping 2026]  Nature [Remboursement v]  Rattacher à [Shopping (variable) v]  Source [Temu ____]  Mois [oct. v]
- ☑ 15 oct.  AVOIR DARTY                     +120,00  [Compte principal]  Nature [Remboursement v]  Rattacher à [Aucune ligne (crédit libre) v]  Source [Darty ____]  Mois [oct. v]
+ ☑ 14 oct.  REFUND TEMU   +40,58  [Shopping 2026]  Nature [Entrée sur enveloppe v]  Enveloppe : Shopping 2026  Source [Temu ____]  Mois [oct. v]
 ```
-Sélecteur « Nature » : Revenu, Remboursement, Virement interne (les autres natures de débit restent propres aux débits). Sélecteur « Rattacher à » d'un remboursement :
+Pas de sélecteur « Rattacher à » pour cette nature. Pastille de nature distincte de « Revenu ».
+
+Saisie, puce « Entrée d’argent » :
 ```
- Rattacher à [ v ]
-   Lignes de dépense   Shopping (variable) · Assurance auto (fixe) · Crédit auto
-   Enveloppe           Shopping 2026
-   Sans ligne          Aucune ligne (crédit libre sur le compte)
+ Cible  [ v ]
+   Lignes de revenu   Salaire · Prime
+   Enveloppes         Shopping 2026 · Vacances
+ Reçu sur  Shopping 2026 (compte de l'enveloppe, fixe)
 ```
-Pastille de nature « Remboursement » : teinte neutre distincte de « Revenu » (pas la teinte revenu), pour qu'on ne la confonde pas.
+Le libellé du champ devient « Ligne de revenu ou enveloppe ». États : vide, rempli, refus (mois clos), liste Opérations (type, montant en entrée), Budget (dépensé négatif, infobulle « dépensé = dépenses − entrées »).
 
-Écran Budget, ligne de dépense avec remboursement : aucune modification visible (principe 0019 : l'information est dans l'infobulle). Infobulle de la ligne : « 3 écritures, réel = dépenses − remboursements (dont 1 remboursement de 40,58 €) ». Réel négatif affiché avec son signe. Aucune pastille, aucun élément ajouté, hauteur et alignement inchangés. Texte masqué pour les lecteurs d'écran (`aria-describedby`).
+## Impact technique (quoi)
 
-Écran Saisie : type « Remboursement » dans la liste (étiquette « Remboursement », montant en entrée), filtre de type.
+- Domaine : `TxType` gagne un type entrant « Entrée sur enveloppe » (code proposé `ienv`) ; `ImportNature` gagne `entree_enveloppe` ; `budget.ts` : dépensé net d'enveloppe ; `bankMovements` : crédit réel et estimé ; `checkoff` et « Disponible à placer » ne le lisent pas ; toutes les lectures qui additionnent des sorties distinguent le sens (`spentOf`, `signedAmount`, filtres, `monthSummary`, `envelopeSpent`, `Accounts.tsx`, `quickEntry.ts`).
+- Application : `natureOptions`, `targetIsValid`, `prepareImport`, `validateImport` (création de l'écriture), `addTransaction`/`deleteTransaction` (refus mois verrouillé/clos, compte archivé, enveloppe sans compte), récapitulatif et « traité ».
+- Infrastructure / schéma : NOUVELLE migration additive : élargir `transactions_type_check` à `ienv` (en repartant de `var, env, epa, fix, rev`) ; la colonne `source` existe (0016) ; `supabaseRows`, `database.types.ts`, test de contrat. `import_rules` inchangé. Aucune reprise de données.
+- Présentation : `ImportRow` (option, cible fixe sans sélecteur, source, pastille), `ImportWizard` (filtre, récapitulatif), `Expenses.tsx` (groupe « Enveloppes » de la puce, libellé de type, filtre, infobulle du total), Budget (dépensé négatif), `Accounts.tsx` (libellé).
+- Documentation : architecture et ADR (entrée sur enveloppe = hors revenus, dépensé net sans plancher).
 
-Récapitulatif : `Remboursements   2 · 160,58 €` à côté de `Entrées d'argent (revenus)` et `Virements internes`.
+## Amendements nécessaires aux specs existantes (à écrire à la validation)
 
-États : aperçu (à rattacher, rattaché, crédit libre, doublon, mois clos), Budget (réel net, réel négatif), Saisie (liste), comptes.
+- 0015 : RG18 (« toute entrée est proposée Revenu ») : « sauf compte d'enveloppe (0024 RG1) » ; récapitulatif et filtres étendus ; RG26 renvoie à 0024 RG17.
+- 0016 : RG3 (source facultative) s'applique aussi à l'entrée sur enveloppe ; RG23 (« remboursements = revenus ») : exception pour un compte d'enveloppe (0024) ; récapitulatif gagne la ligne RG16.
+- 0011 : mention qu'une enveloppe peut recevoir une entrée externe qui réduit son dépensé.
+- 0019 : réel d'enveloppe = dépenses − entrées sur enveloppe ; définition du solde estimé : ajouter ces entrées.
 
-## Impact technique (quoi, pas comment)
+## Décisions prises par le développeur (2026-10-25)
 
-- Domaine : nouveau `TxType` « Remboursement » (code proposé `rbt`), entrant, montant positif, cible = clé de ligne `var`/`fix`/`cre`, id d'enveloppe, ou vide ; fonction pure de réel net d'une ligne (dépenses − remboursements) dans `lineActuals.ts` (`lineEntryAmounts` signe les remboursements en négatif) ; `budget.ts` : dépensé d'enveloppe net ; `ImportNature` gagne `remboursement` ; `ImportTarget` gagne le choix explicite « aucune ligne » pour la mémorisation ; `bankMovements` crédite l'écriture à sa date bancaire dans le solde réel et, selon RG22, dans l'estimé ; `checkoff.ts` (« Revenus attendus ») et `availableReal` (« Disponible à placer ») ne lisent jamais ce type ; toutes les lectures qui additionnent des sorties distinguent le sens de ce type (aujourd'hui `type !== 'rev'`) : `spentOf` et filtres de `Expenses.tsx`, `monthSummary`, `budget.ts` (`envelopeSpent`, `savingsOut`), `Accounts.tsx` (`IMPUTATION_KIND`), `quickEntry.ts`.
-- Application : `prepareImport` (nature proposée par mots-clés et priorité RG2, cibles RG4, source prérempli, état « À rattacher », filtre de nature, indice), `validateImport` (création de l'écriture, réel net resynchronisé via `syncLineActual`), `addTransaction`/`deleteTransaction` (refus mois verrouillé ou clos, compte archivé, ligne hors `var`/`fix`/`cre`), règles mémorisées (`rememberRule`, application avec les garde-fous RG17), récapitulatif et compte « traité » (RG20).
-- Infrastructure / schéma : NOUVELLE migration additive (à écrire à l'implémentation) : élargir `transactions_type_check` à `rbt` (en repartant de `var, env, epa, fix, rev`) ; élargir `import_rules_nature_check` à `remboursement` ; élargir `import_rules.target_kind` au choix « aucune ligne » si la règle le mémorise (valeur réservée, sans colonne en plus, comme `'enveloppes'` en ADR 0021) ; la colonne `source` des `transactions` existe déjà (0016) ; `supabaseRows`, `database.types.ts`, test de contrat avec un remboursement ciblé et un libre. Aucune reprise de données : les entrées déjà importées « Revenu » restent des revenus (voir D7).
-- Présentation : `ImportWizard`/`ImportRow` (option « Remboursement », sélecteur de cible groupé, source, pastille), écran Budget (infobulle du réel net, réel négatif), `Expenses.tsx` (libellé de type, filtre, total brut + infobulle), `Accounts.tsx` (libellé d'imputation), récapitulatif.
-- Documentation : architecture et ADR (remboursement = entrée hors revenus, réel net par ligne, pas de plancher).
+- D1. Pas de plancher : dépensé négatif accepté (RG10).
+- D2. Total de la liste Opérations brut, avec infobulle (RG17).
+- D3. Sans objet dans ce lot (cible `fix`/`cre` reportée).
+- D4. Cible = enveloppe du compte importé, fixe, sans sélecteur (RG3).
+- D5. Sans objet (« Aucune ligne » reportée) ; l'entrée est cochée d'office (RG3).
+- D6. Aucun mot-clé ; nature générale « Entrée sur enveloppe ».
+- D7. Aucune reprise de données.
+- D8. Saisie manuelle incluse (RG7 à RG9), amende l'ancienne exclusion.
 
-## Amendements nécessaires aux specs existantes
+## Reporté (spec ultérieure)
 
-À écrire à la validation de cette spec (ne pas modifier maintenant) :
-- 0015 : RG18 (« toute entrée est proposée Revenu par défaut ») devient « Revenu, sauf libellé de remboursement (0024 RG2) » ; RG19a et son récapitulatif/filtres s'étendent à « Remboursement » ; RG26 (total « Opérations ») renvoie à 0024 RG16 ; CA16 inchangé pour les entrées « virement ».
-- 0016 : RG1 gagne la troisième nature « Remboursement » ; RG2 gagne l'étape mots-clés ; RG3 (source facultative) s'applique aux deux natures ; RG23 (« remboursements et avoirs = revenus ») est REMPLACÉE par 0024 ; « Exclus » et R4 : le lien informatif reste exclu, mais les remboursements ne sont plus comptés comme revenus ; CA7a est remplacé : « un avoir ou un remboursement qualifié « Remboursement » et rattaché à une ligne de dépense réduit son réel net et ne compte pas dans les revenus » ; RG21 (récapitulatif) gagne la ligne « Remboursements ».
-- 0019 : RG20 (réel de ligne) : « somme des écritures » devient « dépenses − remboursements » pour `var`, `fix`, `cre` et enveloppes ; définition du solde estimé : ajouter « et les remboursements de lignes `var`, d'enveloppes et sans cible » (RG22) ; CA13 et CA17 inchangés pour le cas sans remboursement ; RG13 (aucune écriture comptée deux fois) respectée par RG22.
-
-## Décisions proposées (à valider par le développeur)
-
-- D1. Pas de plancher du réel net (RG10) : un réel de ligne peut être négatif. Option B : plancher à 0, mais les totaux ne seraient plus la somme des écritures (perte d'additivité, incohérence avec le solde). Recommandation : A (pas de plancher).
-- D2. Total de la liste « Opérations » (RG16) : brut (dépenses seules) avec infobulle. Option B : net (dépenses − remboursements). Recommandation : A, cohérent avec 0015 RG26.
-- D3. Solde estimé (RG22) : remboursement compté si la cible est `var`, enveloppe ou aucune ligne ; non compté si la cible est `fix`/`cre` (dépense non comptée dans l'estimé). Cela s'écarte légèrement de « solde estimé à la date bancaire » pour tous les cas. Option B : toujours compter (risque : crédit estimé sans débit pour `fix`/`cre`).
-- D4. Cibles autorisées (RG4) : lignes `var`/`fix`/`cre` et enveloppe du compte, plus « Aucune ligne ». L'enveloppe est ajoutée parce que le compte Shopping 2026 est probablement un compte d'enveloppe. À confirmer.
-- D5. « Aucune ligne » est un choix explicite (entrée décochée tant qu'aucune cible n'est choisie, RG3), pour éviter qu'un remboursement perde son rattachement budgétaire par oubli. Option B : « Aucune ligne » par défaut (cochée d'office).
-- D6. Mots-clés de proposition (RG2) : remboursement, refund, rembours, avoir, rbt, vérifiés dans le libellé et les notes. Liste à compléter.
-- D7. Les revenus déjà importés qui sont en réalité des remboursements ne sont pas migrés automatiquement ; l'utilisateur les supprime et réimporte, ou les requalifie à la main (aucun outil de requalification d'une écriture existante dans cette spec).
-- D8. Pas de saisie manuelle libre d'un remboursement (hors import) : l'écriture rapide « + Écriture » (0019 RG21) reste une dépense. À réévaluer en spec ultérieure.
+Remboursement sur ligne `var`/`fix`/`cre` avec réel négatif de ligne, « Aucune ligne (crédit libre) », solde estimé des cibles `fix`/`cre`, entrée sur enveloppe depuis un autre compte, mots-clés de détection, règles mémorisées, source mémorisée.
 
 ## Critères d'acceptation
 
-(Auto = test automatisé ; Man = vérification manuelle par le reviewer.)
+(Auto = test automatisé ; Man = vérification manuelle.)
 
-- CA1. Given une entrée « REFUND TEMU +40,58 € », Then sa nature proposée est « Remboursement », sa case est décochée, l'état « À rattacher » est affiché, et le sélecteur Nature propose Revenu, Remboursement, Virement interne. (Auto sur la proposition, Man sur l'écran)
-- CA2. Given une entrée sans mot-clé de remboursement (« VIREMENT SALAIRE ACME »), Then sa nature proposée reste « Revenu ». Given « AVOIR DARTY », Then « Remboursement ». Given une règle mémorisée, Then elle prime sur les mots-clés. (Auto)
-- CA3. Given un remboursement et la ligne `var` « Shopping » (budget 100 €, dépenses 80 €) choisie, When j'importe 40,58 €, Then le réel de « Shopping » vaut 39,42 € et son restant 60,58 €. (Auto)
-- CA4. Given le même cas, Then « Revenus », « Disponible à placer (réel) » et « Revenus attendus » sont inchangés, aucune ligne `rev` n'est créée et « Reste à sortir » est inchangé. (Auto)
-- CA5. Given un remboursement de 150 € sur une ligne dont les dépenses valent 80 €, Then son réel vaut −70 €, affiché avec son signe, et les totaux le prennent tel quel (pas de plancher). (Auto sur le calcul, Man sur l'affichage)
-- CA6. Given un remboursement sur une ligne `fix` ou `cre`, Then son réel net est réduit de son montant. (Auto)
-- CA7. Given un compte d'enveloppe, Then l'enveloppe est présélectionnée et son dépensé est réduit du montant. (Auto)
-- CA8. Given « Aucune ligne (crédit libre) », When j'importe, Then aucun réel de ligne, total, bilan ni clôture ne change et le solde du compte monte. (Auto)
-- CA9. Given un remboursement non encore rattaché, Then il n'est pas importable et ne compte pas dans « Importer N lignes » ; les lignes `rev`, `epa`, `inv` et d'un autre compte ne sont pas proposées. (Auto)
-- CA10. Given un remboursement du 14/10, Then le solde réel du compte monte à cette date bancaire, même dans un mois clos, et les chiffres du budget d'un mois clos ne changent pas. (Auto)
-- CA11. Given une cible `var`, enveloppe ou aucune ligne, Then le solde estimé monte à la date bancaire ; Given une cible `fix`/`cre`, Then le solde estimé ne bouge pas ; dans tous les cas aucun crédit n'est compté deux fois. (Auto)
-- CA12. Given un compte hors budget, Then le remboursement le crédite dans les deux soldes selon CA10 et CA11, et le compte principal n'est pas touché. (Auto)
-- CA13. Given un remboursement importé, When je réimporte le fichier, Then la ligne est un « Doublon » décoché quelle que soit la nature proposée ; un crédit et un débit de mêmes compte, jour, montant et libellé ont des empreintes différentes. (Auto)
-- CA14. Given une règle « REFUND TEMU → Remboursement, ligne Shopping », Then nature et cible sont préremplies ; Given une ligne absente du mois, d'un autre compte ou un compte archivé, Then la nature est préremplie et la cible reste à choisir. (Auto)
-- CA15. Given un remboursement, When je le supprime, Then le réel de la ligne revient à sa valeur précédente et ses deux clés de déduplication sont libérées ; Given un mois verrouillé ou clos, Then ajout et suppression sont refusés. (Auto)
-- CA16. Given une source saisie « Temu », Then elle est enregistrée avec l'écriture, absente de l'empreinte et de tout calcul. (Auto)
-- CA17. Given le récapitulatif, Then il affiche « Remboursements » (nombre, total) distinct de « Entrées d'argent (revenus) » ; Given les filtres, Then « Remboursement » filtre la nature ; Given un compte avec un remboursement à importer, Then il n'est pas « traité ». (Auto sur les compteurs, Man sur l'écran)
-- CA18. Given la liste « Opérations de {mois} », Then le remboursement est étiqueté « Remboursement », le total est la somme des dépenses seules et l'infobulle indique le total des remboursements. (Man)
-- CA19. Given une ligne du Budget avec remboursement, Then elle ne change ni de hauteur ni d'alignement, rien n'est ajouté en permanence, l'infobulle donne « réel = dépenses − remboursements » et le nombre de remboursements. (Man)
-- CA20. Given la migration, Then le type `rbt`, la nature `remboursement` et le choix « aucune ligne » sont acceptés en base, les anciennes valeurs restent valides, et sauvegarder puis recharger redonne le même `BudgetData` (remboursement ciblé et libre). (Auto sur la conversion et le contrat, Man sur la base)
-- CA21. Given une écriture « Remboursement », Then aucune lecture de dépenses (totaux, bilan, enveloppes, `monthSummary`, liste Saisie) ne la compte comme une dépense positive. (Auto)
-- CA22. `npm run build` et les tests passent, sans nouvelle dépendance. (Auto)
+- CA1. Given un crédit « REFUND TEMU +40,58 € » sur un compte d'enveloppe, Then sa nature proposée est « Entrée sur enveloppe », sa cible est l'enveloppe du compte, il est coché, « Revenu » n'est pas proposé, « Importer 1 ligne ». (Auto sur la nature/état, Man sur l'écran)
+- CA2. Given l'aperçu de cette ligne, Then aucun sélecteur « Rattacher à » n'est affiché et le nom de l'enveloppe est montré. (Man)
+- CA3. Given un crédit sur un compte non enveloppe, Then « Entrée sur enveloppe » n'est pas proposée et le comportement actuel est inchangé. (Auto)
+- CA4. Given l'import de CA1, Then une écriture entrante est créée avec compte, enveloppe, date bancaire, mois et source ; aucune ligne `rev` n'est créée. (Auto)
+- CA5. Given une enveloppe dont le dépensé vaut 80 €, When 40,58 € sont importés, Then son dépensé vaut 39,42 € et son solde augmente de 40,58 €. (Auto)
+- CA6. Given une entrée supérieure au dépensé, Then le dépensé est négatif, affiché avec son signe, sans plancher. (Auto sur le calcul, Man sur l'affichage)
+- CA7. Given l'import, Then « Revenus », « Disponible à placer (réel) », « Revenus attendus » et « Reste à sortir » sont inchangés. (Auto)
+- CA8. Given l'import, Then le solde réel du compte monte à la date bancaire (même dans un mois clos, sans changer les chiffres budget du mois clos) et le solde estimé monte à la même date, sans double compte. (Auto)
+- CA9. Given un mois clos/verrouillé, un compte archivé ou une enveloppe sans compte, Then la ligne est non importable et l'ajout manuel est refusé. (Auto)
+- CA10. Given un réimport, Then la ligne est un « Doublon » décoché quelle que soit la nature proposée ; un crédit et un débit identiques ont des empreintes différentes. (Auto)
+- CA11. Given une source « Temu », Then elle est enregistrée avec l'écriture et absente de l'empreinte et des calculs. (Auto)
+- CA12. Given le récapitulatif et les filtres, Then « Entrées sur enveloppe » (nombre, total) est distinct des revenus et filtre la nature ; un compte avec une entrée à importer n'est pas « traité ». (Auto sur les compteurs, Man sur l'écran)
+- CA13. Given la puce « Entrée d’argent » de l'écran Opérations, Then le sélecteur propose les lignes de revenu et les enveloppes ; Given une enveloppe choisie, Then « Reçu sur » est fixe sur son compte et l'ajout crée l'entrée sur enveloppe ; Given une ligne de revenu, Then le comportement actuel est inchangé. (Auto sur l'action, Man sur l'écran)
+- CA14. Given la liste « Opérations de {mois} », Then l'entrée est étiquetée « Entrée sur enveloppe », en entrée, le total reste la somme des dépenses seules et l'infobulle donne le total des entrées. (Man)
+- CA15. Given la suppression d'une telle entrée, Then le dépensé revient à sa valeur précédente et ses clés de déduplication sont libérées ; mois verrouillé/clos : refus. (Auto)
+- CA16. Given toute lecture de dépenses (totaux, bilan, enveloppes, `monthSummary`, liste Opérations), Then l'écriture n'est jamais comptée comme une dépense positive. (Auto)
+- CA17. Given la migration, Then `ienv` est accepté en base, les anciennes valeurs restent valides, et sauvegarder puis recharger redonne le même `BudgetData`. (Auto sur la conversion/contrat, Man sur la base)
+- CA18. `npm run build` et les tests passent, sans nouvelle dépendance. (Auto)
 
 ## Questions ouvertes
 
-Aucune bloquante. Les points D1 à D8 sont des décisions proposées qui attendent la validation du développeur.
+Aucune.
