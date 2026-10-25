@@ -91,7 +91,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
               </div>
               <div className="env-card-mid">
                 <div>
-                  <div className="kpi-label">Solde cumulé</div>
+                  <div className="kpi-label">Provision</div>
                   <div className="env-card-solde">{money(balance)}</div>
                 </div>
                 <div style={{ width: 168 }}>
@@ -214,11 +214,11 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
               <Icon name="close" size={16} />
             </div>
           </div>
-          <div className="drawer-kicker">Solde cumulé · {monthLabel(month)}</div>
+          <div className="drawer-kicker">Provision · {monthLabel(month)}</div>
           <div className="drawer-solde">{money(balance)}</div>
         </div>
 
-        <div className="drawer-section">Répartition du solde</div>
+        <div className="drawer-section">Répartition de la provision</div>
         <div className="drawer-body">
           <div className="split-bar is-lg">
             <div style={{ width: `${balance > 0 ? (cash / balance) * 100 : 0}%`, background: CASH }} />
