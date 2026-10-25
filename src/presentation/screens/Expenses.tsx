@@ -13,6 +13,7 @@ import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransf
 import { creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
+import { lineCheck } from '../../domain/checkoff';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
@@ -66,16 +67,18 @@ function defaultDay(month: MonthKey) {
 }
 
 /** Libellé d'une écriture (+ détail) : clic souris sur le libellé, et crayon (seul arrêt clavier) visible au survol/focus pour ajouter ou modifier le détail. */
-function EntryLabel({ entry, onOpen }: { entry: { id: string; label: string; detail?: string }; onOpen: (id: string, detail?: string) => void }) {
+/** `attach`: where the entry is attached (budget line, or the link of a transfer), shown under the detail. */
+function EntryLabel({ entry, attach, hideDetail, onOpen }: { entry: { id: string; label: string; detail?: string }; attach?: string; hideDetail?: boolean; onOpen: (id: string, detail?: string) => void }) {
   const open = () => onOpen(entry.id, entry.detail);
   const editLabel = entry.detail ? 'Modifier le détail' : 'Ajouter un détail';
   return (
     <div className="entry-cell">
-      <div className="entry-label" title={entry.detail ? `${entry.label}\n${entry.detail}` : editLabel} onClick={open}>
+      <div className="entry-label" title={[entry.label, entry.detail, attach].filter(Boolean).join('\n') || editLabel} onClick={open}>
         <div className="ellipsis" style={{ fontWeight: 500 }}>
           {entry.label}
         </div>
-        {entry.detail && <div className="entry-detail">{entry.detail}</div>}
+        {entry.detail && !hideDetail && <div className="entry-detail">{entry.detail}</div>}
+        {attach && !hideDetail && <div className="entry-detail is-attach">{attach}</div>}
       </div>
       <button type="button" className="entry-edit" aria-label={editLabel} title={editLabel} onClick={open}>
         <Icon name="pencil" size={12} stroke={2} />
@@ -97,7 +100,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string }>({ q: '', type: 'all', accountId: 'all' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
   const [transfer, setTransfer] = useState(false);
@@ -113,7 +116,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   };
 
   const targets: [string, string][] =
-    form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : form.type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, `${l.name} (${l.block === 'cre' ? 'Crédit' : 'Fixe'}, ${bankAccount(data, l.accountId)?.name ?? ''})`]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
+    form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : form.type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, `${l.name} (${l.block === 'cre' ? 'Crédit' : 'Fixe'}, ${bankAccount(data, l.accountId)?.name ?? ''})`]) : form.type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, `${l.name} (${bankAccount(data, l.accountId)?.name ?? ''})`]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
   // « Payé avec » is frozen on the account of the envelope (spec 0011, RG10) or on the account assigned to the variable line (spec 0006 amended).
   // Otherwise, until the user picks an account (form.accountId empty), it follows the payment mode of the chosen box (spec 0006, RG5).
@@ -130,12 +133,19 @@ function EntryTab({ month }: { month: MonthKey }) {
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
 
   const s = monthSummary(data, ledger, month);
+  // An entry is « rattachée à un pointage » when its line is checked off this month (envelopes have no pointage).
+  const isPointed = (t: { type: TxType; target: string }) => t.type !== 'env' && !!lineCheck(data, month, t.target);
+  const minAmount = parseAmount(filter.min) ?? null;
+  const maxAmount = parseAmount(filter.max) ?? null;
   const txs = data.transactions.filter(t => t.month === month);
   const shown = txs
     .filter(t => filter.type === 'all' || t.type === filter.type)
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId)
     .filter(t => matchesEntrySearch(t, filter.q))
-    .sort((a, b) => b.day - a.day);
+    .filter(t => !filter.pointedOnly || isPointed(t))
+    .filter(t => (!filter.from || bankDateOf(t) >= filter.from) && (!filter.to || bankDateOf(t) <= filter.to))
+    .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
+    .sort((a, b) => bankDateOf(b).localeCompare(bankDateOf(a)));
   // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
   const picked = shown.filter(t => selected.has(t.id));
   const allPicked = shown.length > 0 && picked.length === shown.length;
@@ -202,6 +212,10 @@ function EntryTab({ month }: { month: MonthKey }) {
       [`${e.name} · dépensé`, `${money(spent)} → ${money(spent + budgetAmount)}`],
       ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - budgetAmount)}`],
     ];
+  } else if (target && form.type === 'rev') {
+    const l = lines.find(x => x.key === target)!;
+    const cur = l.actual ?? 0;
+    impact = [[`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`]];
   } else if (target && form.type === 'fix') {
     const l = lines.find(x => x.key === target)!;
     const cur = l.actual ?? 0;
@@ -237,7 +251,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   return (
     <div className="dep-layout">
       <div className="panel-lg form-card">
-        <div className="form-title">Nouvelle dépense</div>
+        <div className="form-title">Nouvelle opération</div>
         <div className="form-row">
           <label className="field-w">
             <span className="field-label">Libellé</span>
@@ -255,9 +269,9 @@ function EntryTab({ month }: { month: MonthKey }) {
         <div>
           <div className="field-label is-gap">Type</div>
           <div className="chips is-wrap">
-            {(['var', 'env', 'epa', 'fix'] as const).map(t => (
+            {(['var', 'env', 'epa', 'fix', 'rev'] as const).map(t => (
               <Chip key={t} on={!transfer && form.type === t} onClick={() => { setTransfer(false); setForm(f => ({ ...f, type: t, target: '' })); }}>
-                {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Fixe / crédit' }[t]}
+                {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Fixe / crédit', rev: 'Entrée d’argent' }[t]}
               </Chip>
             ))}
             <Chip on={transfer} onClick={() => setTransfer(true)}>
@@ -270,7 +284,7 @@ function EntryTab({ month }: { month: MonthKey }) {
         ) : (
           <>
         <div>
-          <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : form.type === 'fix' ? 'Ligne fixe ou crédit' : 'Compte d’épargne débité'}</div>
+          <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : form.type === 'fix' ? 'Ligne fixe ou crédit' : form.type === 'rev' ? 'Ligne de revenu' : 'Compte d’épargne débité'}</div>
           <div className="chips is-wrap">
             {targets.map(([id, name]) => (
               <Chip key={id} on={target === id} onClick={() => setForm(f => ({ ...f, target: id }))}>
@@ -280,7 +294,7 @@ function EntryTab({ month }: { month: MonthKey }) {
           </div>
         </div>
         <div>
-          <div className="field-label is-gap">{form.type === 'epa' ? 'Reçu sur' : 'Payé avec'}</div>
+          <div className="field-label is-gap">{form.type === 'epa' || form.type === 'rev' ? 'Reçu sur' : 'Payé avec'}</div>
           <div className="chips is-wrap">
             {(envelopeAccount ? [envelopeAccount] : activeBankAccounts(data)).map(a => (
               <Chip key={a.id} on={accountId === a.id} onClick={envelopeAccount ? () => undefined : () => setForm(f => ({ ...f, accountId: a.id }))}>
@@ -305,7 +319,7 @@ function EntryTab({ month }: { month: MonthKey }) {
         </div>
         <div className={`btn-dark is-block${!amount || locked || accountRefused || lineBlocker ? ' is-disabled' : ''}`} onClick={add}>
           <Icon name="plus" size={15} stroke={3} />
-          Ajouter la dépense
+          {form.type === 'rev' ? 'Ajouter l’entrée' : 'Ajouter la dépense'}
         </div>
           </>
         )}
@@ -326,23 +340,66 @@ function EntryTab({ month }: { month: MonthKey }) {
             <b title="Total des dépenses (les entrées d’argent ne comptent pas)">{money(spentOf(txs))}</b>
           </div>
           <div className="tx-filters">
-            <input className="text-input" value={filter.q} placeholder="Rechercher un libellé ou un détail" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
-            <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>
-              <option value="all">Tous les types</option>
-              {(Object.keys(TYPE_LABEL) as TxType[]).map(t => (
-                <option key={t} value={t}>
-                  {TYPE_LABEL[t]}
-                </option>
-              ))}
-            </select>
-            <select className="text-input" value={filter.accountId} onChange={e => setFilter(f => ({ ...f, accountId: e.target.value }))}>
-              <option value="all">Tous les comptes</option>
-              {data.accounts.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+            <div className="tx-f">
+              <span className="tx-f-label">Recherche</span>
+              <input className="text-input" value={filter.q} placeholder="Libellé ou détail" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
+            </div>
+            <div className="tx-f">
+              <span className="tx-f-label">Type</span>
+              <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>
+                <option value="all">Tous les types</option>
+                {(Object.keys(TYPE_LABEL) as TxType[]).map(t => (
+                  <option key={t} value={t}>
+                    {TYPE_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tx-f">
+              <span className="tx-f-label">Compte</span>
+              <select className="text-input" value={filter.accountId} onChange={e => setFilter(f => ({ ...f, accountId: e.target.value }))}>
+                <option value="all">Tous les comptes</option>
+                {data.accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tx-f">
+              <span className="tx-f-label">Période</span>
+              <div className="tx-f-pair">
+                <input className="text-input" type="date" aria-label="Du" value={filter.from} max={filter.to || undefined} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
+                <span>→</span>
+                <input className="text-input" type="date" aria-label="Au" value={filter.to} min={filter.from || undefined} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} />
+              </div>
+            </div>
+            <div className="tx-f">
+              <span className="tx-f-label">Montant</span>
+              <div className="tx-f-pair">
+                <input className="text-input is-amount" aria-label="Montant minimum" value={filter.min} placeholder="min" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, min: sanitizeAmountInput(e.target.value) }))} />
+                <span>→</span>
+                <input className="text-input is-amount" aria-label="Montant maximum" value={filter.max} placeholder="max" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, max: sanitizeAmountInput(e.target.value) }))} />
+              </div>
+            </div>
+            <div className="tx-f">
+              <span className="tx-f-label">Affichage</span>
+              <div className="tx-f-pair">
+                <label className="tx-pointed-filter" title={'Opérations rattachées à une ligne de budget pointée ce mois-ci.\nPointer = cocher la case d’une ligne du Budget pour dire que l’argent a bougé (prélèvement passé, revenu reçu). Le pointage sert au « Reste à sortir » et au « Solde estimé » de chaque compte : c’est une estimation de budget, qui n’affecte pas les soldes réels.\nL’état est celui de la ligne : toutes ses opérations sont donc marquées. Les enveloppes n’ont pas de pointage.'}>
+                  <input type="checkbox" checked={filter.pointedOnly} onChange={e => setFilter(f => ({ ...f, pointedOnly: e.target.checked }))} />
+                  Pointées
+                </label>
+                <label className="tx-pointed-filter" title="Afficher le détail sous le libellé de chaque ligne">
+                  <input type="checkbox" checked={filter.showDetail} onChange={e => setFilter(f => ({ ...f, showDetail: e.target.checked }))} />
+                  Détails
+                </label>
+                {(filter.from || filter.to || filter.min || filter.max || filter.pointedOnly) && (
+                  <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '', pointedOnly: false }))}>
+                    Effacer
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
           {picked.length > 0 && (
             <div className="tx-bulk">
@@ -372,10 +429,10 @@ function EntryTab({ month }: { month: MonthKey }) {
           </div>
           {shown.map(t => (
             <Fragment key={t.id}>
-              <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
+              <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}${isPointed(t) ? ' is-pointed' : ''}`}>
                 <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                 <span className="muted" title={bankDateOf(t).slice(0, 7) !== t.month ? `Rattachée à ${monthLabel(t.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(t).slice(0, 7), Number(bankDateOf(t).slice(8, 10)))}</span>
-                <EntryLabel entry={t} onOpen={openDetail} />
+                <EntryLabel entry={t} hideDetail={!filter.showDetail} onOpen={openDetail} />
                 <span className="tx-target">
                   <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
                   <span className="ellipsis">{targetName(t.type, t.target)}</span>
@@ -460,14 +517,14 @@ function EntryTab({ month }: { month: MonthKey }) {
           {txs.length === 0 && <div className="empty">Aucune opération saisie ce mois-ci.</div>}
           <div style={{ height: 8 }} />
         </div>
-        <MovementsBlock month={month} locked={locked} />
+        <MovementsBlock month={month} locked={locked} showDetail={filter.showDetail} />
       </div>
     </div>
   );
 }
 
 /** Transfers of the month (spec 0013, RG10d; spec 0019): created by the import or by the « Transfert » form, edited (label, amount) or deleted here. */
-function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean }) {
+function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked: boolean; showDetail: boolean }) {
   const { data, update } = useStore();
   const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string } | null>(null);
   // Detail-only editing, also on a locked month (spec 0020, RG6, RG11).
@@ -485,7 +542,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
   // « Réparti dans les enveloppes » next to a debit « vers enveloppes » (spec 0016, RG29): calculated, never typed, no balance.
   const split = envelopeSplit(data, month);
   // Several debits « vers enveloppes » in a month: the monthly total is shown once, on the first one listed.
-  const firstPoolId = [...movements].sort((a, b) => b.day - a.day).find(m => isEnvelopesPool(m.toAccountId))?.id;
+  const firstPoolId = [...movements].sort((a, b) => bankDateOf(b).localeCompare(bankDateOf(a))).find(m => isEnvelopesPool(m.toAccountId))?.id;
   // State of the link between the two lines of the bank file (spec 0016, RG18).
   const linkLabel = (m: AccountMovement) => {
     const state = linkStateOf(m);
@@ -512,7 +569,7 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
         <b>{money(movements.reduce((a, m) => a + m.amount, 0))}</b>
       </div>
       {[...movements]
-        .sort((a, b) => b.day - a.day)
+        .sort((a, b) => bankDateOf(b).localeCompare(bankDateOf(a)))
         .map(m =>
           editing?.id === m.id ? (
             <Fragment key={m.id}>
@@ -533,9 +590,9 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
             </Fragment>
           ) : (
             <Fragment key={m.id}>
-              <div className="mv-grid tx-row">
+              <div className={`mv-grid tx-row${m.target?.kind === 'line' && lineCheck(data, month, m.target.key) ? ' is-pointed' : ''}`}>
                 <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
-                <EntryLabel entry={m} onOpen={openDetail} />
+                <EntryLabel entry={m} hideDetail={!showDetail} attach={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join(' · ')} onOpen={openDetail} />
                 <span className="muted ellipsis" title={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join('\n')}>
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                   {linkLabel(m) && <span className="state-chip is-info" style={{ marginLeft: 6 }}>{linkLabel(m)}</span>}
@@ -545,17 +602,17 @@ function MovementsBlock({ month, locked }: { month: MonthKey; locked: boolean })
                 {locked ? (
                   <span />
                 ) : (
-                  <span style={{ display: 'flex', gap: 4 }}>
+                  <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
                     <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '' })}>
                       <span style={{ fontSize: 11 }}>Modifier</span>
                     </span>
                     {linkStateOf(m) === 'lie' && (
                       <>
-                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Retirer la ligne du fichier côté débit : le virement garde sa face crédit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'debit'))}>
-                          <span style={{ fontSize: 11 }}>Délier le débit</span>
+                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Délier le débit. Retire la ligne du fichier côté débit : le virement garde sa face crédit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'debit'))}>
+                          <span style={{ fontSize: 11 }}>− débit</span>
                         </span>
-                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Retirer la ligne du fichier côté crédit : le virement garde sa face débit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'credit'))}>
-                          <span style={{ fontSize: 11 }}>Délier le crédit</span>
+                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Délier le crédit. Retire la ligne du fichier côté crédit : le virement garde sa face débit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'credit'))}>
+                          <span style={{ fontSize: 11 }}>− crédit</span>
                         </span>
                       </>
                     )}
