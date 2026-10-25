@@ -448,8 +448,6 @@ input, button { font-family: inherit; }
 .tx-grid { display: grid; grid-template-columns: 18px 54px minmax(0, 1fr) 220px 130px 96px 56px; column-gap: 10px; padding: 0 22px; }
 .tx-cols { padding: 4px 22px; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
 .tx-row { align-items: center; min-height: 34px; border-top: 1px solid rgba(32, 30, 29, 0.05); }
-.tx-filters { display: flex; gap: 8px; padding: 6px 22px 10px; }
-.tx-filters .text-input { height: 30px; min-width: 0; flex: 1; }
 .tx-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 22px; background: oklch(0.965 0.03 300); font-size: 13px; font-weight: 600; }
 .tx-bulk span:first-child { flex: 1; }
 .btn-outline.is-danger { color: oklch(0.45 0.18 25); border-color: oklch(0.7 0.12 25); }
@@ -681,7 +679,7 @@ input, button { font-family: inherit; }
 .import-remember { display: flex; align-items: center; gap: 8px; padding: 0 0 6px 34px; font-size: 12px; color: rgba(32, 30, 29, 0.7); }
 .import-remember .text-input { width: 240px; height: 26px; }
 .import-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.mv-grid { display: grid; grid-template-columns: 54px minmax(0, 1fr) 220px 96px 60px; column-gap: 10px; padding: 0 22px; align-items: center; }
+.mv-grid { display: grid; grid-template-columns: 54px minmax(0, 1fr) 220px 96px 190px; column-gap: 10px; padding: 0 22px; align-items: center; }
 .import-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .links-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 220px 90px; column-gap: 10px; align-items: center; }
 .import-pairs { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: oklch(0.96 0.04 90); }
@@ -758,9 +756,9 @@ input, button { font-family: inherit; }
 .tx-actions { display: inline-flex; align-items: center; gap: 4px; justify-self: end; }
 .tx-edit { display: flex; flex-direction: column; gap: 10px; padding: 12px 22px 14px 86px; background: var(--page); border-radius: 12px; margin: 2px 8px 8px; }
 .tx-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.cell.has-actual { font-weight: 800; color: var(--violet-ink); }
 .detail-edit { display: flex; align-items: center; gap: 8px; padding: 4px 22px 8px 86px; }
 .cell.is-readonly { cursor: default; }
+.cell.has-actual { font-weight: 800; color: var(--violet-ink); }
 
 /* ── comptes : vue d'ensemble et réglages (solde réel seul, spec 0019) ── */
 .cpt-layout { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
@@ -827,3 +825,27 @@ input, button { font-family: inherit; }
 .tx-grid { grid-template-columns: 16px 54px minmax(0, 1fr) 220px 130px 96px 56px; }
 .tx-row .acc-picker { margin-left: -4px; }
 .tx-cols > span { white-space: nowrap; }
+
+.tx-row.is-pointed .num { font-weight: 800; }
+.tx-row.is-pointed .tx-target { color: var(--violet-ink); font-weight: 700; }
+
+.mv-grid .icon-btn { white-space: nowrap; flex: none; }
+
+/* Pointed entry: a check in the left padding of the row, out of the grid so no column moves. */
+.tx-row { position: relative; }
+.tx-row.is-pointed::before { content: ''; position: absolute; left: 6px; top: 50%; width: 5px; height: 9px; margin-top: -6px; border: solid var(--violet-ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+
+.entry-detail.is-attach { color: var(--violet-ink); opacity: 0.8; }
+
+/* Operations filters: two equal columns, label above, every control the same height and soft fill (no outline). */
+.tx-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; padding: 8px 22px; margin-bottom: 12px; }
+.tx-f { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.tx-f-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(32, 30, 29, 0.5); }
+.tx-f-pair { display: flex; align-items: center; gap: 8px; color: rgba(32, 30, 29, 0.4); }
+.tx-filters .text-input { height: 36px; min-width: 0; border: 0; background: rgba(32, 30, 29, 0.05); }
+.tx-filters .text-input:focus { background: #fff; }
+.tx-f-pair .text-input { flex: 1 1 0; width: auto; }
+.tx-pointed-filter { flex: 1 1 0; box-sizing: border-box; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border-radius: 10px; background: rgba(32, 30, 29, 0.05); font-size: 13px; white-space: nowrap; cursor: pointer; }
+.tx-pointed-filter:has(input:checked) { background: oklch(0.93 0.05 300); color: var(--violet-ink); font-weight: 600; }
+.tx-clear { flex: none; height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; }
