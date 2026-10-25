@@ -85,8 +85,11 @@ export interface Envelope {
   name: string;
   /** OKLCH hue used for the envelope's accent. */
   hue: number;
-  /** Part of the balance held in cash (the rest is "virtuel"). Informative only. */
-  cash: number;
+  /**
+   * Cash balance of the envelope at its opening (spec 0026, RG1): a balance APART from the envelope's account, which holds its virtual
+   * balance. The cash balance is derived from it (see `envelopeCash`); it is never typed afterwards.
+   */
+  openingCash: number;
   /** Bank account of the envelope, of kind `enveloppe`: its balance is the envelope's balance (spec 0011, RG1). */
   accountId: string;
 }
@@ -128,6 +131,8 @@ export interface Transaction {
   detail?: string;
   /** Real date at the bank, `YYYY-MM-DD` (imported entries): balances rank and date the entry by it; the budget follows `month`. Absent = `month`/`day` (spec 0015, RG1, RG2). */
   bankDate?: string;
+  /** `env` expenses only: `especes` = paid with the cash of the envelope (spec 0026, RG5, RG6). Absent = `virtuel`. */
+  payMode?: PayMode;
   /** `rev` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
   source?: string;
 }

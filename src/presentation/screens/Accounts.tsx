@@ -21,7 +21,9 @@ import { decideAccountKind, linkLineToAccount } from '../../application/accountK
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
 import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
 import { attachedMovements, realMovements } from '../../domain/bankMovements';
-import { IN_BUDGET_HINT } from '../components/hints';
+import { IN_BUDGET_HINT, OPENING_MESSAGE } from '../components/hints';
+import { openingCashRefusal, setEnvelopeOpeningCash } from '../../application/envelopes';
+import { envelopeAccountTotal, envelopeCash, envelopesGroupTotals } from '../../domain/envelopeCash';
 import { money, monthLabel, round2 } from '../../domain/format';
 import { isMonthLocked, monthLines } from '../../domain/ledger';
 import type { AccountKind, BankAccount, MonthKey, TxType } from '../../domain/types';
@@ -35,6 +37,9 @@ const KIND_CHOICES: { value: AccountKind; label: string }[] = [
   { value: 'invest', label: 'Investissement' },
 ];
 const KIND_LABEL: Record<AccountKind, string> = { courant: 'courant', epargne: 'épargne', invest: 'investissement', enveloppe: 'enveloppe' };
+
+/** Tooltip of « Solde virtuel » on the cards of an envelope's account (spec 0026, D36). */
+const VIRTUAL_HINT = 'Solde réel du compte de l’enveloppe, hors espèces';
 
 /** Header button of the screen. */
 export function AccountsActions({ month }: { month: MonthKey }) {
@@ -102,6 +107,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const balanceOf = (id: string) => ledger.bankMonth(id, month)?.balance ?? 0;
   const byGroup = (g: Group) => active.filter(a => groupOf(a) === g).sort((x, y) => Number(y.isDefault) - Number(x.isDefault));
   const totalOf = (list: BankAccount[]) => round2(list.reduce((sum, a) => sum + balanceOf(a.id), 0));
+  const withCash = envelopesGroupTotals(data, ledger, month);
   const current = active.filter(a => ['main', 'other'].includes(groupOf(a)));
   const wealth = active.filter(a => isSaving(groupOf(a)));
   const open = active.find(a => a.id === selected) ?? null;
@@ -118,6 +124,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     const r = ledger.bankMonth(a.id, month);
     const env = g === 'env' ? data.envelopes.find(e => e.id === a.envelopeId) : undefined;
     const em = env ? ledger.envMonth(env.id, month) : null;
+    const envTotal = env ? envelopeAccountTotal(data, ledger, env.id, month) : null;
     const flow = r ? (isSaving(g) ? r.in : r.out) : 0;
     const cumul = round2(ledger.months.filter(m => m <= month).reduce((sum, m) => sum + ((isSaving(g) ? ledger.bankMonth(a.id, m)?.in : ledger.bankMonth(a.id, m)?.out) ?? 0), 0));
     const flowLabel = isSaving(g) ? (g === 'inv' ? 'Investi ce mois' : 'Versé ce mois') : 'Dépensé ce mois';
@@ -132,9 +139,17 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           <button className="cpt-open" aria-pressed={on} onClick={() => { setSelected(on ? null : a.id); setPanelTab('moves'); }}>{a.name}</button>
           <span className="cpt-tag">{tagOf(a, g)}</span>
         </div>
-        <div>
-          <div className="kpi-label">Solde réel</div>
-          <div className="cpt-solde">{r ? money(r.balance) : '—'}</div>
+        <div className={env ? 'cpt-pair' : undefined}>
+          <div>
+            <div className="kpi-label" title={env ? VIRTUAL_HINT : undefined}>{env ? 'Solde virtuel' : 'Solde réel'}</div>
+            <div className="cpt-solde">{r ? money(r.balance) : '—'}</div>
+          </div>
+          {env && (
+            <div title="Solde espèces de l’enveloppe : à part du solde du compte, il n’est compté dans aucun total de cet écran.">
+              <div className="kpi-label">Espèces</div>
+              <div className="cpt-solde">{money(envelopeCash(data, env.id, month))}</div>
+            </div>
+          )}
         </div>
         <div className="cpt-flow">
           <span className="muted">{isSaving(g) ? flowLabel : 'Dépenses ce mois'}</span>
@@ -151,6 +166,12 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           <div>
             <div className="split-bar"><div style={{ width: `${Math.min(100, Math.round((em.spent / em.alloc) * 100))}%`, background: 'var(--t-base)' }} /></div>
             <div className="muted is-small">{money(em.spent)} sur {money(em.alloc)} alloués</div>
+          </div>
+        )}
+        {envTotal && (
+          <div className="cpt-flow" title="Solde virtuel du compte + espèces. Chiffre d’affichage : il n’entre dans aucun total de cet écran.">
+            <b>Total</b>
+            <b>{money(envTotal.total)}</b>
           </div>
         )}
       </article>
@@ -184,6 +205,11 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
               <div className="num">
                 <div className="cpt-group-total-label">Total</div>
                 <div className="cpt-group-total">{money(totalOf(list))}</div>
+                {g.id === 'env' && withCash.cash !== 0 && (
+                  <div className="muted is-small" title="Soldes réels des enveloppes + espèces. Chiffre d’affichage : il n’entre dans aucun total de cet écran.">
+                    avec espèces {money(withCash.withCash)}
+                  </div>
+                )}
               </div>
             </div>
             <div className="cpt-cards">{list.map(card)}</div>
@@ -200,6 +226,9 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     const receives = savingsLines.filter(l => l.linkedAccountId === a.id).map(l => l.name);
     // The name, the kind and the budget status of an envelope's account follow its envelope (spec 0011, RG3, RG4).
     const fromEnvelope = g === 'env';
+    // The opening cash of the envelope (spec 0026, RG20): same data as in the Enveloppes screen and the assistant. An archived account has no card here (D21).
+    const env = fromEnvelope ? data.envelopes.find(e => e.accountId === a.id) : undefined;
+    const cashLocked = isMonthLocked(data, a.openingMonth);
     const confirmed = !!a.openingConfirmed || !(a.isDefault || a.id === CASH_ACCOUNT_ID) || a.openingBalance !== 0;
     return (
       <article key={a.id} className={`cpt-card${a.isDefault ? ' is-on' : ''}`} style={toneVars(a.hue)}>
@@ -255,6 +284,27 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
             ))}
           </select>
         </div>
+        {env && (
+          <div>
+            <div className="kpi-label cpt-label-tip">Espèces de départ (à part), au 1er {monthLabel(a.openingMonth).toLowerCase()}<span className="cpt-tip" title="Espèces de l’enveloppe au 1er jour du mois de départ. Ce n’est pas un solde du compte : elles n’entrent pas dans son solde réel." aria-label="Voir l’explication">i</span></div>
+            <EditableAmount
+              id={`aoc:${a.id}`}
+              value={env.openingCash}
+              disabled={cashLocked}
+              onCommit={v => {
+                if (v === null) return;
+                const refused = openingCashRefusal(data, env.id, v);
+                if (refused) return void window.alert(OPENING_MESSAGE[refused]);
+                update(d => void setEnvelopeOpeningCash(d, env.id, v));
+              }}
+              className="cpt-opening"
+              inputClassName="cell-input is-stmt"
+              title={cashLocked ? 'Le mois de départ est clos ou verrouillé : le départ en espèces n’est plus modifiable.' : 'Espèces au 1er jour du mois de départ'}
+            >
+              {money(env.openingCash)}
+            </EditableAmount>
+          </div>
+        )}
         {!fromEnvelope && (
           <div className="cpt-switches">
             <button className={`cpt-switch${a.isDefault ? ' is-on' : ''}`} aria-pressed={a.isDefault} disabled={locked || a.isDefault} onClick={() => update(d => void setMainBankAccount(d, a.id))}>
@@ -270,8 +320,22 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </div>
         )}
         <div className="cpt-card-foot">
-          <span className="muted">Solde réel</span>
-          <b>{money(balanceOf(a.id))}</b>
+          <span className="cpt-foot-pair">
+            <span className="muted" title={env ? VIRTUAL_HINT : undefined}>{env ? 'Solde virtuel' : 'Solde réel'}</span>
+            <b>{money(balanceOf(a.id))}</b>
+          </span>
+          {env && (
+            <>
+              <span className="cpt-foot-pair">
+                <span className="muted" title="Solde espèces de l’enveloppe, à part du solde du compte">Espèces</span>
+                <b>{money(envelopeCash(data, env.id, month))}</b>
+              </span>
+              <span className="cpt-foot-pair">
+                <span className="muted" title="Solde virtuel du compte + espèces (affichage seulement)">Total</span>
+                <b>{money(envelopeAccountTotal(data, ledger, env.id, month)?.total ?? balanceOf(a.id))}</b>
+              </span>
+            </>
+          )}
           {!fromEnvelope && (
             <button className={`btn-quiet cpt-archive${blocker ? ' is-disabled' : ''}`} disabled={locked || !!blocker} title={blocker === 'main' ? 'Choisis d’abord un autre compte principal' : blocker === 'cash' ? 'Le compte Espèces ne peut pas être archivé' : undefined} onClick={() => archive(a)}>
               Archiver
@@ -353,7 +417,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
               <div className="cpt-recap-grid">
                 <div><div className="muted is-small">Départ</div><b>{money(a.openingBalance)}</b></div>
                 <div><div className="muted is-small">Écritures</div><b>{money(round2(bal - a.openingBalance), true)}</b></div>
-                <div><div className="muted is-small">Solde réel</div><b>{money(bal)}</b></div>
+                <div><div className="muted is-small" title={isEnvelopeAccount(a) ? VIRTUAL_HINT : undefined}>{isEnvelopeAccount(a) ? 'Solde virtuel' : 'Solde réel'}</div><b>{money(bal)}</b></div>
               </div>
             </li>
           );
@@ -461,7 +525,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
         </div>
         <div className="cpt-panel-solde">
           <span className="drawer-solde">{r ? money(r.balance) : '—'}</span>
-          <span className="muted">solde réel · fin {monthLabel(month).toLowerCase()}</span>
+          <span className="muted" title={isEnvelopeAccount(account) ? VIRTUAL_HINT : undefined}>{isEnvelopeAccount(account) ? 'solde virtuel' : 'solde réel'} · fin {monthLabel(month).toLowerCase()}</span>
         </div>
         {r && (
           <div className="cpt-stats">
@@ -498,7 +562,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
             <div className="stat"><div className="stat-label">Moyenne par mois</div><div className="stat-value">{money(average)}</div></div>
             <div className="stat"><div className="stat-label">Mois le plus haut</div><div className="stat-value">{top ? `${monthLabel(top.m)} · ${money(flowOf(top.b))}` : '—'}</div></div>
           </div>
-          <div className="cpt-hist-head"><span>{isSaving(g) ? 'Versé' : 'Dépensé'}</span><span>Solde fin de mois</span></div>
+          <div className="cpt-hist-head"><span>{isSaving(g) ? 'Versé' : 'Dépensé'}</span><span>{isEnvelopeAccount(account) ? 'Solde virtuel fin de mois' : 'Solde fin de mois'}</span></div>
           <ul className="cpt-list">
             {rows.map(({ m, b }) => (
               <li key={m} className={`cpt-hist-row${m === month ? ' is-current' : ''}`}>

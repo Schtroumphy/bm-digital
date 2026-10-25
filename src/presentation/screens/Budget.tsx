@@ -18,6 +18,7 @@ import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAs
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
+import { envelopeCash } from '../../domain/envelopeCash';
 import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
@@ -659,7 +660,13 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                 {warn && <span className="warn-dot" />}
                 <EnvelopeCheckBox month={month} env={e} locked={locked} />
               </div>
+              {/* Spec 0026, RG26: the budget virtual balance alone (not capped, a negative one shows), the cash balance right under it, none when 0. */}
               <div className="env-tile-solde">{money(ledger.envMonth(e.id, month)?.balance ?? 0)}</div>
+              {envelopeCash(data, e.id, month) !== 0 && (
+                <div className="env-tile-alloc is-cash">
+                  Espèces <b>{money(envelopeCash(data, e.id, month))}</b>
+                </div>
+              )}
               {canEdit && editing === `ea:${e.id}` ? (
                 <AllocEditor
                   value={alloc[e.id] ?? 0}

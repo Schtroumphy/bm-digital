@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
 import { DetailInput } from '../components/DetailInput';
@@ -12,13 +12,14 @@ import { defaultTransferTarget, similarPointedItem, transferItems } from '../../
 import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, bankAccount, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
+import { activeBankAccounts, bankAccount, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { lineCheck } from '../../domain/checkoff';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
+import { exceedsEnvelopeCash } from '../../domain/envelopeCash';
 import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
-import type { AccountMovement, MonthKey, MovementTarget, TxType } from '../../domain/types';
+import type { AccountMovement, MonthKey, MovementTarget, PayMode, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
 /** Sum of the expenses of a list: an entry of money (`rev`) is never an expense (spec 0015). */
@@ -29,8 +30,10 @@ const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' 
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
-export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
+export function ExpensesScreen({ month, statementSource, fundEnvelope, onFundUsed }: { month: MonthKey; statementSource: StatementSource; fundEnvelope: string | null; onFundUsed: () => void }) {
   const [tab, setTab] = useState<'saisie' | 'soldes'>('saisie');
+  // The prefill is read by the form on its first render, then forgotten: coming back to the screen later opens it empty.
+  useEffect(() => { if (fundEnvelope) onFundUsed(); }, [fundEnvelope, onFundUsed]);
   const [importing, setImporting] = useState(false);
   if (importing) return <ImportWizard source={statementSource} onClose={() => setImporting(false)} />;
   return (
@@ -52,7 +55,7 @@ export function ExpensesScreen({ month, statementSource }: { month: MonthKey; st
           Importer
         </button>
       </div>
-      {tab === 'saisie' ? <EntryTab month={month} /> : <BalancesTab month={month} />}
+      {tab === 'saisie' ? <EntryTab month={month} fundEnvelope={fundEnvelope} /> : <BalancesTab month={month} />}
     </>
   );
 }
@@ -95,15 +98,15 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function EntryTab({ month }: { month: MonthKey }) {
+function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: string | null }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '' });
+  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel' });
   const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
-  const [transfer, setTransfer] = useState(false);
+  const [transfer, setTransfer] = useState(fundEnvelope !== null);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
   const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string } | null>(null);
@@ -131,6 +134,9 @@ function EntryTab({ month }: { month: MonthKey }) {
   const amount = parseAmount(form.amount) ?? 0;
   // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
+
+  // An envelope expense paid in cash cannot exceed the cash left on the envelope (spec 0026, RG7).
+  const cashRefused = form.type === 'env' && form.payMode === 'especes' && !!target && amount > 0 && exceedsEnvelopeCash(data, target, month, amount);
 
   const s = monthSummary(data, ledger, month);
   // An entry is « rattachée à un pointage » when its line is checked off this month (envelopes have no pointage).
@@ -232,12 +238,12 @@ function EntryTab({ month }: { month: MonthKey }) {
   }
 
   const add = () => {
-    if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker) return;
+    if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail, ...(form.type === 'env' && form.payMode === 'especes' ? { payMode: 'especes' as const } : {}) }),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '' }));
+    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -280,7 +286,7 @@ function EntryTab({ month }: { month: MonthKey }) {
           </div>
         </div>
         {transfer ? (
-          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '' }))} />
+          <TransferFields month={month} locked={locked} fundEnvelope={fundEnvelope} label={form.label} detail={form.detail} amount={amount} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '' }))} />
         ) : (
           <>
         <div>
@@ -295,6 +301,16 @@ function EntryTab({ month }: { month: MonthKey }) {
         </div>
         <div>
           <div className="field-label is-gap">{form.type === 'epa' || form.type === 'rev' ? 'Reçu sur' : 'Payé avec'}</div>
+          {form.type === 'env' ? (
+            // An envelope expense is always on the envelope's account: only cash or virtual is chosen (spec 0026, RG5).
+            <div className="chips is-wrap">
+              {([['virtuel', 'Virtuel'], ['especes', 'Espèces']] as const).map(([mode, name]) => (
+                <Chip key={mode} on={form.payMode === mode} onClick={() => setForm(f => ({ ...f, payMode: mode }))}>
+                  {name}
+                </Chip>
+              ))}
+            </div>
+          ) : (
           <div className="chips is-wrap">
             {(envelopeAccount ? [envelopeAccount] : activeBankAccounts(data)).map(a => (
               <Chip key={a.id} on={accountId === a.id} onClick={envelopeAccount ? () => undefined : () => setForm(f => ({ ...f, accountId: a.id }))}>
@@ -305,7 +321,9 @@ function EntryTab({ month }: { month: MonthKey }) {
               </Chip>
             ))}
           </div>
+          )}
         </div>
+        {cashRefused && <div className="alert-box">Espèces insuffisantes sur cette enveloppe.</div>}
         {lineBlocker && <div className="alert-box">{lineBlocker}</div>}
         {accountRefused && <div className="alert-box">Choisis un compte différent du compte débité (le compte dédié de la ligne).</div>}
         <div className="impact">
@@ -317,7 +335,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             </div>
           ))}
         </div>
-        <div className={`btn-dark is-block${!amount || locked || accountRefused || lineBlocker ? ' is-disabled' : ''}`} onClick={add}>
+        <div className={`btn-dark is-block${!amount || locked || accountRefused || lineBlocker || cashRefused ? ' is-disabled' : ''}`} onClick={add}>
           <Icon name="plus" size={15} stroke={3} />
           {form.type === 'rev' ? 'Ajouter l’entrée' : 'Ajouter la dépense'}
         </div>
@@ -764,15 +782,17 @@ function Spark({ values }: { values: number[] }) {
  * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget item the transfer stands for
  * (optional; the envelope or the savings line of the destination is proposed). The label, detail and amount are those of the form.
  */
-function TransferFields({ month, locked, label, detail, amount, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; onDone: () => void }) {
+function TransferFields({ month, locked, fundEnvelope, label, detail, amount, onDone }: { month: MonthKey; locked: boolean; fundEnvelope: string | null; label: string; detail: string; amount: number; onDone: () => void }) {
   const { data, update } = useStore();
   const accounts = data.accounts.filter(a => !a.archived);
   const main = accounts.find(a => a.isDefault) ?? accounts[0];
-  const [fromId, setFromId] = useState(main?.id ?? '');
-  const [toChoice, setToChoice] = useState('');
+  // « Alimenter en espèces » (spec 0026, RG3): from « Espèces » to the envelope's account, standing for the envelope.
+  const funded = data.envelopes.find(e => e.id === fundEnvelope);
+  const [fromId, setFromId] = useState(funded ? CASH_ACCOUNT_ID : main?.id ?? '');
+  const [toChoice, setToChoice] = useState(funded?.accountId ?? '');
   const [day, setDay] = useState(String(defaultDay(month)));
   // `undefined`: not chosen yet, the default of the destination applies; `''`: « aucune ».
-  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  const [chosen, setChosen] = useState<string | undefined>(funded ? `env:${funded.id}` : undefined);
   const toId = toChoice && toChoice !== fromId && accounts.some(a => a.id === toChoice) ? toChoice : accounts.find(a => a.id !== fromId)?.id ?? '';
   const items = transferItems(data, month).filter(i => i.toAccountId === toId);
   const valueOf = (t: MovementTarget | null | undefined) => (t ? (t.kind === 'line' ? `line:${t.key}` : `env:${t.id}`) : '');

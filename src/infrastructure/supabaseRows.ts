@@ -57,7 +57,7 @@ export function toRows(d: BudgetData): TableRows {
       id: e.id,
       name: e.name,
       hue: e.hue,
-      cash: e.cash,
+      cash: e.openingCash, // the column keeps its name; since spec 0026 it holds the opening cash balance
       account_id: e.accountId,
       template_alloc: orNull(d.template.envAlloc[e.id]),
       position,
@@ -141,6 +141,7 @@ export function toRows(d: BudgetData): TableRows {
       detail: orNull(t.detail),
       bank_date: orNull(t.bankDate),
       source: orNull(t.source),
+      pay_mode: orNull(t.payMode),
       position,
     }),
   );
@@ -229,7 +230,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
   const envAlloc: Record<string, number> = {};
   const envelopes: Envelope[] = byPosition(rows.envelopes).map(e => {
     if (e.template_alloc !== null) envAlloc[e.id] = e.template_alloc;
-    return { id: e.id, name: e.name, hue: e.hue, cash: e.cash, accountId: e.account_id ?? '' };
+    return { id: e.id, name: e.name, hue: e.hue, openingCash: e.cash, accountId: e.account_id ?? '' };
   });
 
   const lineOf = (r: SelectRow<'budget_lines'>): Line =>
@@ -332,6 +333,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       detail: orUndefined(r.detail),
       bankDate: orUndefined(r.bank_date),
       source: orUndefined(r.source),
+      payMode: orUndefined(r.pay_mode) as PayMode | undefined,
     }),
   );
 

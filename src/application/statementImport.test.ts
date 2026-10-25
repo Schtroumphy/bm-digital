@@ -47,7 +47,7 @@ function budget(): BudgetData {
     { id: SAV, name: 'Livret A', hue: 20, isDefault: false, openingBalance: 0, openingMonth: '2026-09', inBudget: true, archived: false, kind: 'epargne' },
     newEnvelopeAccount('acc-env-vac', 'vac', 'Vacances', 200, 0, '2026-09'),
   ];
-  d.envelopes = [{ id: 'vac', name: 'Vacances', hue: 200, cash: 0, accountId: 'acc-env-vac' }];
+  d.envelopes = [{ id: 'vac', name: 'Vacances', hue: 200, openingCash: 0, accountId: 'acc-env-vac' }];
   d.months[M] = { initialized: true, lines: [varLine('courses'), varLine('frais')], alloc: {}, transfersDone: {} };
   d.months['2026-11'] = { initialized: true, lines: [varLine('courses')], alloc: {}, transfersDone: {} };
   d.importAccountLinks = [
@@ -345,7 +345,7 @@ describe('compte d’une enveloppe rattaché à un compte du fichier', () => {
 
   it('une ligne variable ou une autre enveloppe n’est pas une cible valide sur le compte d’une enveloppe', () => {
     const d = withEnvelopeLink();
-    d.envelopes.push({ id: 'aut', name: 'Autre', hue: 1, cash: 0, accountId: 'acc-env-aut' });
+    d.envelopes.push({ id: 'aut', name: 'Autre', hue: 1, openingCash: 0, accountId: 'acc-env-aut' });
     d.accounts.push(newEnvelopeAccount('acc-env-aut', 'aut', 'Autre', 1, 0, '2026-09'));
     const l = prepare(d, [row('2026-10-12', 'X', 5, { pair: ENV_PAIR })]).lines[0];
     expect(lineProblem(d, toCourses(l))).toBe('À rattacher');

@@ -109,17 +109,18 @@ describe('initialisation du budget', () => {
     expect(ledger.accMonth(livretA, '2027-01')!.start).toBe(9800);
     expect(ledger.envMonth(perso, '2027-01')!.start).toBe(342);
     expect(ledger.envMonth(perso, '2027-01')!.balance).toBe(442);
-    expect(d.envelopes.find(e => e.id === perso)!.cash).toBe(120);
+    expect(d.envelopes.find(e => e.id === perso)!.openingCash).toBe(120);
     // Les chiffres du budget mensuel sont ceux du récapitulatif.
     expect(monthSummary(d, ledger, '2027-01').remaining).toBe(setupSummary(draft).remaining);
   });
 
-  it('CA7: la part en espèces est ramenée au solde', () => {
+  it('les espèces au départ ne sont pas bornées par le solde de départ (spec 0026, RG7)', () => {
     const d = emptyData();
     let draft = exampleDraft('2027-01', mkId);
     draft = updateRow(draft, 'env', draft.rows.env[0].id, { balance: 50, cash: 80 });
     createFirstMonth(d, draft, TODAY);
-    expect(d.envelopes[0].cash).toBe(50);
+    expect(d.envelopes[0].openingCash).toBe(80);
+    expect(new Ledger(d, TODAY).bankMonth(d.envelopes[0].accountId, '2027-01')!.start).toBe(50);
   });
 
   it('CA8: un mois déjà initialisé demande confirmation, sans confirmation rien ne change', () => {

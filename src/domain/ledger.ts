@@ -83,6 +83,8 @@ export function accounts(d: BudgetData): Account[] {
 const sumTx = (d: BudgetData, m: MonthKey, type: string, target: string, keep = (_t: Transaction) => true) =>
   round2(d.transactions.filter(t => t.month === m && t.type === type && t.target === target && keep(t)).reduce((s, t) => s + t.amount, 0));
 
+const isCashPaid = (t: Transaction) => t.payMode === 'especes';
+
 /**
  * Month-by-month balances of envelopes and savings/investment accounts, from
  * the imported history through the app months. From the month its own account exists
@@ -145,7 +147,8 @@ export class Ledger {
           const fromAccount = compareMonths(m, account.openingMonth) === 0 || prevClose?.overrides[closeKey('bank', e.accountId)] !== undefined;
           const start = fromAccount ? b.start : envBal[e.id] ?? b.start;
           const spent = sumTx(d, m, 'env', e.id);
-          const r = { start, alloc: a, spent, balance: round2(start + a - spent) };
+          // An expense paid in cash counts in `spent` but never touches the balance (the virtual one, spec 0026, RG6).
+          const r = { start, alloc: a, spent, balance: round2(start + a - sumTx(d, m, 'env', e.id, t => !isCashPaid(t))) };
           this.env.set(`${m}|${e.id}`, r);
           envBal[e.id] = Math.max(0, r.balance); // an overspent envelope does not carry a debt into the next month
           continue;
@@ -155,9 +158,9 @@ export class Ledger {
         const spent = sumTx(d, m, 'env', e.id, t => isTransactionInBudget(d, t));
         // An envelope opening balance set by the assistant for a later month acts like an account statement.
         const opening = d.envHistory[m]?.[e.id];
-        const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - spent) };
+        const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - sumTx(d, m, 'env', e.id, t => !isCashPaid(t) && isTransactionInBudget(d, t))) };
         this.env.set(`${m}|${e.id}`, r);
-        envBal[e.id] = Math.max(0, r.balance); // an overspent envelope does not carry a debt into the next month
+        envBal[e.id] = Math.max(0, r.balance);
       }
       for (const a of accs) {
         const start = prevClose?.overrides[closeKey('acc', a.key)] ?? accBal[a.key] ?? 0;

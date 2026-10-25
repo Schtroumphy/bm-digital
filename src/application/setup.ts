@@ -26,7 +26,7 @@ export interface SetupRow {
   amount: number;
   /** Balance on the first day of the first month (savings, envelopes, investments). */
   balance: number;
-  /** Envelopes only: part of the balance held in cash. */
+  /** Envelopes only: cash balance apart from the starting balance (« Espèces au départ », spec 0026). */
   cash: number;
   /** Revenue, credit and expense rows: the bank account used; absent = the main account. */
   accountId?: string;
@@ -214,10 +214,6 @@ export function setupSummary(d: SetupDraft): SetupSummary {
     emptyLists: OPTIONAL_LISTS.filter(id => d.rows[id].length === 0),
   };
 }
-
-/** Envelopes whose cash part exceeds their starting balance (warning only, never blocking). */
-export const cashExceedsBalance = (r: SetupRow) => r.cash > r.balance;
-export const hasCashOverflow = (d: SetupDraft) => d.rows.env.some(cashExceedsBalance);
 
 /** Reads a draft back from storage; anything malformed gives `null` so the caller starts clean. */
 export function parseDraft(raw: unknown): SetupDraft | null {
