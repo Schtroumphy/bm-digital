@@ -248,6 +248,14 @@ input, button { font-family: inherit; }
   border-radius: 11px; box-shadow: 0 12px 32px rgba(32, 30, 29, 0.18); padding: 8px 12px; width: 190px;
   display: flex; flex-direction: column; gap: 4px; pointer-events: none;
 }
+.details-bubble {
+  position: fixed; z-index: 80; background: #fff; border: 1px solid rgba(32, 30, 29, 0.08); border-radius: 11px;
+  box-shadow: 0 12px 32px rgba(32, 30, 29, 0.18); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.details-bubble-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.details-bubble-head .icon-btn { cursor: pointer; display: flex; opacity: 0.6; }
+.details-bubble-head .icon-btn:hover { opacity: 1; }
+.details-bubble-text { white-space: pre-line; font-size: 12px; line-height: 1.4; }
 .popover-title { font-weight: 700; font-size: 12px; }
 .popover-row { display: flex; justify-content: space-between; }
 .popover-row span { color: rgba(32, 30, 29, 0.6); }
