@@ -19,8 +19,8 @@ export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'templat
 
 const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'budget', label: 'Budget', icon: 'budget' },
+  { id: 'dep', label: 'Opérations', icon: 'list' },
   { id: 'comptes', label: 'Comptes', icon: 'bank' },
-  { id: 'dep', label: 'Dépenses', icon: 'list' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
   { id: 'template', label: 'Modèle', icon: 'copy' },
@@ -32,7 +32,7 @@ const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soo
 
 const TITLES: Record<Screen, string> = {
   budget: 'Budget mensuel',
-  dep: 'Dépenses et soldes',
+  dep: 'Opérations et soldes',
   env: 'Enveloppes',
   comptes: 'Comptes',
   prevAnn: 'Prévisionnel annuel',
