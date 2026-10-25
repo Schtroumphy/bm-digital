@@ -384,7 +384,7 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                 <div className="rel">
                   {/* Read only (spec 0019, RG19, RG24): the actual is the sum of the entries of the line. Its count is in the tooltip of the row;
                       screen readers get the same text through a visually hidden span (no layout effect). */}
-                  <div className="cell is-readonly" style={{ color: l.actual === null ? MUTED : undefined }} aria-describedby={`entries:${l.key}`}>
+                  <div className={`cell is-readonly${l.actual !== null ? ' has-actual' : ''}`} style={{ color: l.actual === null ? MUTED : undefined }} aria-describedby={`entries:${l.key}`}>
                     {l.actual === null ? '—' : money(l.actual)}
                   </div>
                   <span className="sr-only" id={`entries:${l.key}`}>{lineEntriesNote(data, month, l)}</span>
