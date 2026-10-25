@@ -10,21 +10,22 @@ import { BudgetScreen, BudgetActions, MonthCloseControl } from './screens/Budget
 import { ClosingScreen } from './screens/Closing';
 import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
+import { GoalsScreen } from './screens/Goals';
 import { PlanningScreen } from './screens/Planning';
 import { SetupActions, SetupScreen } from './screens/Setup';
 import { TemplateScreen } from './screens/Template';
 import { useSetupDraft } from './state/setupDraft';
 
-export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close';
+export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals';
 
-const NAV: { id: Screen | 'goals' | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
+const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'budget', label: 'Budget', icon: 'budget' },
   { id: 'dep', label: 'Opérations', icon: 'list' },
   { id: 'comptes', label: 'Comptes', icon: 'bank' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
   { id: 'template', label: 'Modèle', icon: 'copy' },
-  { id: 'goals', label: 'Objectifs', icon: 'target', soon: true },
+  { id: 'goals', label: 'Objectifs', icon: 'target' },
   { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
   { id: 'setup', label: 'Démarrage', icon: 'flag' },
   { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
@@ -39,6 +40,7 @@ const TITLES: Record<Screen, string> = {
   template: 'Modèle de budget',
   setup: 'Initialisation',
   close: 'Clôture de l’année',
+  goals: 'Objectifs',
 };
 
 const MONTH_KEY = 'budget-perso:month';
@@ -153,7 +155,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
                 <Icon name="chevronRight" />
               </button>
             </div>
-          ) : screen === 'setup' || screen === 'template' ? null : (
+          ) : screen === 'setup' || screen === 'template' || screen === 'goals' ? null : (
             <div className="picker">
               <button className="picker-arrow" disabled={idx <= 0} onClick={() => setMonth(months[idx - 1])} aria-label="Mois précédent">
                 <Icon name="chevronLeft" />
@@ -211,6 +213,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             }}
           />
         )}
+        {screen === 'goals' && <GoalsScreen />}
         {screen === 'close' && <ClosingScreen year={year} />}
       </main>
 
