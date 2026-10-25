@@ -47,7 +47,7 @@ describe('seed data matches the design', () => {
 
   it('December envelope balances', () => {
     const bal = Object.fromEntries(d.envelopes.map(e => [e.id, ledger.envMonth(e.id, '2026-12')!.balance]));
-    expect(bal).toEqual({ perso: 342, sante: 40, love: 185, voiture: 520, impots: 1240, projets: 275 });
+    expect(bal).toEqual({ perso: 342, sante: 60, love: 185, voiture: 520, impots: 1240, projets: 275 });
   });
 
   it('December account expected balances', () => {
@@ -57,8 +57,8 @@ describe('seed data matches the design', () => {
     expect(ledger.accMonth('i-pea', '2026-12')!.expected).toBe(5310);
   });
 
-  it('flags the dentist in December', () => {
-    expect(envelopeAlerts(d, ledger, 2026, 11)).toEqual([{ envelopeId: 'sante', planned: 60, available: 40, missing: 20, labels: ['Dentiste'] }]);
+  it('does not flag the dentist in December: an overspent envelope carries no debt', () => {
+    expect(envelopeAlerts(d, ledger, 2026, 11)).toEqual([]);
   });
 
   it('computes line history', () => {
@@ -72,7 +72,7 @@ describe('seed data matches the design', () => {
     const l = new Ledger(closed, TODAY);
     expect(l.accMonth('e-vc', '2027-01')!.start).toBe(300);
     expect(l.envMonth('perso', '2027-01')!.start).toBe(400);
-    expect(l.envMonth('sante', '2027-01')!.start).toBe(40);
+    expect(l.envMonth('sante', '2027-01')!.start).toBe(60);
   });
 });
 

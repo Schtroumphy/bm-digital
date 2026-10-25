@@ -147,7 +147,7 @@ describe('clôture', () => {
     const v = closingView(d, l, 2026);
     const envGroup = v.groups.find(g => g.id === 'enveloppe')!;
     expect(envGroup.rows.map(r => r.id)).toEqual(d.envelopes.map(e => `bank:${e.accountId}`));
-    expect(envGroup.rows.map(r => r.calc)).toEqual(d.envelopes.map(e => l.envMonth(e.id, '2026-12')!.balance));
+    expect(envGroup.rows.map(r => r.calc)).toEqual(d.envelopes.map(e => l.bankMonth(e.accountId, '2026-12')!.balance));
     expect(v.groups.flatMap(g => g.rows).some(r => r.id.startsWith('env:'))).toBe(false);
     const ids = v.groups.flatMap(g => g.rows.map(r => r.id));
     expect(new Set(ids).size).toBe(ids.length);
