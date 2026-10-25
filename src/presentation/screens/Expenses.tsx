@@ -3,8 +3,8 @@ import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
 import { DetailInput } from '../components/DetailInput';
 import { Icon } from '../components/Icon';
-import { HUE, MUTED, tone, toneVars } from '../components/tone';
-import { addTransaction, deleteTransaction, deleteTransactions, setStatement, setTransactionDetail } from '../../application/actions';
+import { GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
+import { addTransaction, deleteTransaction, deleteTransactions, setStatement, transactionsCsv, updateTransaction, setTransactionDetail } from '../../application/actions';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
@@ -22,6 +22,9 @@ import { newId, useStore } from '../state/store';
 
 /** Sum of the expenses of a list: an entry of money (`rev`) is never an expense (spec 0015). */
 const spentOf = (xs: { type: TxType; amount: number }[]) => round2(xs.filter(t => t.type !== 'rev').reduce((a, t) => a + t.amount, 0));
+
+/** Signed amount seen from the account: an entry of money and a withdrawal from savings are credits (+), the others debits (−). */
+const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' || t.type === 'epa' ? t.amount : -t.amount);
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
@@ -100,6 +103,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   const [transfer, setTransfer] = useState(false);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
+  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string } | null>(null);
   const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
   const saveDetail = () => {
     if (!editingDetail) return;
@@ -147,6 +151,35 @@ function EntryTab({ month }: { month: MonthKey }) {
     const ids = picked.map(t => t.id);
     update(d => void deleteTransactions(d, ids));
     setSelected(new Set());
+  };
+  const targetsOf = (type: TxType): [string, string][] =>
+    type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, l.name]) : type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, l.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
+  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t), detail: t.detail ?? '', type: t.type, target: t.target });
+  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target };
+  // The edit is tried on a copy first: a refused version (locked month, imputation or account not allowed) leaves the entry untouched and keeps the form open.
+  const editAllowed = !!editingTx && !!editPatch && updateTransaction(structuredClone(data), editingTx.id, editPatch);
+  const saveEdit = () => {
+    if (!editingTx || !editPatch || !editAllowed) return;
+    const id = editingTx.id;
+    update(d => void updateTransaction(d, id, editPatch));
+    setEditingTx(null);
+  };
+  const exportPicked = () => {
+    if (picked.length === 0) return;
+    const rows = [...picked].sort((a, b) => bankDateOf(a).localeCompare(bankDateOf(b))).map(t => ({
+      date: bankDateOf(t),
+      label: t.label,
+      detail: t.detail ?? '',
+      type: TYPE_LABEL[t.type],
+      imputation: targetName(t.type, t.target),
+      account: bankAccount(data, t.accountId)?.name ?? '',
+      amount: signedAmount(t),
+    }));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([transactionsCsv(rows)], { type: 'text/csv;charset=utf-8' }));
+    a.download = `operations-${month}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
   const targetName = (type: TxType, id: string) => (type === 'env' ? data.envelopes.find(e => e.id === id)?.name : lines.find(l => l.key === id)?.name) ?? 'Supprimé';
   const targetHue = (type: TxType, id: string) => (type === 'var' || type === 'fix' ? HUE.dep : type === 'env' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
@@ -319,13 +352,17 @@ function EntryTab({ month }: { month: MonthKey }) {
               <span className="btn-outline" onClick={() => setSelected(new Set())}>
                 Désélectionner
               </span>
+              <span className="btn-outline" onClick={exportPicked}>
+                <Icon name="download" size={15} />
+                Exporter la sélection
+              </span>
               <span className={`btn-outline is-danger${locked ? ' is-disabled' : ''}`} onClick={removePicked}>
                 Supprimer la sélection
               </span>
             </div>
           )}
           <div className="tx-grid tx-cols">
-            <input type="checkbox" aria-label="Tout sélectionner" checked={allPicked} disabled={locked || shown.length === 0} onChange={() => setSelected(allPicked ? new Set() : new Set(shown.map(t => t.id)))} />
+            <input type="checkbox" aria-label="Tout sélectionner" checked={allPicked} disabled={shown.length === 0} onChange={() => setSelected(allPicked ? new Set() : new Set(shown.map(t => t.id)))} />
             <span>Date</span>
             <span>Libellé</span>
             <span>Imputation</span>
@@ -336,7 +373,7 @@ function EntryTab({ month }: { month: MonthKey }) {
           {shown.map(t => (
             <Fragment key={t.id}>
               <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
-                <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} disabled={locked} onChange={() => toggle(t.id)} />
+                <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                 <span className="muted" title={bankDateOf(t).slice(0, 7) !== t.month ? `Rattachée à ${monthLabel(t.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(t).slice(0, 7), Number(bankDateOf(t).slice(8, 10)))}</span>
                 <EntryLabel entry={t} onOpen={openDetail} />
                 <span className="tx-target">
@@ -345,13 +382,70 @@ function EntryTab({ month }: { month: MonthKey }) {
                   <span className="tx-type">{TYPE_LABEL[t.type]}</span>
                 </span>
                 <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
-                <b className="num">{money(t.amount)}</b>
+                <b className="num" style={signedAmount(t) > 0 ? { color: GOOD } : undefined}>{money(signedAmount(t), true)}</b>
                 {locked ? <span /> : (
-                  <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
-                    <Icon name="close" size={14} />
+                  <span className="tx-actions">
+                    <span className="icon-btn" title="Modifier" onClick={() => (editingTx?.id === t.id ? setEditingTx(null) : startEdit(t))}>
+                      <Icon name="pencil" size={13} stroke={2} />
+                    </span>
+                    <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
+                      <Icon name="close" size={14} />
+                    </span>
                   </span>
                 )}
               </div>
+              {editingTx?.id === t.id && (
+                <div className="tx-edit">
+                  <div className="form-row">
+                    <label className="field-w">
+                      <span className="field-label">Libellé</span>
+                      <input className="text-input" value={editingTx.label} onChange={e => setEditingTx({ ...editingTx, label: e.target.value })} onKeyDown={e => e.key === 'Enter' && saveEdit()} />
+                    </label>
+                    <label className="field-w">
+                      <span className="field-label">Montant</span>
+                      <input className="text-input is-amount" value={editingTx.amount} inputMode="decimal" onChange={e => setEditingTx({ ...editingTx, amount: sanitizeAmountInput(e.target.value) })} onKeyDown={e => e.key === 'Enter' && saveEdit()} />
+                    </label>
+                    <label className="field-w">
+                      <span className="field-label">Date</span>
+                      <input className="text-input" type="date" value={editingTx.date} onChange={e => setEditingTx({ ...editingTx, date: e.target.value })} />
+                    </label>
+                  </div>
+                  <label className="field-w">
+                    <span className="field-label">Détail <span className="field-optional">facultatif</span></span>
+                    <DetailInput value={editingTx.detail} onChange={detail => setEditingTx({ ...editingTx, detail })} onEnter={saveEdit} onEscape={() => setEditingTx(null)} />
+                  </label>
+                  {editingTx.type !== 'rev' && (
+                    <div>
+                      <div className="field-label is-gap">Type</div>
+                      <div className="chips is-wrap">
+                        {(['var', 'env', 'epa', 'fix'] as const).map(ty => (
+                          <Chip key={ty} on={editingTx.type === ty} onClick={() => setEditingTx({ ...editingTx, type: ty, target: ty === t.type ? t.target : targetsOf(ty)[0]?.[0] ?? '' })}>
+                            {{ var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Fixe / crédit' }[ty]}
+                          </Chip>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="field-label is-gap">Imputation</div>
+                    <div className="chips is-wrap">
+                      {targetsOf(editingTx.type).map(([id, name]) => (
+                        <Chip key={id} on={editingTx.target === id} onClick={() => setEditingTx({ ...editingTx, target: id })}>
+                          {name}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                  {!editAllowed && <div className="alert-box">Cette modification est refusée : vérifie le libellé, le montant, la date et l’imputation (compte de la ligne, ligne archivée…).</div>}
+                  <div className="tx-edit-actions">
+                    <span className="btn-outline" onClick={() => setEditingTx(null)}>Annuler</span>
+                    <span className={`btn-dark${editAllowed ? '' : ' is-disabled'}`} onClick={saveEdit}>
+                      <Icon name="check" size={14} stroke={3} />
+                      Enregistrer
+                    </span>
+                  </div>
+                </div>
+              )}
               {editingDetail?.id === t.id && (
                 <div className="detail-edit">
                   <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: t.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />

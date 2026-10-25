@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addTransaction, deleteTransaction, updateLine } from './actions';
+import { addTransaction, deleteTransaction, updateLine, updateTransaction } from './actions';
 import { checkLine, uncheckLine } from './checkoff';
 import { addBankAccount, archiveBankAccount, setLineAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts } from '../domain/bank';
@@ -194,5 +194,37 @@ describe('dépense sur ligne fixe ou crédit (spec 0014, 0019)', () => {
     addTransaction(d, fx('b', 6, 2, 'edf'));
     expect(lineTooltip(d, M, d.months[M].lines[0], '2027-01-10')).toMatch(/2 écritures, réel = somme des écritures/);
     expect(lineTooltip(d, M, d.months[M].lines[1], '2027-01-10')).not.toMatch(/écriture/);
+  });
+});
+
+describe('modification d’une dépense', () => {
+  const patch = { label: 'EDF', amount: 70, date: `${M}-09`, type: 'fix' as const, target: 'edf' };
+
+  it('change libellé, montant et date, garde la place et resynchronise le réel', () => {
+    const d = started([ln('edf', 'fix', 62)]);
+    addTransaction(d, fx('a', 5, 62, 'edf'));
+    addTransaction(d, fx('b', 6, 10, 'edf'));
+    expect(updateTransaction(d, 'a', patch)).toBe(true);
+    expect(d.transactions.map(t => t.id)).toEqual(['a', 'b']);
+    expect(d.transactions[0]).toMatchObject({ label: 'EDF', amount: 70, day: 9 });
+    expect(d.transactions[0].bankDate).toBeUndefined();
+    expect(actual(d, 'edf')).toBe(80);
+  });
+
+  it('une date hors du mois de rattachement devient la date bancaire', () => {
+    const d = started([ln('edf', 'fix', 62)]);
+    addTransaction(d, fx('a', 5, 62, 'edf'));
+    updateTransaction(d, 'a', { ...patch, amount: 62, date: '2026-12-30' });
+    expect(d.transactions[0]).toMatchObject({ month: M, bankDate: '2026-12-30' });
+  });
+
+  it('refusée (rien ne change) sur une imputation refusée, une date invalide ou un montant nul', () => {
+    const d = started([ln('edf', 'fix', 62), ln('liv', 'epa', 1)]);
+    addTransaction(d, fx('a', 5, 62, 'edf'));
+    const snapshot = structuredClone(d);
+    expect(updateTransaction(d, 'a', { ...patch, target: 'liv' })).toBe(false);
+    expect(updateTransaction(d, 'a', { ...patch, date: '2026-02-31' })).toBe(false);
+    expect(updateTransaction(d, 'a', { ...patch, amount: 0 })).toBe(false);
+    expect(d).toEqual(snapshot);
   });
 });

@@ -445,7 +445,7 @@ input, button { font-family: inherit; }
 .flow-cell.is-hero .flow-value { font-size: 22px; color: var(--violet-ink); }
 .tx-head { display: flex; align-items: center; padding: 14px 22px 6px; font-weight: 700; }
 .tx-title { font-size: 15px; flex: 1; }
-.tx-grid { display: grid; grid-template-columns: 18px 54px minmax(0, 1fr) 220px 130px 96px 30px; column-gap: 10px; padding: 0 22px; }
+.tx-grid { display: grid; grid-template-columns: 18px 54px minmax(0, 1fr) 220px 130px 96px 56px; column-gap: 10px; padding: 0 22px; }
 .tx-cols { padding: 4px 22px; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
 .tx-row { align-items: center; min-height: 34px; border-top: 1px solid rgba(32, 30, 29, 0.05); }
 .tx-filters { display: flex; gap: 8px; padding: 6px 22px 10px; }
@@ -755,6 +755,9 @@ input, button { font-family: inherit; }
 .detail-input { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .detail-input .text-input { height: 30px; min-width: 0; flex: 1; }
 .detail-count { font-size: 10.5px; color: rgba(32, 30, 29, 0.45); white-space: nowrap; }
+.tx-actions { display: inline-flex; align-items: center; gap: 4px; justify-self: end; }
+.tx-edit { display: flex; flex-direction: column; gap: 10px; padding: 12px 22px 14px 86px; background: var(--page); border-radius: 12px; margin: 2px 8px 8px; }
+.tx-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .detail-edit { display: flex; align-items: center; gap: 8px; padding: 4px 22px 8px 86px; }
 .cell.is-readonly { cursor: default; }
 
@@ -779,6 +782,7 @@ input, button { font-family: inherit; }
 .cpt-solde { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
 .cpt-flow { display: flex; align-items: center; gap: 8px; }
 .cpt-tip { position: relative; z-index: 1; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(32, 30, 29, 0.45); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: rgba(32, 30, 29, 0.7); cursor: help; }
+.cpt-label-tip { display: flex; align-items: center; gap: 8px; }
 .cpt-name { flex: 1; font-weight: 700; font-size: 14px; }
 .cpt-hue { cursor: pointer; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px rgba(32, 30, 29, 0.2); }
 .cpt-palette { padding: 6px 0; }
@@ -819,6 +823,6 @@ input, button { font-family: inherit; }
 .field-w .detail-input .text-input { height: 36px; }
 /* En-têtes alignés sur les cellules : case sans marge native, pastille du compte sans son retrait. */
 .tx-grid input[type="checkbox"] { margin: 0; width: 16px; height: 16px; justify-self: start; }
-.tx-grid { grid-template-columns: 16px 54px minmax(0, 1fr) 220px 130px 96px 30px; }
+.tx-grid { grid-template-columns: 16px 54px minmax(0, 1fr) 220px 130px 96px 56px; }
 .tx-row .acc-picker { margin-left: -4px; }
 .tx-cols > span { white-space: nowrap; }

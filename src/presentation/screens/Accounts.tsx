@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
@@ -20,7 +20,7 @@ import {
 import { decideAccountKind, linkLineToAccount } from '../../application/accountKinds';
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
 import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
-import { realMovements } from '../../domain/bankMovements';
+import { attachedMovements, realMovements } from '../../domain/bankMovements';
 import { IN_BUDGET_HINT } from '../components/hints';
 import { money, monthLabel, round2 } from '../../domain/format';
 import { isMonthLocked, monthLines } from '../../domain/ledger';
@@ -121,6 +121,9 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     const flow = r ? (isSaving(g) ? r.in : r.out) : 0;
     const cumul = round2(ledger.months.filter(m => m <= month).reduce((sum, m) => sum + ((isSaving(g) ? ledger.bankMonth(a.id, m)?.in : ledger.bankMonth(a.id, m)?.out) ?? 0), 0));
     const flowLabel = isSaving(g) ? (g === 'inv' ? 'Investi ce mois' : 'Versé ce mois') : 'Dépensé ce mois';
+    // A spending account splits its outflow: real spending, and money sent to another account (transfers are not spending).
+    const sentOut = isSaving(g) ? 0 : round2(-realMovements(data, a.id, month).filter(x => x.kind === 'transfer' && x.amount < 0).reduce((sum, x) => sum + x.amount, 0));
+    const spent = round2(flow - sentOut);
     const on = selected === a.id;
     return (
       <article key={a.id} className={`cpt-card${on ? ' is-on' : ''}`} style={toneVars(a.hue)}>
@@ -134,10 +137,16 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           <div className="cpt-solde">{r ? money(r.balance) : '—'}</div>
         </div>
         <div className="cpt-flow">
-          <span className="muted">{flowLabel}</span>
-          <b>{money(flow)}</b>
-          <span className="cpt-tip" title={`Cumulé depuis ${monthLabel(a.openingMonth).toLowerCase()} : ${money(cumul)} ${isSaving(g) ? 'versés' : 'dépensés'}.`} aria-label="Voir le cumulé">i</span>
+          <span className="muted">{isSaving(g) ? flowLabel : 'Dépenses ce mois'}</span>
+          <b>{money(isSaving(g) ? flow : spent)}</b>
+          <span className="cpt-tip" title={`Cumulé depuis ${monthLabel(a.openingMonth).toLowerCase()} : ${money(cumul)} ${isSaving(g) ? 'versés' : 'sortis (dépenses et virements)'}.`} aria-label="Voir le cumulé">i</span>
         </div>
+        {!isSaving(g) && (
+          <div className="cpt-flow">
+            <span className="muted">Virements sortants</span>
+            <b>{money(sentOut)}</b>
+          </div>
+        )}
         {em && em.alloc > 0 && (
           <div>
             <div className="split-bar"><div style={{ width: `${Math.min(100, Math.round((em.spent / em.alloc) * 100))}%`, background: 'var(--t-base)' }} /></div>
@@ -228,7 +237,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </div>
         )}
         <div>
-          <div className="kpi-label">Solde de départ, au 1er {monthLabel(a.openingMonth).toLowerCase()}</div>
+          <div className="kpi-label cpt-label-tip">Solde de départ, au 1er {monthLabel(a.openingMonth).toLowerCase()}<span className="cpt-tip" title="Solde du compte le 1er jour du mois de départ, avant toute écriture de ce mois. Ce que le compte a reçu ou payé avant (un salaire reçu le 30 du mois précédent, par exemple) y est déjà : ne le retranchez pas." aria-label="Voir l’explication">i</span></div>
           <EditableAmount
             id={`ao:${a.id}`}
             value={a.openingBalance}
@@ -427,9 +436,12 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
 /** Side panel of an account: its real movements of the month, and its month-by-month history (spec 0007, RG15). Latest first. */
 function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankAccount; month: MonthKey; tab: PanelTab; setTab: (t: PanelTab) => void; onClose: () => void }) {
   const { data, ledger } = useStore();
+  const asideRef = useRef<HTMLElement>(null);
+  // Picking an account brings the top of its panel into view.
+  useEffect(() => { asideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [account.id]);
   const g = groupOf(account);
   const r = ledger.bankMonth(account.id, month);
-  const moves = realMovements(data, account.id, month).sort((x, y) => y.date.localeCompare(x.date));
+  const moves = [...realMovements(data, account.id, month), ...attachedMovements(data, account.id, month)].sort((x, y) => y.date.localeCompare(x.date));
   const rows = ledger.months.flatMap(m => {
     const b = ledger.bankMonth(account.id, m);
     return b ? [{ m, b }] : [];
@@ -440,7 +452,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
   const average = past.length ? round2(past.reduce((sum, x) => sum + flowOf(x.b), 0) / past.length) : 0;
   const top = past.reduce<(typeof past)[number] | null>((best, x) => (!best || flowOf(x.b) > flowOf(best.b) ? x : best), null);
   return (
-    <aside className="cpt-aside" aria-label="Détail des mouvements" style={toneVars(account.hue)}>
+    <aside ref={asideRef} className="cpt-aside" aria-label="Détail des mouvements" style={toneVars(account.hue)}>
       <div className="drawer-head">
         <div className="drawer-title-row">
           <span className="dot is-12" style={{ background: tone(account.hue).base }} />
@@ -469,7 +481,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
         ) : (
           <ul className="cpt-list">
             {moves.map((mv, i) => (
-              <li key={i} className="cpt-move">
+              <li key={i} className="cpt-move" style={mv.outOfMonth ? { opacity: 0.65 } : undefined} title={mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${mv.date.slice(8, 10)}/${mv.date.slice(5, 7)}/${mv.date.slice(0, 4)} : comptée dans le solde de ${monthLabel(mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
                 <span className="cpt-move-date">{dayOf(mv.date)}</span>
                 <span className="cpt-move-label">
                   <span className="ellipsis" title={mv.label}>{mv.label}</span>

@@ -27,6 +27,8 @@ export interface BankMovement {
   adjustmentId?: string;
   /** The month of the budget the entry is attached to, when it differs from the month of its bank date (spec 0015, RG4): for the tooltip. */
   attachedMonth?: MonthKey;
+  /** Attached to the month but dated in another one: listed for information, counted in the balance of its bank date's month. */
+  outOfMonth?: boolean;
   /** A counterpart between two accounts (checked allocation or variable line): the fictive money sent to another account. */
   counterpart?: boolean;
   /** Comes from a check (pointage): a fictive debit or credit that never touches the real balance (RG6). */
@@ -94,6 +96,20 @@ export function realMovements(d: BudgetData, id: string, m: MonthKey): BankMovem
   out.push(...transferMovements(d, id, m));
   for (const a of d.adjustments ?? []) {
     if (a.accountId === id && !a.cancelledOn && a.date.startsWith(m)) out.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', adjustmentId: a.id });
+  }
+  return out;
+}
+
+/**
+ * Entries of an account attached to a month whose bank date falls in another month (spec 0015, RG4). They are counted in the balance of
+ * the month of their bank date, never in this one: the account's movement list shows them for information, flagged `outOfMonth`.
+ */
+export function attachedMovements(d: BudgetData, id: string, m: MonthKey): BankMovement[] {
+  const out: BankMovement[] = [];
+  for (const t of d.transactions) {
+    const date = bankDateOf(t);
+    if (t.month !== m || date.startsWith(m) || accountIdOf(d, t.accountId) !== id) continue;
+    out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
   }
   return out;
 }
