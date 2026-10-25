@@ -4,7 +4,7 @@ import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/for
 import { syncLineActual } from '../domain/lineActuals';
 import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId } from '../domain/lineExpenses';
 import { isMonthLocked } from '../domain/ledger';
-import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction } from '../domain/types';
+import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
 function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<string, number>) {
@@ -306,6 +306,36 @@ export function setTransactionDetail(d: BudgetData, id: string, detail: string):
   return true;
 }
 
+/** What `updateTransaction` can change on an expense or an entry: everything but its month of attachment and its import trace. */
+export interface TransactionPatch { label: string; amount: number; /** `YYYY-MM-DD`. */ date: string; detail?: string; type: TxType; target: string }
+
+/**
+ * Rewrites an expense or an entry (label, amount, bank date, detail, nature, imputation) under the rules of `addTransaction`: it is removed and
+ * added again, and put back untouched when the new version is refused. Its month of attachment, its account (unless the imputation changes it) and
+ * its import trace (deduplication) are kept. A date outside the month of attachment becomes its bank date (spec 0015, RG4). Refused (false) on a locked month.
+ */
+export function updateTransaction(d: BudgetData, id: string, patch: TransactionPatch): boolean {
+  const old = d.transactions.find(x => x.id === id);
+  const label = patch.label.trim();
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(patch.date) && new Date(`${patch.date}T00:00:00Z`).toISOString().startsWith(patch.date);
+  if (!old || isMonthLocked(d, old.month) || !label || !(patch.amount > 0) || !valid) return false;
+  const before = d.transactions;
+  const index = before.indexOf(old);
+  const { bankDate: _b, detail: _d, accountId, ...kept } = old;
+  const same = patch.type === old.type && patch.target === old.target;
+  d.transactions = before.filter(x => x !== old);
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
+  if (!addTransaction(d, next)) {
+    d.transactions = before;
+    return false;
+  }
+  // Same place in the list, and the lines the entry left follow their entries.
+  const added = d.transactions.pop()!;
+  d.transactions.splice(index, 0, added);
+  if (!same && (old.type === 'var' || old.type === 'fix' || old.type === 'rev')) syncLineActual(d, old.month, old.target);
+  return true;
+}
+
 export function deleteTransaction(d: BudgetData, id: string): boolean {
   const t = d.transactions.find(x => x.id === id);
   if (!t || isMonthLocked(d, t.month)) return false;
@@ -338,4 +368,14 @@ export function monthCsv(lines: Line[], blockTitles: Record<BlockKey, string>, i
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
   const rows = lines.map(l => [q(blockTitles[l.block]), q(l.section), q(l.name), n(l.budget), n(l.actual), isOutOfBudget(l) ? 'oui' : 'non'].join(';'));
   return '﻿' + ['Bloc;Section;Nom;Budget;Réel;Hors budget', ...rows].join('\r\n');
+}
+
+/** One exported operation (`amount` signed: + credit, − debit): every field already resolved to its display text. */
+export interface TransactionCsvRow { date: string; label: string; detail: string; type: string; imputation: string; account: string; amount: number }
+
+/** CSV of the selected expenses and entries, in the same French spreadsheet dialect as `monthCsv`. */
+export function transactionsCsv(rows: TransactionCsvRow[]): string {
+  const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  const body = rows.map(r => [r.date, q(r.label), q(r.detail), q(r.type), q(r.imputation), q(r.account), `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
+  return '\uFEFF' + ['Date;Libellé;Détail;Nature;Imputation;Compte;Montant', ...body].join('\r\n');
 }
