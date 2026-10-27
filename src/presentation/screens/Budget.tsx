@@ -432,11 +432,6 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                     {gap === null ? '—' : gap === 0 ? money(0) : money(gap, true)}
                   </div>
                 )}
-                {block === 'var' && (
-                  <div className="fill-bar">
-                    <div style={{ width: `${l.actual !== null && l.budget ? Math.min(100, (l.actual / l.budget) * 100) : 0}%`, background: l.actual !== null && l.actual > l.budget ? 'oklch(0.66 0.17 25)' : undefined }} />
-                  </div>
-                )}
                 {details?.key === l.key && (
                   <DetailsBubble title={l.name} text={lineTooltip(data, month, l, today)} rect={details.rect} onClose={() => setDetails(null)} />
                 )}

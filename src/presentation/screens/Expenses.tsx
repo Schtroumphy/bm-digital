@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
+import { AssignPicker } from '../components/AssignPicker';
 import { DetailInput } from '../components/DetailInput';
 import { Icon } from '../components/Icon';
 import { GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
@@ -12,7 +13,7 @@ import { defaultTransferTarget, similarPointedItem, transferItems } from '../../
 import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, bankAccount, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
+import { activeBankAccounts, assignableAccounts, bankAccount, isAssignableType, isTransactionAssigned, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
 import { lineCheck } from '../../domain/checkoff';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
@@ -102,14 +103,14 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel' });
+  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '' });
   const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
   const [transfer, setTransfer] = useState(fundEnvelope !== null);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
-  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string } | null>(null);
+  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string; assignedAccountId: string } | null>(null);
   const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
   const saveDetail = () => {
     if (!editingDetail) return;
@@ -131,6 +132,9 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   const accountRefused = accountId === refusedAccountId;
   // A fixed/credit line whose account is archived takes no expense (spec 0014).
   const lineBlocker = form.type === 'fix' && target ? expenseLineBlocker(data, month, target) : null;
+  // Savings accounts the operation can be assigned to (spec 0028, RG2, RG16): none for an envelope expense or a savings withdrawal.
+  const assignOptions = isAssignableType(form.type) ? assignableAccounts(data, accountId) : [];
+  const assignedId = assignOptions.some(a => a.id === form.assignedAccountId) ? form.assignedAccountId : '';
   const amount = parseAmount(form.amount) ?? 0;
   // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
@@ -144,9 +148,10 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   const minAmount = parseAmount(filter.min) ?? null;
   const maxAmount = parseAmount(filter.max) ?? null;
   const txs = data.transactions.filter(t => t.month === month);
+  const assignedSpent = spentOf(txs.filter(isTransactionAssigned));
   const shown = txs
     .filter(t => filter.type === 'all' || t.type === filter.type)
-    .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId)
+    .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId || t.assignedAccountId === filter.accountId)
     .filter(t => matchesEntrySearch(t, filter.q))
     .filter(t => !filter.pointedOnly || isPointed(t))
     .filter(t => (!filter.from || bankDateOf(t) >= filter.from) && (!filter.to || bankDateOf(t) <= filter.to))
@@ -170,8 +175,8 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   };
   const targetsOf = (type: TxType): [string, string][] =>
     type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, l.name]) : type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, l.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
-  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t), detail: t.detail ?? '', type: t.type, target: t.target });
-  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target };
+  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t), detail: t.detail ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? '' });
+  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target, assignedAccountId: editingTx.assignedAccountId || null };
   // The edit is tried on a copy first: a refused version (locked month, imputation or account not allowed) leaves the entry untouched and keeps the form open.
   const editAllowed = !!editingTx && !!editPatch && updateTransaction(structuredClone(data), editingTx.id, editPatch);
   const saveEdit = () => {
@@ -189,6 +194,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
       type: TYPE_LABEL[t.type],
       imputation: targetName(t.type, t.target),
       account: bankAccount(data, t.accountId)?.name ?? '',
+      assignedTo: t.assignedAccountId ? data.accounts.find(a => a.id === t.assignedAccountId)?.name ?? '' : '',
       amount: signedAmount(t),
     }));
     const a = document.createElement('a');
@@ -206,9 +212,9 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
     const cur = l.actual ?? 0;
     // Only the variable lines in the budget count in « Restant des variables »; a line out of the budget leaves it unchanged (spec 0009, RG112).
     const rest = variableRemaining(data, month);
-    const lineAmount = isLineInBudget(data, l) ? amount : 0;
+    const lineAmount = isLineInBudget(data, l) && !assignedId ? amount : 0;
     impact = [
-      [`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`],
+      [`${l.name} · réel`, `${money(cur)} → ${money(cur + (assignedId ? 0 : amount))}`],
       ['Restant des variables', `${money(rest)} → ${money(rest - lineAmount)}`],
     ];
   } else if (target && form.type === 'env') {
@@ -221,12 +227,12 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   } else if (target && form.type === 'rev') {
     const l = lines.find(x => x.key === target)!;
     const cur = l.actual ?? 0;
-    impact = [[`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`]];
+    impact = [[`${l.name} · réel`, `${money(cur)} → ${money(cur + (assignedId ? 0 : amount))}`]];
   } else if (target && form.type === 'fix') {
     const l = lines.find(x => x.key === target)!;
     const cur = l.actual ?? 0;
     impact = [
-      [`${l.name} · réel`, `${money(cur)} → ${money(cur + amount)}`],
+      [`${l.name} · réel`, `${money(cur)} → ${money(cur + (assignedId ? 0 : amount))}`],
       ['Reste à sortir', 'inchangé (budgétaire)'],
     ];
   } else if (target) {
@@ -240,10 +246,10 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   const add = () => {
     if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail, ...(form.type === 'env' && form.payMode === 'especes' ? { payMode: 'especes' as const } : {}) }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail, ...(assignedId ? { assignedAccountId: assignedId } : {}), ...(form.type === 'env' && form.payMode === 'especes' ? { payMode: 'especes' as const } : {}) }),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel' }));
+    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -323,6 +329,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
           </div>
           )}
         </div>
+        {assignOptions.length > 0 && <AssignPicker accounts={assignOptions} value={assignedId} disabled={locked} onChange={assignedAccountId => setForm(f => ({ ...f, assignedAccountId }))} />}
         {cashRefused && <div className="alert-box">Espèces insuffisantes sur cette enveloppe.</div>}
         {lineBlocker && <div className="alert-box">{lineBlocker}</div>}
         {accountRefused && <div className="alert-box">Choisis un compte différent du compte débité (le compte dédié de la ligne).</div>}
@@ -355,7 +362,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
         <div className="panel-lg">
           <div className="tx-head">
             <div className="tx-title">Opérations de {monthLabel(month)}</div>
-            <b title="Total des dépenses (les entrées d’argent ne comptent pas)">{money(spentOf(txs))}</b>
+            <b title={`Total des dépenses (les entrées d’argent ne comptent pas)${assignedSpent > 0 ? `\ndont ${money(assignedSpent)} affectés hors budget` : ''}`}>{money(spentOf(txs))}</b>
           </div>
           <div className="tx-filters">
             <div className="tx-f">
@@ -455,6 +462,11 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
                   <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
                   <span className="ellipsis">{targetName(t.type, t.target)}</span>
                   <span className="tx-type">{TYPE_LABEL[t.type]}</span>
+                  {t.assignedAccountId && (
+                    <span className="tx-assigned" title="Affectée à ce compte d’épargne : hors budget, sans effet sur les soldes">
+                      {data.accounts.find(a => a.id === t.assignedAccountId)?.name ?? 'Compte'}
+                    </span>
+                  )}
                 </span>
                 <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
                 <b className="num" style={signedAmount(t) > 0 ? { color: GOOD } : undefined}>{money(signedAmount(t), true)}</b>
@@ -511,6 +523,13 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
                       ))}
                     </div>
                   </div>
+                  {(isAssignableType(editingTx.type) || editingTx.assignedAccountId !== '') && (
+                    <AssignPicker
+                      accounts={[...assignableAccounts(data, t.accountId), ...data.accounts.filter(a => a.id === t.assignedAccountId && a.archived)]}
+                      value={editingTx.assignedAccountId}
+                      onChange={assignedAccountId => setEditingTx({ ...editingTx, assignedAccountId })}
+                    />
+                  )}
                   {!editAllowed && <div className="alert-box">Cette modification est refusée : vérifie le libellé, le montant, la date et l’imputation (compte de la ligne, ligne archivée…).</div>}
                   <div className="tx-edit-actions">
                     <span className="btn-outline" onClick={() => setEditingTx(null)}>Annuler</span>

@@ -332,3 +332,75 @@ describe('maquette : décembre 2026 des données d’exemple', () => {
     expect(v.wealth!.invest).toBe(15219);
   });
 });
+
+describe('Évolution du patrimoine (spec 0030)', () => {
+  const evo = (d: BudgetData) => view(d).wealthEvolution!;
+
+  it('CA3, CA4 : variation signée et pourcentage, calculés sur deux fins de mois', () => {
+    const d = started();
+    d.statements['2027-02'] = { lt: 4000, mt: 1000, etf: 25000 };
+    d.statements[M] = { lt: 4500, mt: 1000, etf: 25740 }; // 30 000 -> 31 240
+    const e = evo(d);
+    expect(e.previous).toBe('2027-02');
+    expect(e.total).toBe(31240);
+    expect(e.change!.total).toBe(1240);
+    expect(e.pct).toBeCloseTo(4.133, 2);
+    d.statements[M] = { lt: 4000, mt: 1000, etf: 24000 };
+    expect(evo(d).change!.total).toBe(-1000);
+    expect(evo(d).pct!).toBeLessThan(0);
+  });
+
+  it('CA5 : détail épargnes / investissements, la somme des variations égale la variation totale', () => {
+    const d = started();
+    d.statements['2027-02'] = { lt: 4000, mt: 1000, etf: 25000 };
+    d.statements[M] = { lt: 4900, mt: 1000, etf: 25340 };
+    const e = evo(d);
+    expect(e.change).toEqual({ total: 1240, savings: 900, invest: 340 });
+    expect(e.change!.savings + e.change!.invest).toBe(e.change!.total);
+    expect([e.savings, e.invest]).toEqual([5900, 25340]);
+  });
+
+  it('CA6 : le total de fin de mois est celui du bloc « Patrimoine »', () => {
+    const d = started();
+    expect(evo(d).total).toBe(view(d).wealth!.total);
+    expect(evo(d).month).toBe(M);
+  });
+
+  it('CA7 : premier mois du budget, pas de variation ni de pourcentage, sans erreur', () => {
+    const d = started();
+    d.firstMonth = M;
+    const e = view(d).wealthEvolution!;
+    expect([e.previous, e.change, e.pct]).toEqual([null, null, null]);
+    expect(e.series.map(p => p.month)).toEqual([M]);
+  });
+
+  it('CA8 : patrimoine nul aux deux mois, variation 0 et pourcentage « — »', () => {
+    const d = emptyData();
+    d.firstMonth = '2027-02';
+    d.accounts = defaultBankAccounts('2027-02');
+    for (const m of ['2027-02', M]) d.months[m] = { initialized: true, lines: [], alloc: {}, transfersDone: {} };
+    const e = view(d).wealthEvolution!;
+    expect(e.change).toEqual({ total: 0, savings: 0, invest: 0 });
+    expect(e.pct).toBeNull();
+  });
+
+  it('CA9 : la courbe donne les 6 derniers mois (ou moins), le mois de référence en dernier', () => {
+    const d = started();
+    expect(evo(d).series.map(p => p.month)).toEqual(['2027-01', '2027-02', M]);
+    expect(evo(d).series.at(-1)!.total).toBe(evo(d).total);
+    d.firstMonth = '2026-06';
+    expect(evo(d).series.map(p => p.month)).toEqual(['2026-10', '2026-11', '2026-12', '2027-01', '2027-02', M]);
+  });
+
+  it('RG7 : suit le mois de référence, pas le mois du sélecteur, même non initialisé', () => {
+    const d = started();
+    d.months['2027-04'] = { initialized: false, lines: [], alloc: {}, transfersDone: {} };
+    const v = dashboardView(d, new Ledger(d, '2027-03'), '2027-04', TODAY);
+    expect(v.wealthEvolution).toEqual(view(d).wealthEvolution);
+  });
+
+  it('avant le premier mois : aucune évolution', () => {
+    const d = emptyData();
+    expect(dashboardView(d, new Ledger(d, '2027-03'), M, TODAY).wealthEvolution).toBeNull();
+  });
+});

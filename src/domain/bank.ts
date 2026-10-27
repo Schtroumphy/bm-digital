@@ -72,8 +72,28 @@ export function envelopeAccountAt(d: BudgetData, e: Pick<Envelope, 'accountId'>,
 /** Operations of an unknown account count in the budget (nothing to exclude them with). */
 export const isAccountInBudget = (d: BudgetData, accountId?: string): boolean => bankAccount(d, accountId)?.inBudget ?? true;
 
-/** A transaction counts in the budget figures unless its account is out of the budget (RG17). */
-export const isTransactionInBudget = (d: BudgetData, t: Transaction): boolean => isAccountInBudget(d, t.accountId);
+/** True when the operation is « affectée » to a savings account (spec 0028, RG1): it leaves the budget figures, not the bank balances. */
+export const isTransactionAssigned = (t: Pick<Transaction, 'assignedAccountId'>): boolean => t.assignedAccountId !== undefined;
+
+/** A transaction counts in the budget figures unless its account is out of the budget (RG17) or it is assigned to a savings account (spec 0028, RG5). */
+export const isTransactionInBudget = (d: BudgetData, t: Transaction): boolean => !isTransactionAssigned(t) && isAccountInBudget(d, t.accountId);
+
+/** Types of operation that can be assigned to a savings account (spec 0028, RG1). */
+export const isAssignableType = (type: Transaction['type']): boolean => type === 'var' || type === 'fix' || type === 'rev';
+
+/** Savings accounts an operation can be assigned to: active accounts of kind `epargne` (spec 0028, RG2). */
+export const assignableAccounts = (d: BudgetData, ownAccountId?: string): BankAccount[] =>
+  d.accounts.filter(a => !a.archived && kindOf(a) === 'epargne' && a.id !== accountIdOf(d, ownAccountId));
+
+/**
+ * Whether an operation of this type, on this own account, can be assigned to `assignedId` (spec 0028, RG1, RG2): a `var`/`fix`/`rev`
+ * operation, an active account of kind `epargne` that differs from the operation's own account. `keepArchived` lets an unchanged
+ * assignment stand when its account was archived afterwards (RG4).
+ */
+export function canAssignTo(d: BudgetData, type: Transaction['type'], ownAccountId: string, assignedId: string, keepArchived?: string): boolean {
+  const target = d.accounts.find(a => a.id === assignedId);
+  return isAssignableType(type) && !!target && kindOf(target) === 'epargne' && target.id !== ownAccountId && (!target.archived || keepArchived === assignedId);
+}
 
 /**
  * A rev/fix/cre line leaves the budget with its account; a variable line leaves it with the account it is paid from

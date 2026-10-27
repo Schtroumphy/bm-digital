@@ -142,6 +142,11 @@ export interface Transaction {
   bankDate?: string;
   /** `env` expenses only: `especes` = paid with the cash of the envelope (spec 0026, RG5, RG6). Absent = `virtuel`. */
   payMode?: PayMode;
+  /**
+   * Account of savings the operation is « affectée » to (spec 0028): a `var`, `fix` or `rev` operation that leaves the budget figures and is
+   * listed in the detail of that account, WITHOUT moving any money (its own account and its bank balances are untouched). Absent = counted in the budget.
+   */
+  assignedAccountId?: string;
   /** `rev` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
   source?: string;
 }

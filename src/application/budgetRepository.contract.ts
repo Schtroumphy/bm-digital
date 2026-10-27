@@ -125,6 +125,21 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(await open().load()).toEqual(cleared);
     });
 
+    it('spec 0028 : l’affectation d’une opération à un compte d’épargne est conservée, puis retirée', async () => {
+      const repo = open();
+      const data = completeData();
+      data.transactions.find(t => t.id === 't-imp')!.assignedAccountId = 'acc-sav';
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.transactions.find(t => t.id === 't-imp')!.assignedAccountId).toBe('acc-sav');
+      // Les autres opérations n'ont pas d'affectation : elles n'en ont toujours pas.
+      expect(loaded.transactions.filter(t => t.id !== 't-imp').every(t => !('assignedAccountId' in t))).toBe(true);
+      const cleared = structuredClone(loaded);
+      delete cleared.transactions.find(t => t.id === 't-imp')!.assignedAccountId;
+      await repo.save(cleared);
+      expect(await open().load()).toEqual(cleared);
+    });
+
     it('spec 0016 : un virement lié (deux traces), un crédit seul, un débit « vers enveloppes » et la source d’un revenu sont conservés', async () => {
       const repo = open();
       const data = completeData();

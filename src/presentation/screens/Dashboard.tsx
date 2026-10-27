@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { addEnvelopeEntry, addLineEntry } from '../../application/quickEntry';
-import { dashboardView, type DashboardView, type DonutId, type DashboardWealth, type YearlyMonth } from '../../domain/dashboard';
+import { dashboardView, hasMovement, type DashboardView, type DonutId, type DashboardWealth, type DashboardWealthEvolution, type SavingsAccountRow, type YearlyMonth } from '../../domain/dashboard';
 import { isoDate } from '../../domain/checkoff';
 import { MONTH_NAMES, money, monthLabel, parseMonth, percent } from '../../domain/format';
 import type { GoalView } from '../../domain/goals';
@@ -88,6 +88,18 @@ function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
         <div className="dash-val">{cell(x => money(x.realSavings))}</div>
         {k && <div className="dash-sub" style={{ color: k.savingsVsGross < 0 ? BAD : GOOD }}>{signed(k.savingsVsGross)} vs brute</div>}
       </div>
+    </div>
+  );
+}
+
+/** Mention under the KPI band (spec 0028, RG25): operations assigned to a savings account do not count in the figures above. */
+function AssignedNote({ v }: { v: DashboardView }) {
+  const a = v.assigned;
+  if (!a) return null;
+  const tip = a.byAccount.map(x => `${x.accountName} : ${x.count} ${x.count > 1 ? 'opérations' : 'opération'} (dépenses ${money(x.expenses)}, entrées ${money(x.entries)})`).join('\n');
+  return (
+    <div className="dash-assigned has-tip" data-tip={tip}>
+      {a.count} {a.count > 1 ? 'opérations' : 'opération'} ({money(a.expenses)} de dépenses, {money(a.entries)} d’entrées) {a.count > 1 ? 'sont affectées' : 'est affectée'} à un compte d’épargne et {a.count > 1 ? 'ne comptent' : 'ne compte'} pas dans ces chiffres
     </div>
   );
 }
@@ -221,14 +233,14 @@ function YearlyCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarg
       <div className="dash-card-head">
         <div className="dash-card-title">Dépenses prévues sur l’année</div>
         <div style={{ flex: 1 }} />
-        {y && <span className="dash-caption">Total {money(y.total)} · moyenne {money(y.average)} / mois</span>}
         <DetailLink to="prevAnn" onOpen={onOpen} />
       </div>
+      {y && <span className="dash-caption">Total {money(y.total)} · moyenne {money(y.average)} / mois</span>}
       {y ? (
         <div className="bars">
           {y.months.map(m => (
             <div key={m.month} className={`bar has-tip${m.selected ? ' is-selected' : ''}`} data-tip={`${MONTH_NAMES[m.month]} · ${money(m.amount)}${y.total > 0 ? ` (${percent((m.amount / y.total) * 100)} de l’année)` : ''}`}>
-              <span className="bar-amount">{money(m.amount)}</span>
+              <span className="bar-amount">{m.selected ? money(m.amount) : ''}</span>
               <div className="bar-col">
                 <div className="bar-fill" style={{ height: `${biggest > 0 ? Math.max(4, (m.amount / biggest) * 100) : 4}%` }} />
               </div>
@@ -236,6 +248,55 @@ function YearlyCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarg
             </div>
           ))}
         </div>
+      ) : (
+        <div className="dash-empty">{DASH}</div>
+      )}
+    </div>
+  );
+}
+
+function WealthEvolutionCard({ e, onOpen }: { e: DashboardWealthEvolution | null; onOpen: (t: DashboardTarget) => void }) {
+  const biggest = Math.max(0, ...(e?.series.map(p => p.total) ?? []));
+  const versus = e?.previous ? ` vs ${MONTH_NAMES[parseMonth(e.previous).month]}` : '';
+  const row = (label: string, hue: string, balance: number, delta: number | undefined) => (
+    <div className="wealth-row">
+      <i style={{ background: hue }} />
+      <span>{label}</span>
+      <b>{money(balance)}</b>
+      <b className="dash-delta" style={{ color: delta === undefined ? undefined : changeColor(delta) }}>{delta === undefined ? DASH : signed(delta)}</b>
+    </div>
+  );
+  return (
+    <div className="panel dash-card dash-evolution">
+      <div className="dash-card-head">
+        <div className="dash-card-title">Évolution du patrimoine</div>
+        <div style={{ flex: 1 }} />
+        <DetailLink to="goals" onOpen={onOpen} />
+      </div>
+      {e ? (
+        <>
+          <div className="dash-evolution-main">
+            <b className="dash-evolution-delta" style={{ color: e.change ? changeColor(e.change.total) : undefined }}>{e.change ? signed(e.change.total) : DASH}</b>
+            <span className="dash-caption">
+              {e.pct !== null ? `${e.pct > 0 ? '+' : ''}${percent(e.pct)}` : DASH}
+              {versus}
+            </span>
+          </div>
+          <div className="dash-wealth">
+            {row('Épargnes', 'oklch(0.7 0.12 300)', e.savings, e.change?.savings)}
+            {row('Investissements', 'oklch(0.7 0.13 250)', e.invest, e.change?.invest)}
+          </div>
+          <div className="dash-spark" aria-label="Patrimoine des 6 derniers mois">
+            {e.series.map(p => (
+              <div key={p.month} className={`bar has-tip${p.month === e.month ? ' is-selected' : ''}`} data-tip={`${MONTH_NAMES[parseMonth(p.month).month]} · ${money(p.total)}`}>
+                <div className="bar-col">
+                  <div className="bar-fill" style={{ height: `${biggest > 0 ? Math.max(4, (p.total / biggest) * 100) : 4}%` }} />
+                </div>
+                <span className="bar-month">{MONTH_TICKS[parseMonth(p.month).month]}</span>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="dash-empty">{DASH}</div>
       )}
@@ -332,6 +393,81 @@ function WealthCard({ w, emergency }: { w: DashboardWealth | null; emergency: Go
   );
 }
 
+const changeColor = (n: number) => (n > 0 ? GOOD : n < 0 ? BAD : MUTED);
+
+/** Received / spent of a savings row, and what is assigned to it outside its balance. */
+function SavingsFlows({ received, spent, assigned }: { received: number; spent: number; assigned?: { received: number; spent: number } }) {
+  return (
+    <>
+      <div className="savings-flows">
+        <span>Reçu <b>{money(received)}</b></span>
+        <span>Dépensé <b>{money(spent)}</b></span>
+      </div>
+      {assigned && (
+        <div className="savings-assigned">
+          <span>Affecté hors solde</span>
+          <span>reçu {money(assigned.received)} · dépensé {money(assigned.spent)}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function SavingsRow({ r }: { r: SavingsAccountRow }) {
+  return (
+    <div className="savings-row">
+      <div className="savings-line">
+        <i className="dot is-10" style={{ background: tone(r.hue).base }} />
+        <span className="savings-name">{r.name}</span>
+        <b style={{ color: changeColor(r.change) }}>{signed(r.change)}</b>
+      </div>
+      <SavingsFlows received={r.received} spent={r.spent} assigned={r.assigned} />
+    </div>
+  );
+}
+
+/** « Épargne » (spec 0029): month movements of the savings and investment accounts, read only. */
+function SavingsCard({ v }: { v: DashboardView }) {
+  const s = v.savingsAccounts;
+  const [onlyMoved, setOnlyMoved] = useState(true);
+  if (v.initialized && !s) return null;
+  // Hidden accounts have no movement and nothing assigned, so the total is the same with or without them.
+  const shown = (s?.rows ?? []).filter(r => !onlyMoved || hasMovement(r));
+  const invest = shown.filter(r => r.kind === 'invest');
+  const savings = shown.filter(r => r.kind === 'epargne');
+  return (
+    <div className="panel dash-card">
+      <div className="dash-card-head">
+        <div className="dash-card-title">Épargne</div>
+        <div style={{ flex: 1 }} />
+        {s && (
+          <label className="savings-filter" title="Masquer les comptes sans mouvement ce mois-ci">
+            <input type="checkbox" checked={onlyMoved} onChange={e => setOnlyMoved(e.target.checked)} />
+            Avec évolution
+          </label>
+        )}
+      </div>
+      {s ? (
+        <div className="savings-list">
+          {shown.length === 0 && <div className="dash-empty">Aucun compte n’a évolué ce mois-ci</div>}
+          {savings.map(r => <SavingsRow key={r.id} r={r} />)}
+          {invest.length > 0 && <div className="savings-sep">Investissements</div>}
+          {invest.map(r => <SavingsRow key={r.id} r={r} />)}
+          <div className="savings-row savings-total">
+            <div className="savings-line">
+              <span className="savings-name has-tip" data-tip="Les virements entre ces comptes sont comptés des deux côtés">Total</span>
+              <b style={{ color: changeColor(s.total.change) }}>{signed(s.total.change)}</b>
+            </div>
+            <SavingsFlows received={s.total.received} spent={s.total.spent} assigned={s.total.assigned} />
+          </div>
+        </div>
+      ) : (
+        <div className="dash-empty">{DASH}</div>
+      )}
+    </div>
+  );
+}
+
 function GoalsCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarget) => void }) {
   const rows: { view: GoalView | null; name: (g: GoalView) => string; color: string }[] = [
     { view: v.emergency, name: () => 'Fond de secours', color: 'oklch(0.72 0.12 190)' },
@@ -389,18 +525,23 @@ export function DashboardScreen({ month, onOpen }: { month: MonthKey; onOpen: (t
         <div className="dash-left">
           <div className="panel dash-top">
             {gate(<Kpis v={v} month={month} />)}
+            <AssignedNote v={v} />
             {gate(<DonutCard v={v} />)}
           </div>
           <div className="dash-pair">
             <VariablesCard v={v} month={month} canAdd={canAdd} onOpen={onOpen} />
             <EnvelopesCard v={v} month={month} canAdd={canAdd} onOpen={onOpen} />
           </div>
-          <YearlyCard v={v} onOpen={onOpen} />
+          <div className="dash-bottom">
+            <YearlyCard v={v} onOpen={onOpen} />
+            <WealthEvolutionCard e={v.wealthEvolution} onOpen={onOpen} />
+          </div>
         </div>
         <div className="dash-right">
           <TodoCard v={v} onOpen={onOpen} />
           <MonthNotes month={month} notes={v.notes} />
           <WealthCard w={v.wealth} emergency={v.emergency} />
+          <SavingsCard v={v} />
           <GoalsCard v={v} onOpen={onOpen} />
         </div>
       </div>

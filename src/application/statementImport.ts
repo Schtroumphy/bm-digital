@@ -1,4 +1,4 @@
-import { CASH_ACCOUNT_ID, accountIdOf, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
+import { CASH_ACCOUNT_ID, accountIdOf, canAssignTo, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
 import { ENVELOPES_ID, canLinkFaces, findCompletable, isEnvelopesPool, pairFaces, tracesOf, type Face } from '../domain/internalTransfers';
 import { compareMonths } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
@@ -83,6 +83,11 @@ export interface PreviewLine {
   ambiguous?: boolean;
   /** `revenu` only: who paid, free text (RG3). Empty = the label of the line. */
   source?: string;
+  /**
+   * Dépense (variable or fixed) or revenu only: the savings account the operation is assigned to, outside the budget (spec 0028, RG17). Absent = counted.
+   * Not remembered in the import rules, and not part of the fingerprint, the rank nor the deduplication.
+   */
+  assignedAccountId?: string;
 }
 
 /** The two accounts a line of nature « virement » (debit `interne`/`retrait`, credit `recu`) moves money between; null when it is not one or has no target yet. */
@@ -229,6 +234,17 @@ export function lineBalanceWarning(d: BudgetData, l: PreviewLine): string | null
   return null;
 }
 
+/**
+ * The line without its assignment to a savings account when it can no longer carry one (spec 0028, RG17): only a variable or fixed expense
+ * or a revenue can, not an envelope expense nor a transfer. Applied after every change of nature or target.
+ */
+export function withValidAssignment(l: PreviewLine): PreviewLine {
+  const carries = (l.nature === 'depense' || l.nature === 'externe' ? l.target?.kind === 'var' || l.target?.kind === 'line' : l.nature === 'revenu' && !!l.target);
+  if (l.assignedAccountId === undefined || carries) return l;
+  const { assignedAccountId: _a, ...rest } = l;
+  return rest;
+}
+
 /** Why a line cannot be imported yet, or null when it is complete (RG12, RG17, RG32). */
 export function lineProblem(d: BudgetData, l: PreviewLine): string | null {
   if (l.accountId === null) return 'Compte à rattacher';
@@ -238,6 +254,8 @@ export function lineProblem(d: BudgetData, l: PreviewLine): string | null {
   if (completes) return isMonthLocked(d, completes.month) ? 'Virement d’un mois clos' : null;
   if (!isImportMonth(d, l.month)) return 'Choisir un mois ouvert';
   if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) || l.nature === 'revenu' ? 'À rattacher' : l.nature === 'recu' ? 'Choisir le compte source' : 'Choisir une destination';
+  // The assignment to a savings account (spec 0028): only on a `var`, `fix` or revenue line, to an account that can take it.
+  if (l.assignedAccountId && (isExpenseNature(l.nature) || l.nature === 'revenu') && l.target?.kind !== 'env' && !canAssignTo(d, l.nature === 'revenu' ? 'rev' : 'var', balanceAccounts(d, l)[0], l.assignedAccountId)) return 'Compte d’affectation invalide';
   return null;
 }
 
@@ -355,7 +373,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     if (old && old.accountId === accountId && old.rank === rank) {
       // Only a line the user touched (or already linked/unlinked) is protected from the automatic pairing; an untouched one may now find its other half.
       if (old.link !== undefined || old.nature !== fresh.nature || old.checked !== fresh.checked || JSON.stringify(old.target) !== JSON.stringify(fresh.target)) carried.add(fresh.id);
-      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source });
+      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source, assignedAccountId: old.assignedAccountId });
     } else lines.push(fresh);
   });
   // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
@@ -682,6 +700,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
   );
   const chosenIds = new Set(chosen.map(l => l.id));
   const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, importedIds: [], failedIds: [] };
+  const assignment = (l: PreviewLine) => (l.assignedAccountId ? { assignedAccountId: l.assignedAccountId } : {});
   const traceOf = (l: PreviewLine): ImportTrace => ({ importAccountId: l.accountId!, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date });
 
   const imported: PreviewLine[] = [];
@@ -713,7 +732,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
       }
       // Who paid (spec 0016, RG3): the typed source, else the label of the line; information only.
       const source = (l.source ?? '').trim() || l.row.label;
-      const tx: Transaction = { id: newId('t'), ...base, type: 'rev', target: key, accountId: sourceId, source };
+      const tx: Transaction = { id: newId('t'), ...base, type: 'rev', target: key, accountId: sourceId, source, ...assignment(l) };
       if (addTransaction(d, tx)) {
         batch.revenues++;
         imported.push(l);
@@ -724,9 +743,9 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
     } else if (isExpenseNature(l.nature)) {
       const tx: Transaction =
         t.kind === 'var'
-          ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId }
+          ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId, ...assignment(l) }
           : t.kind === 'line'
-            ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId }
+            ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId, ...assignment(l) }
             : { id: newId('t'), ...base, type: 'env', target: targetId };
       if (addTransaction(d, tx)) {
         batch.expenses++;

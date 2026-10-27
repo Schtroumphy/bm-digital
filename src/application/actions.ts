@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { syncLineActual } from '../domain/lineActuals';
@@ -263,10 +263,13 @@ export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
  * the account is written down, so a later change of the box does not move it (RG6).
  * An envelope expense may be paid in cash (`payMode: 'especes'`, spec 0026, RG5); it is refused when it exceeds the cash balance of the envelope (RG7), whatever its virtual balance.
  * The mode only exists on an envelope expense: it is dropped elsewhere, and `virtuel` is written as no mode at all.
+ * An operation may be assigned to a savings account (`assignedAccountId`, spec 0028): only `var`, `fix` and `rev`, an active savings account other than the
+ * operation's own (RG1, RG2, RG20). `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
  */
-export function addTransaction(d: BudgetData, input: Transaction): boolean {
+export function addTransaction(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
-  if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input);
+  if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
+  if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input, keepAssignment);
   const given = d.accounts.find(a => a.id === input.accountId);
   if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
   // A variable expense on a line with an assigned account stays on it: another account is refused (spec 0006 amended, 0011 RG10).
@@ -278,6 +281,7 @@ export function addTransaction(d: BudgetData, input: Transaction): boolean {
   const t = envelope
     ? { ...input, accountId: envelope.accountId }
     : input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
+  if (t.assignedAccountId !== undefined && !canAssignTo(d, t.type, accountIdOf(d, t.accountId), t.assignedAccountId, keepAssignment)) return false;
   const detail = normalizeDetail(input.detail);
   const { detail: _raw, payMode: _mode, ...base } = t;
   const rest = inCash ? { ...base, payMode: 'especes' as const } : base;
@@ -291,12 +295,13 @@ export function addTransaction(d: BudgetData, input: Transaction): boolean {
  * Expense on a fixed or credit line (spec 0014), entry on a revenue line (spec 0015): refused on a locked month, on a line of another
  * block, on another account than the line's (RG2) or on an envelope's account. The actual of the line becomes the sum of its entries (spec 0019, RG20).
  */
-function addLineExpense(d: BudgetData, input: Transaction): boolean {
+function addLineExpense(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   const line = input.type === 'rev' ? revenueLine(d, input.month, input.target) : expenseLine(d, input.month, input.target);
   if (!line || expenseLineBlocker(d, input.month, input.target)) return false;
   const accountId = expenseLineAccountId(d, line);
   if (input.accountId !== undefined && input.accountId !== accountId) return false;
   if (isEnvelopeAccount(d.accounts.find(a => a.id === accountId))) return false;
+  if (input.assignedAccountId !== undefined && !canAssignTo(d, input.type, accountId, input.assignedAccountId, keepAssignment)) return false;
   const detail = normalizeDetail(input.detail);
   const { detail: _raw, payMode: _mode, ...rest } = input;
   d.transactions.push(detail === undefined ? { ...rest, accountId } : { ...rest, accountId, detail });
@@ -313,7 +318,17 @@ export function setTransactionDetail(d: BudgetData, id: string, detail: string):
 }
 
 /** What `updateTransaction` can change on an expense or an entry: everything but its month of attachment and its import trace. */
-export interface TransactionPatch { label: string; amount: number; /** `YYYY-MM-DD`. */ date: string; detail?: string; type: TxType; target: string }
+export interface TransactionPatch {
+  label: string;
+  amount: number;
+  /** `YYYY-MM-DD`. */
+  date: string;
+  detail?: string;
+  type: TxType;
+  target: string;
+  /** Savings account the operation is assigned to (spec 0028, RG18): undefined = keep the current one, null = remove it. */
+  assignedAccountId?: string | null;
+}
 
 /**
  * Rewrites an expense or an entry (label, amount, bank date, detail, nature, imputation) under the rules of `addTransaction`: it is removed and
@@ -327,11 +342,12 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   if (!old || isMonthLocked(d, old.month) || !label || !(patch.amount > 0) || !valid) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
-  const { bankDate: _b, detail: _d, accountId, ...kept } = old;
+  const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, ...kept } = old;
+  const assigned = patch.assignedAccountId === undefined ? old.assignedAccountId : (patch.assignedAccountId ?? undefined);
   const same = patch.type === old.type && patch.target === old.target;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
-  if (!addTransaction(d, next)) {
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
+  if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;
   }
@@ -377,11 +393,11 @@ export function monthCsv(lines: Line[], blockTitles: Record<BlockKey, string>, i
 }
 
 /** One exported operation (`amount` signed: + credit, − debit): every field already resolved to its display text. */
-export interface TransactionCsvRow { date: string; label: string; detail: string; type: string; imputation: string; account: string; amount: number }
+export interface TransactionCsvRow { date: string; label: string; detail: string; type: string; imputation: string; account: string; assignedTo: string; amount: number }
 
 /** CSV of the selected expenses and entries, in the same French spreadsheet dialect as `monthCsv`. */
 export function transactionsCsv(rows: TransactionCsvRow[]): string {
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const body = rows.map(r => [r.date, q(r.label), q(r.detail), q(r.type), q(r.imputation), q(r.account), `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
-  return '\uFEFF' + ['Date;Libellé;Détail;Nature;Imputation;Compte;Montant', ...body].join('\r\n');
+  const body = rows.map(r => [r.date, q(r.label), q(r.detail), q(r.type), q(r.imputation), q(r.account), q(r.assignedTo), `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
+  return '\uFEFF' + ['Date;Libellé;Détail;Nature;Imputation;Compte;Affectée à;Montant', ...body].join('\r\n');
 }
