@@ -29,6 +29,16 @@ describe('conversion domaine ↔ lignes', () => {
     expect(rows.line_checks.length).toBeGreaterThan(0);
     expect(rows.adjustments).toHaveLength(2);
   });
+
+  it('notes du mois : une ligne par note avec sa position, restituées dans l’ordre, absentes sans note (spec 0027, CA10)', () => {
+    const d = completeData();
+    const rows = toRows(d);
+    expect(rows.month_notes.map(r => [r.month, r.id, r.position])).toEqual([['2026-12', 'n1', 0], ['2026-12', 'n2', 1], ['2027-03', 'n3', 0]]);
+    const back = fromRows(withUser(rows))!;
+    expect(back.months['2026-12'].notes).toEqual(d.months['2026-12'].notes);
+    expect(back.months['2027-03'].notes).toEqual([{ id: 'n3', text: 'Préparer le mois', done: false }]);
+    expect('notes' in back.months['2026-11']).toBe(false);
+  });
 });
 
 function withUser(rows: ReturnType<typeof toRows>) {

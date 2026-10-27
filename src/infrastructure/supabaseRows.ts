@@ -102,6 +102,7 @@ export function toRows(d: BudgetData): TableRows {
     for (const [line_key, c] of Object.entries(md.checks ?? {})) {
       rows.line_checks.push({ month, line_key, done_on: c.doneOn, account_id: orNull(c.accountId) });
     }
+    (md.notes ?? []).forEach((n, position) => rows.month_notes.push({ month, id: n.id, text: n.text, done: n.done, position }));
     for (const [account_id, b] of Object.entries(md.accountBalances ?? {})) {
       rows.account_balances.push({ month, account_id, amount: b.amount, entered_on: b.on });
     }
@@ -285,6 +286,10 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     if (!md) continue;
     const check: LineCheck = compact({ doneOn: r.done_on, accountId: orUndefined(r.account_id) });
     (md.checks ??= {})[r.line_key] = check;
+  }
+  for (const r of byPosition(rows.month_notes)) {
+    const md = months[r.month];
+    if (md) (md.notes ??= []).push({ id: r.id, text: r.text, done: r.done });
   }
   for (const r of rows.account_balances) {
     const md = months[r.month];

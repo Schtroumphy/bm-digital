@@ -24,6 +24,9 @@ export function completeData(): BudgetData {
   dec.lines[0] = { ...dec.lines[0], accountId: 'acc-sav', payMode: 'especes', linkedAccountId: 'acc-inv', dueDay: 5, execMode: 'prelevement' };
   d.template.lines[0] = { ...d.template.lines[0], accountId: 'acc-sav', payMode: 'virtuel', linkedAccountId: 'acc-inv', dueDay: 28, execMode: 'informatif' };
   dec.checks = { [dec.lines[0].key]: { doneOn: '2026-12-03' }, 'env:sante': { doneOn: '2026-12-01', accountId: 'acc-main' } };
+  // Spec 0027 : notes du mois (une faite), et une note sur un mois non initialisé.
+  dec.notes = [{ id: 'n1', text: 'Appeler la banque', done: false }, { id: 'n2', text: 'Relire le contrat', done: true }];
+  d.months['2027-03'] = { initialized: false, lines: [], alloc: {}, transfersDone: {}, notes: [{ id: 'n3', text: 'Préparer le mois', done: false }] };
   dec.accountBalances = { 'acc-main': { amount: 2345.67, on: '2026-12-15' } };
   dec.transfersDone = { bou: true, ce: false };
   d.transactions[0] = { ...d.transactions[0], accountId: 'acc-sav' };
