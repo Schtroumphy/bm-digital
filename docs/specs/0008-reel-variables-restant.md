@@ -157,3 +157,5 @@ Restant des variables      1 280,00 € → 1 240,00 €
 ## Questions ouvertes
 
 Aucune. Décisions du développeur intégrées : restant d'une ligne sans réel = budget entier en gris (RG11, RG13) ; recalcul silencieux des lignes existantes concernées au chargement (RG18) ; enveloppes et sorties d'épargne toujours exclues quand le compte est hors budget (RG5) ; info-bulle de la case « Dans le budget » précisée (RG19) ; pas de maquette, design à valider avec la spec.
+
+Amendement (spec 0028, [ADR 0024](../adr/0024-une-operation-sort-du-budget-par-son-affectation.md)) : le réel d'une ligne variable est la somme de ses dépenses NON affectées à un compte d'épargne ; une dépense affectée n'y compte plus, ni dans « Restant des variables ».

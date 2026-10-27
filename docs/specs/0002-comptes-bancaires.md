@@ -163,3 +163,5 @@ Tests automatisés (Vitest, domaine et application) : CA1 à CA11, CA13. Le rest
 ## Questions ouvertes
 
 Aucune.
+
+Amendement (spec 0028, [ADR 0024](../adr/0024-une-operation-sort-du-budget-par-son-affectation.md)) : RG17 et RG18 ne sont plus la seule façon de sortir une opération du budget. Une opération `var`, `fix` ou `rev` affectée à un compte d'épargne (`assignedAccountId`) sort aussi des chiffres du budget, sans changer son compte ni les soldes.

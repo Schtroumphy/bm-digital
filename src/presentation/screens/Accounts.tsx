@@ -20,6 +20,7 @@ import {
 import { decideAccountKind, linkLineToAccount } from '../../application/accountKinds';
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
 import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
+import { assignedOperations, assignedTotals } from '../../domain/assignedOperations';
 import { attachedMovements, realMovements } from '../../domain/bankMovements';
 import { IN_BUDGET_HINT, OPENING_MESSAGE } from '../components/hints';
 import { openingCashRefusal, setEnvelopeOpeningCash } from '../../application/envelopes';
@@ -506,6 +507,14 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
   const g = groupOf(account);
   const r = ledger.bankMonth(account.id, month);
   const moves = [...realMovements(data, account.id, month), ...attachedMovements(data, account.id, month)].sort((x, y) => y.date.localeCompare(x.date));
+  // Operations assigned to this account (spec 0028): listed in grey, never summed in the balance nor in the flows above.
+  const assigned = assignedOperations(data, account.id, month);
+  const assignedSum = assignedTotals(assigned);
+  // Real movements and assigned operations share one list, newest first.
+  const listed = [
+    ...moves.map(move => ({ date: move.date, move, assigned: undefined })),
+    ...assigned.map(op => ({ date: op.date, move: undefined, assigned: op })),
+  ].sort((x, y) => y.date.localeCompare(x.date));
   const rows = ledger.months.flatMap(m => {
     const b = ledger.bankMonth(account.id, m);
     return b ? [{ m, b }] : [];
@@ -540,21 +549,48 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
         <div className={`tab${tab === 'hist' ? ' is-active' : ''}`} onClick={() => setTab('hist')}>Historique</div>
       </div>
       {tab === 'moves' ? (
-        moves.length === 0 ? (
+        moves.length === 0 && assigned.length === 0 ? (
           <div className="empty">Aucune écriture ce mois-ci.</div>
         ) : (
+          <>
+          {assigned.length > 0 && (
+            <div className="assigned-summary">
+              Affecté ce mois-ci : dépenses {money(assignedSum.expenses)} · entrées {money(assignedSum.entries)} · net {money(assignedSum.net, true)}
+            </div>
+          )}
           <ul className="cpt-list">
-            {moves.map((mv, i) => (
-              <li key={i} className="cpt-move" style={mv.outOfMonth ? { opacity: 0.65 } : undefined} title={mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${mv.date.slice(8, 10)}/${mv.date.slice(5, 7)}/${mv.date.slice(0, 4)} : comptée dans le solde de ${monthLabel(mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
-                <span className="cpt-move-date">{dayOf(mv.date)}</span>
-                <span className="cpt-move-label">
-                  <span className="ellipsis" title={mv.label}>{mv.label}</span>
-                  <span className="muted is-small ellipsis">{mv.imputation ? `${IMPUTATION_KIND[mv.imputation.type]} · ${mv.imputation.name}` : MOVE_KIND[mv.kind] ?? 'Écriture'}</span>
-                </span>
-                <b className="num" style={mv.amount > 0 ? { color: GOOD } : undefined}>{money(mv.amount, true)}</b>
-              </li>
-            ))}
+            {listed.map((item, i) => {
+              if (item.assigned) {
+                const op = item.assigned;
+                return (
+                  <li key={`assigned:${op.id}`} className="cpt-move assigned-row" title="Opération affectée à ce compte : hors solde, hors entrées et sorties">
+                    <span className="cpt-move-date">{dayOf(op.date)}</span>
+                    <span className="cpt-move-label">
+                      <span className="ellipsis" title={op.label}>{op.label}</span>
+                      <span className="muted is-small ellipsis">{op.type === 'rev' ? 'Entrée' : 'Dépense'} · {op.imputation} · {op.type === 'rev' ? 'reçue sur' : 'payée avec'} {op.ownAccountName}</span>
+                      {op.detail && <span className="muted is-small ellipsis" title={op.detail}>{op.detail}</span>}
+                    </span>
+                    <span className="num">
+                      {money(op.amount, true)}
+                      <span className="muted is-small assigned-hint" style={{ display: 'block' }}>affectée, hors solde</span>
+                    </span>
+                  </li>
+                );
+              }
+              const mv = item.move;
+              return (
+                <li key={i} className="cpt-move" style={mv.outOfMonth ? { opacity: 0.65 } : undefined} title={mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${mv.date.slice(8, 10)}/${mv.date.slice(5, 7)}/${mv.date.slice(0, 4)} : comptée dans le solde de ${monthLabel(mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
+                  <span className="cpt-move-date">{dayOf(mv.date)}</span>
+                  <span className="cpt-move-label">
+                    <span className="ellipsis" title={mv.label}>{mv.label}</span>
+                    <span className="muted is-small ellipsis">{mv.imputation ? `${IMPUTATION_KIND[mv.imputation.type]} · ${mv.imputation.name}` : MOVE_KIND[mv.kind] ?? 'Écriture'}</span>
+                  </span>
+                  <b className="num" style={mv.amount > 0 ? { color: GOOD } : undefined}>{money(mv.amount, true)}</b>
+                </li>
+              );
+            })}
           </ul>
+          </>
         )
       ) : (
         <div className="cpt-hist">

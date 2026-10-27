@@ -842,3 +842,5 @@ Numérotation : RG120 à RG125, CA119 à CA125. La spec 0007 (compte dédié d'u
 - L'écart du relevé se calcule contre le **solde réel** ; la régularisation ne corrige que le solde réel.
 - RG92 (isolation des comptes hors budget) est limité aux contreparties fictives et à la liste grise ; un transfert compte toujours ses deux faces. Les anciens virements « faits » sont ignorés.
 - « Reste à sortir » et « Revenus attendus » pèsent le budget des lignes.
+
+Amendement (spec 0028, [ADR 0024](../adr/0024-une-operation-sort-du-budget-par-son-affectation.md)) : RG92 et RG110 (opérations hors budget par leur compte) sont complétées par l'affectation d'une opération à un compte d'épargne, qui la sort du budget sans changer les soldes. Une ligne pointée dont toutes les écritures sont affectées ne compte rien dans le solde estimé.

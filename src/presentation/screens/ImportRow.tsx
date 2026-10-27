@@ -1,7 +1,7 @@
 import { AccountDot } from '../components/AccountPicker';
-import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, type LineNature, type PreviewLine } from '../../application/statementImport';
+import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
-import { bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
+import { assignableAccounts, bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
 import { ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget, MovementTarget } from '../../domain/types';
@@ -55,8 +55,10 @@ interface Props {
   onUnlink?: (id: string) => void;
 }
 
-export function ImportRow({ line: l, months, onChange, imported = false, failed = false, lines = [], onLink, onUnlink }: Props) {
+export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = false, failed = false, lines = [], onLink, onUnlink }: Props) {
   const { data } = useStore();
+  // Every edit passes through here: an assignment is dropped when the nature or the target no longer allows it (spec 0028, RG17).
+  const onChange = (fn: (l: PreviewLine) => PreviewLine) => onChangeRaw(x => withValidAssignment(fn(x)));
   // `credit`: an entry of money, a « Revenu » or a « Virement interne » received (spec 0016).
   const credit = isIncome(l);
   const partner = linkedPartner(lines, l);
@@ -80,6 +82,9 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
   const destinations = destinationAccounts(data, l.nature, l.accountId);
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
   // A withdrawal or internal transfer can stand for a budget item of its destination account; the default is proposed (spec 0019, RG15, CA23).
+  // « Affecter à » (spec 0028, RG17): a variable or fixed expense, or a revenue, can be assigned to a savings account; not an envelope expense nor a transfer.
+  const assignable = (l.nature === 'depense' || l.nature === 'externe' ? l.target?.kind === 'var' || l.target?.kind === 'line' : l.nature === 'revenu' && !!l.target) && l.accountId !== null;
+  const assignChoices = assignable ? assignableAccounts(data, l.accountId ?? undefined) : [];
   const transferChoices = (l.nature === 'retrait' || l.nature === 'interne') && l.target?.kind === 'account' && !isEnvelopesTarget(l) ? transferItems(data, l.month).filter(i => i.toAccountId === (l.target as { id: string }).id) : [];
   const attached = transferAttachment(data, l);
   const attachValue = attached ? (attached.kind === 'line' ? `line:${attached.key}` : `env:${attached.id}`) : '';
@@ -255,6 +260,18 @@ export function ImportRow({ line: l, months, onChange, imported = false, failed 
         <div className="import-remember">
           <label htmlFor={`source:${l.id}`}>Source</label>
           <input id={`source:${l.id}`} className="text-input" value={l.source ?? ''} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, source: e.target.value }))} aria-label="Source du revenu" />
+        </div>
+      )}
+      {assignChoices.length > 0 && (
+        <div className="import-remember">
+          <label htmlFor={`assign:${l.id}`}>Affecter à</label>
+          <select id={`assign:${l.id}`} className="su-select" value={l.assignedAccountId ?? ''} onChange={e => onChange(x => ({ ...x, assignedAccountId: e.target.value || undefined }))}>
+            <option value="">Aucun</option>
+            {assignChoices.map(a => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          {l.assignedAccountId && <span className="assigned-hint">Hors budget : n’entre pas dans les chiffres du budget.</span>}
         </div>
       )}
       {transferChoices.length > 0 && (

@@ -1,4 +1,5 @@
 import { blockTotals, budgetLines, envelopeAlerts, lineRemaining, monthSummary, variableRemaining, type MonthSummary } from './budget';
+import { monthAssignedSummary, type AssignedSummary } from './assignedOperations';
 import { isLineInBudget } from './bank';
 import { envelopeConsumption } from './envelopeCash';
 import { effectiveDueDay, envelopeCheck, isEnvelopePointable, isLate, lineCheck, lineCounted } from './checkoff';
@@ -170,6 +171,8 @@ export interface DashboardView {
   emergency: GoalView | null;
   invest: GoalView | null;
   savings: GoalView | null;
+  /** Mention under the KPI band (spec 0028, RG25): operations assigned to a savings account, outside the figures above; null when the month is not initialized or has none. */
+  assigned: AssignedSummary | null;
 }
 
 /** Every transfer of a month (done or not), sorted by planned day, no day last (RG11). */
@@ -229,7 +232,7 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
   const ref = referenceMonth(d, todayMonth);
   const wealth = ref === null ? null : wealthAt(d, ledger, ref);
   const goals = { emergency: goalView(d, ledger, 'emergency', todayMonth), invest: goalView(d, ledger, 'invest', todayMonth), savings: goalView(d, ledger, 'savings', todayMonth) };
-  if (!initialized) return { month, initialized, kpis: null, donut: null, variables: null, envelopes: null, yearly: null, todo: null, notes: notesView, wealth, ...goals };
+  if (!initialized) return { month, initialized, kpis: null, donut: null, variables: null, envelopes: null, yearly: null, todo: null, notes: notesView, wealth, ...goals, assigned: null };
 
   const s = monthSummary(d, ledger, month);
   const lines = budgetLines(d, month);
@@ -290,8 +293,13 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
     balancesToEnter: lines.filter(l => (l.block === 'epa' || l.block === 'inv') && d.statements[month]?.[l.key] === undefined).map(l => l.name),
   };
 
-  return { month, initialized, kpis, donut: donutOf(d, month, s), variables, envelopes, yearly, todo, notes: notesView, wealth, ...goals };
+  return { month, initialized, kpis, donut: donutOf(d, month, s), variables, envelopes, yearly, todo, notes: notesView, wealth, ...goals, assigned: assignedOf(d, month) };
 }
+
+const assignedOf = (d: BudgetData, month: MonthKey): AssignedSummary | null => {
+  const s = monthAssignedSummary(d, month);
+  return s.count > 0 ? s : null;
+};
 
 /** Savings + investments at the end of `ref` (sum of the line balances of the Ledger), over the lines of that month that count in the budget (RG13). */
 function wealthAt(d: BudgetData, ledger: Ledger, ref: MonthKey): DashboardWealth {

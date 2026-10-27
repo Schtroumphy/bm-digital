@@ -92,6 +92,18 @@ function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
   );
 }
 
+/** Mention under the KPI band (spec 0028, RG25): operations assigned to a savings account do not count in the figures above. */
+function AssignedNote({ v }: { v: DashboardView }) {
+  const a = v.assigned;
+  if (!a) return null;
+  const tip = a.byAccount.map(x => `${x.accountName} : ${x.count} ${x.count > 1 ? 'opérations' : 'opération'} (dépenses ${money(x.expenses)}, entrées ${money(x.entries)})`).join('\n');
+  return (
+    <div className="dash-assigned has-tip" data-tip={tip}>
+      {a.count} {a.count > 1 ? 'opérations' : 'opération'} ({money(a.expenses)} de dépenses, {money(a.entries)} d’entrées) {a.count > 1 ? 'sont affectées' : 'est affectée'} à un compte d’épargne et {a.count > 1 ? 'ne comptent' : 'ne compte'} pas dans ces chiffres
+    </div>
+  );
+}
+
 function DonutCard({ v }: { v: DashboardView }) {
   const d = v.donut;
   const [active, setActive] = useState<DonutId | null>(null);
@@ -389,6 +401,7 @@ export function DashboardScreen({ month, onOpen }: { month: MonthKey; onOpen: (t
         <div className="dash-left">
           <div className="panel dash-top">
             {gate(<Kpis v={v} month={month} />)}
+            <AssignedNote v={v} />
             {gate(<DonutCard v={v} />)}
           </div>
           <div className="dash-pair">

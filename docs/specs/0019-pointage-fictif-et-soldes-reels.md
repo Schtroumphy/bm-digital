@@ -187,3 +187,5 @@ Deux chaînes indépendantes ; solde réel seule référence, relevé compris ; 
 ## Questions ouvertes
 
 Aucune.
+
+Amendement (spec 0028, [ADR 0024](../adr/0024-une-operation-sort-du-budget-par-son-affectation.md)) : RG19 et RG20, le réel d'une ligne est la somme de ses écritures NON affectées à un compte d'épargne.

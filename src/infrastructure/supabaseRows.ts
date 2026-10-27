@@ -143,6 +143,7 @@ export function toRows(d: BudgetData): TableRows {
       bank_date: orNull(t.bankDate),
       source: orNull(t.source),
       pay_mode: orNull(t.payMode),
+      assigned_account_id: orNull(t.assignedAccountId),
       position,
     }),
   );
@@ -339,6 +340,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       bankDate: orUndefined(r.bank_date),
       source: orUndefined(r.source),
       payMode: orUndefined(r.pay_mode) as PayMode | undefined,
+      assignedAccountId: orUndefined(r.assigned_account_id),
     }),
   );
 

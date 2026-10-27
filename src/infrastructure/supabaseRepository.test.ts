@@ -14,6 +14,17 @@ describe('conversion domaine ↔ lignes', () => {
     expect(fromRows(withUser(toRows(data)))).toEqual(data);
   });
 
+  it('spec 0028 : l’affectation d’une opération se convertit dans les deux sens (colonne assigned_account_id)', () => {
+    const data = completeData();
+    data.transactions[0] = { ...data.transactions[0], assignedAccountId: 'acc-sav' };
+    const rows = toRows(data);
+    expect(rows.transactions[0].assigned_account_id).toBe('acc-sav');
+    expect(rows.transactions[1].assigned_account_id).toBeNull();
+    const back = fromRows(withUser(rows))!;
+    expect(back.transactions[0].assignedAccountId).toBe('acc-sav');
+    expect(back.transactions[1]).not.toHaveProperty('assignedAccountId');
+  });
+
   it('conserve firstMonth: null (CA8)', () => {
     expect(fromRows(withUser(toRows(emptyData())))?.firstMonth).toBeNull();
   });
