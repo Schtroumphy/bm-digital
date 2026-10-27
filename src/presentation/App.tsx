@@ -2,12 +2,14 @@ import { useState } from 'react';
 import type { StatementSource } from '../application/ports';
 import { Icon, type IconName } from './components/Icon';
 import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
+import { isMonthLocked } from '../domain/ledger';
 import { useAuth } from './state/auth';
 import { useStore } from './state/store';
 import { useUi } from './state/ui';
 import { AccountsActions, AccountsScreen } from './screens/Accounts';
 import { BudgetScreen, BudgetActions, MonthCloseControl } from './screens/Budget';
 import { ClosingScreen } from './screens/Closing';
+import { DashboardScreen, type DashboardTarget } from './screens/Dashboard';
 import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
 import { GoalsScreen } from './screens/Goals';
@@ -16,9 +18,10 @@ import { SetupActions, SetupScreen } from './screens/Setup';
 import { TemplateScreen } from './screens/Template';
 import { useSetupDraft } from './state/setupDraft';
 
-export type Screen = 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals';
+export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals';
 
 const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
+  { id: 'dashboard', label: 'Accueil', icon: 'house' },
   { id: 'budget', label: 'Budget', icon: 'budget' },
   { id: 'dep', label: 'Opérations', icon: 'list' },
   { id: 'comptes', label: 'Comptes', icon: 'bank' },
@@ -32,6 +35,7 @@ const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolea
 ];
 
 const TITLES: Record<Screen, string> = {
+  dashboard: 'Tableau de bord',
   budget: 'Budget mensuel',
   dep: 'Opérations et soldes',
   env: 'Enveloppes',
@@ -64,7 +68,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   const { user, signOut } = useAuth();
   const { setEditing, menu, closeMenu } = useUi();
   // Until the first month exists, the only usable screen is the assistant.
-  const [screenState, setScreen] = useState<Screen>(() => (data.firstMonth === null ? 'setup' : 'budget'));
+  const [screenState, setScreen] = useState<Screen>(() => (data.firstMonth === null ? 'setup' : 'dashboard'));
   const screen: Screen = data.firstMonth === null ? 'setup' : screenState;
   const [draft, setDraft] = useSetupDraft();
   const [monthState, setMonthState] = useState(readSavedMonth() ?? '');
@@ -88,12 +92,17 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   const [fundEnvelope, setFundEnvelope] = useState<string | null>(null);
 
   const idx = months.indexOf(month);
+  // Tab of Opérations opened by the dashboard's « soldes à saisir » (spec 0027, RG10); the sidebar always opens « Saisie ».
+  const [expensesTab, setExpensesTab] = useState<'saisie' | 'soldes'>('saisie');
   const go = (s: Screen) => {
+    setExpensesTab('saisie');
     setScreen(s);
     setCloseAttempt(false);
     setEditing(null);
     setMonthMenu(false);
   };
+  // The « Démarrage » assistant is only for starting out: it goes away once the first month is closed.
+  const started = data.firstMonth !== null && isMonthLocked(data, data.firstMonth);
   const firstYear = data.firstMonth === null ? year : parseMonth(data.firstMonth).year;
   const lastYear = months.length ? parseMonth(months[months.length - 1]).year : year;
 
@@ -101,7 +110,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
     <div className="app">
       <nav className="sidebar">
         <div className="brand">b</div>
-        {NAV.map(n => (
+        {NAV.filter(n => !(n.id === 'setup' && started)).map(n => (
           <div
             key={n.id}
             className={`nav-item${screen === n.id ? ' is-active' : ''}${n.soon ? ' is-soon' : ''}`}
@@ -200,8 +209,17 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
           {screen === 'setup' && <SetupActions setDraft={setDraft} />}
         </header>
 
+        {screen === 'dashboard' && (
+          <DashboardScreen
+            month={month}
+            onOpen={(t: DashboardTarget) => {
+              go(t === 'balances' ? 'dep' : t);
+              if (t === 'balances') setExpensesTab('soldes');
+            }}
+          />
+        )}
         {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} />}
-        {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} fundEnvelope={fundEnvelope} onFundUsed={() => setFundEnvelope(null)} />}
+        {screen === 'dep' && <ExpensesScreen initialTab={expensesTab} month={month} statementSource={statementSource} fundEnvelope={fundEnvelope} onFundUsed={() => setFundEnvelope(null)} />}
         {screen === 'env' && <EnvelopesScreen month={month} onFundCash={id => { setFundEnvelope(id); go('dep'); }} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}

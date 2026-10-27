@@ -30,8 +30,8 @@ const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' 
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
-export function ExpensesScreen({ month, statementSource, fundEnvelope, onFundUsed }: { month: MonthKey; statementSource: StatementSource; fundEnvelope: string | null; onFundUsed: () => void }) {
-  const [tab, setTab] = useState<'saisie' | 'soldes'>('saisie');
+export function ExpensesScreen({ initialTab = 'saisie', month, statementSource, fundEnvelope, onFundUsed }: { initialTab?: 'saisie' | 'soldes'; month: MonthKey; statementSource: StatementSource; fundEnvelope: string | null; onFundUsed: () => void }) {
+  const [tab, setTab] = useState<'saisie' | 'soldes'>(initialTab);
   // The prefill is read by the form on its first render, then forgotten: coming back to the screen later opens it empty.
   useEffect(() => { if (fundEnvelope) onFundUsed(); }, [fundEnvelope, onFundUsed]);
   const [importing, setImporting] = useState(false);
