@@ -429,6 +429,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .field-w { display: block; }
 .field-label { display: block; font-size: 11px; font-weight: 600; color: rgba(32, 30, 29, 0.6); margin-bottom: 4px; }
 .field-label.is-gap { margin-bottom: 6px; }
+.field-label.is-spaced { margin-top: 12px; }
 .text-input {
   width: 100%; box-sizing: border-box; height: 36px; border: 1.5px solid rgba(32, 30, 29, 0.14); border-radius: 10px;
   padding: 0 12px; font-size: 13px; outline: none; background: #fff; color: var(--ink);

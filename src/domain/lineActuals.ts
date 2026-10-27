@@ -1,5 +1,5 @@
 import { round2 } from './format';
-import { isSavingsBlock, isTransactionAssigned } from './bank';
+import { isSavingsBlock, isTransactionOffBudget } from './bank';
 import type { BudgetData, Line, MonthKey } from './types';
 
 /*
@@ -8,7 +8,7 @@ import type { BudgetData, Line, MonthKey } from './types';
  * - `fix`, `cre`: the `fix` expenses on the line (spec 0014);
  * - `rev`: the `rev` entries of money on the line (spec 0015);
  * - `epa`, `inv`: the transfers whose target is the line (a line with no dedicated account can have none: its actual stays empty).
- * An entry assigned to a savings account (spec 0028) is not counted.
+ * An entry assigned to a savings account (spec 0028) or marked « hors budget » (spec 0031) is not counted.
  * A line with no entry has no actual (null). `Line.actual` is only a cache of this sum, rewritten by `syncLineActuals`.
  */
 
@@ -17,7 +17,7 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
   if (isSavingsBlock(l.block)) return (d.accountMovements ?? []).filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key).map(mv => mv.amount);
   const type = l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix';
   // An operation assigned to a savings account is not counted: the actual is the sum of the entries that stay in the budget (spec 0028, RG5).
-  return d.transactions.filter(t => t.month === m && t.type === type && t.target === l.key && !isTransactionAssigned(t)).map(t => t.amount);
+  return d.transactions.filter(t => t.month === m && t.type === type && t.target === l.key && !isTransactionOffBudget(t)).map(t => t.amount);
 }
 
 /** Number of entries on a line (for its tooltip). */

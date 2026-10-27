@@ -1,4 +1,5 @@
 import { AccountDot } from '../components/AccountPicker';
+import { OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
 import { assignableAccounts, bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
@@ -262,16 +263,28 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
           <input id={`source:${l.id}`} className="text-input" value={l.source ?? ''} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, source: e.target.value }))} aria-label="Source du revenu" />
         </div>
       )}
-      {assignChoices.length > 0 && (
+      {assignable && (
         <div className="import-remember">
-          <label htmlFor={`assign:${l.id}`}>Affecter à</label>
-          <select id={`assign:${l.id}`} className="su-select" value={l.assignedAccountId ?? ''} onChange={e => onChange(x => ({ ...x, assignedAccountId: e.target.value || undefined }))}>
-            <option value="">Aucun</option>
+          <label htmlFor={`assign:${l.id}`}>Budget</label>
+          <select
+            id={`assign:${l.id}`}
+            className="su-select"
+            value={l.assignedAccountId ?? (l.offBudget ? OFF_BUDGET_CHOICE : '')}
+            onChange={e => {
+              const v = e.target.value;
+              onChange(x => {
+                const { assignedAccountId: _a, offBudget: _o, ...rest } = x;
+                return v === OFF_BUDGET_CHOICE ? { ...rest, offBudget: true } : v ? { ...rest, assignedAccountId: v } : rest;
+              });
+            }}
+          >
+            <option value="">Compté au budget</option>
+            <option value={OFF_BUDGET_CHOICE}>Hors budget</option>
             {assignChoices.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
+              <option key={a.id} value={a.id}>Affecter à {a.name}</option>
             ))}
           </select>
-          {l.assignedAccountId && <span className="assigned-hint">Hors budget : n’entre pas dans les chiffres du budget.</span>}
+          {(l.assignedAccountId || l.offBudget) && <span className="assigned-hint">Hors budget : n’entre pas dans les chiffres du budget.</span>}
         </div>
       )}
       {transferChoices.length > 0 && (

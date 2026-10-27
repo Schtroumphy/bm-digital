@@ -25,6 +25,17 @@ describe('conversion domaine ↔ lignes', () => {
     expect(back.transactions[1]).not.toHaveProperty('assignedAccountId');
   });
 
+  it('spec 0031 : le marquage « hors budget » se convertit dans les deux sens (colonne off_budget)', () => {
+    const data = completeData();
+    data.transactions[0] = { ...data.transactions[0], offBudget: true };
+    const rows = toRows(data);
+    expect(rows.transactions[0].off_budget).toBe(true);
+    expect(rows.transactions[1].off_budget).toBeNull();
+    const back = fromRows(withUser(rows))!;
+    expect(back.transactions[0].offBudget).toBe(true);
+    expect(back.transactions[1]).not.toHaveProperty('offBudget');
+  });
+
   it('conserve firstMonth: null (CA8)', () => {
     expect(fromRows(withUser(toRows(emptyData())))?.firstMonth).toBeNull();
   });

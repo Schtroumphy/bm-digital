@@ -144,6 +144,7 @@ export function toRows(d: BudgetData): TableRows {
       source: orNull(t.source),
       pay_mode: orNull(t.payMode),
       assigned_account_id: orNull(t.assignedAccountId),
+      off_budget: orNull(t.offBudget),
       position,
     }),
   );
@@ -341,6 +342,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       source: orUndefined(r.source),
       payMode: orUndefined(r.pay_mode) as PayMode | undefined,
       assignedAccountId: orUndefined(r.assigned_account_id),
+      offBudget: r.off_budget ? true : undefined,
     }),
   );
 

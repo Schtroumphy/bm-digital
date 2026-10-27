@@ -1,4 +1,4 @@
-import { accountIdOf, isTransactionAssigned } from './bank';
+import { accountIdOf, isTransactionAssigned, isTransactionOffBudget } from './bank';
 import { bankDateOf } from './lineExpenses';
 import { round2 } from './format';
 import type { BudgetData, MonthKey, Transaction } from './types';
@@ -61,18 +61,26 @@ export interface AssignedByAccount extends AssignedTotals {
 }
 
 export interface AssignedSummary extends AssignedTotals {
+  /** Operations assigned to a savings account, split by account. */
   byAccount: AssignedByAccount[];
+  /** Operations marked « hors budget » with no account (spec 0031); null when there is none. */
+  offBudget: AssignedTotals | null;
 }
 
-/** Every operation of the month assigned to a savings account, with the split by account (the dashboard mention, spec 0028, RG25). */
+/**
+ * Every operation of the month taken out of the budget, assigned to a savings account or marked « hors budget » (the dashboard mention,
+ * spec 0028 RG25, spec 0031 RG5): the totals cover both, the split by account only the assigned ones.
+ */
 export function monthAssignedSummary(d: BudgetData, m: MonthKey): AssignedSummary {
-  const all = d.transactions.filter(t => t.month === m && isTransactionAssigned(t));
-  const ids = [...new Set(all.map(t => t.assignedAccountId!))];
+  const all = d.transactions.filter(t => t.month === m && isTransactionOffBudget(t));
+  const assigned = all.filter(isTransactionAssigned);
+  const plain = all.filter(t => !isTransactionAssigned(t));
+  const ids = [...new Set(assigned.map(t => t.assignedAccountId!))];
   const signed = (t: Transaction) => ({ amount: t.type === 'rev' ? t.amount : -t.amount });
   const byAccount = ids.map(id => ({
     accountId: id,
     accountName: d.accounts.find(a => a.id === id)?.name ?? '',
-    ...assignedTotals(all.filter(t => t.assignedAccountId === id).map(signed)),
+    ...assignedTotals(assigned.filter(t => t.assignedAccountId === id).map(signed)),
   }));
-  return { ...assignedTotals(all.map(signed)), byAccount };
+  return { ...assignedTotals(all.map(signed)), byAccount, offBudget: plain.length > 0 ? assignedTotals(plain.map(signed)) : null };
 }

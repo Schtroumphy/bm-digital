@@ -1,4 +1,4 @@
-import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, isTransactionAssigned, mainAccount, resolveBoxAccountId } from './bank';
+import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, isTransactionAssigned, isTransactionOffBudget, mainAccount, resolveBoxAccountId } from './bank';
 import { compareMonths, round2 } from './format';
 import { bankDateOf } from './lineExpenses';
 import { creditDateOf, debitDateOf, hasEnvelopesDebit, isEnvelopesPool, movementAccountName } from './internalTransfers';
@@ -123,7 +123,7 @@ export function attachedMovements(d: BudgetData, id: string, m: MonthKey): BankM
  * Movements of the estimated balance (RG8, RG9, RG10, RG12): the lines checked at their date and the fictive counterparts of checked
  * items, replaced by the transfers when the item has some; the `var`, envelope and savings expenses at their date; the transfers.
  * A month with no check holds no line movement. No adjustment, no entry of money, no expense on a fixed/credit line (those enter by their check),
- * except the ones assigned to a savings account, which leave the checked amount of their line and are read here (spec 0028, RG10).
+ * except the ones assigned to a savings account or marked off budget (spec 0031), which leave the checked amount of their line and are read here (spec 0028, RG10).
  */
 export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): BankMovement[] {
   const out: BankMovement[] = [];
@@ -155,7 +155,7 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
     if (isSavingsBlock(l.block) && isItemTransferred(d, m, { kind: 'line', key: l.key })) continue;
     // A line whose every entry is assigned to a savings account has no actual: it counts for nothing here (not its budget), the entries being read at their
     // date below, so the estimated balance stays what it was before the assignment (spec 0028, RG10, CA5). The checkbox of the Budget still shows the budget.
-    const onlyAssigned = l.actual === null && d.transactions.some(t => (t.type === 'fix' || t.type === 'rev') && t.month === m && t.target === l.key && isTransactionAssigned(t));
+    const onlyAssigned = l.actual === null && d.transactions.some(t => (t.type === 'fix' || t.type === 'rev') && t.month === m && t.target === l.key && isTransactionOffBudget(t));
     const counted = onlyAssigned ? { amount: 0, source: 'actual' as const } : countedAmount(l);
     const sign = l.block === 'rev' ? 1 : -1;
     if (mine(l.accountId)) out.push({ date: c.doneOn, label: `${l.name} (${l.block === 'rev' ? 'reçu' : 'pointé'}${counted.source === 'actual' ? ', réel' : ''})`, amount: sign * counted.amount, kind: 'check', lineKey: l.key, fictive: true });
@@ -188,8 +188,8 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
       // An entry assigned to a savings account leaves the counted amount of its checked line, so it is read here at its date: the account's estimated
       // balance stays what it was before the assignment, with no double count (spec 0028, RG10). A line not checked holds nothing, assigned or not.
       const date = bankDateOf(t);
-      if (isTransactionAssigned(t) && date.startsWith(m) && mine(t.accountId) && d.months[t.month]?.checks?.[t.target]) {
-        out.push({ date, label: `${t.label} (${t.type === 'rev' ? 'entrée' : 'dépense'}, affectée)`, amount: t.type === 'rev' ? t.amount : -t.amount, kind: 'expense' });
+      if (isTransactionOffBudget(t) && date.startsWith(m) && mine(t.accountId) && d.months[t.month]?.checks?.[t.target]) {
+        out.push({ date, label: `${t.label} (${t.type === 'rev' ? 'entrée' : 'dépense'}, ${isTransactionAssigned(t) ? 'affectée' : 'hors budget'})`, amount: t.type === 'rev' ? t.amount : -t.amount, kind: 'expense' });
       }
       continue;
     }

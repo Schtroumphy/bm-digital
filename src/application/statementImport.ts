@@ -88,6 +88,8 @@ export interface PreviewLine {
    * Not remembered in the import rules, and not part of the fingerprint, the rank nor the deduplication.
    */
   assignedAccountId?: string;
+  /** Same kinds of line: marked « hors budget » with no account (spec 0031). Exclusive with `assignedAccountId`. Absent = counted. */
+  offBudget?: boolean;
 }
 
 /** The two accounts a line of nature « virement » (debit `interne`/`retrait`, credit `recu`) moves money between; null when it is not one or has no target yet. */
@@ -240,8 +242,8 @@ export function lineBalanceWarning(d: BudgetData, l: PreviewLine): string | null
  */
 export function withValidAssignment(l: PreviewLine): PreviewLine {
   const carries = (l.nature === 'depense' || l.nature === 'externe' ? l.target?.kind === 'var' || l.target?.kind === 'line' : l.nature === 'revenu' && !!l.target);
-  if (l.assignedAccountId === undefined || carries) return l;
-  const { assignedAccountId: _a, ...rest } = l;
+  if ((l.assignedAccountId === undefined && l.offBudget === undefined) || carries) return l;
+  const { assignedAccountId: _a, offBudget: _o, ...rest } = l;
   return rest;
 }
 
@@ -373,7 +375,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     if (old && old.accountId === accountId && old.rank === rank) {
       // Only a line the user touched (or already linked/unlinked) is protected from the automatic pairing; an untouched one may now find its other half.
       if (old.link !== undefined || old.nature !== fresh.nature || old.checked !== fresh.checked || JSON.stringify(old.target) !== JSON.stringify(fresh.target)) carried.add(fresh.id);
-      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source, assignedAccountId: old.assignedAccountId });
+      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source, assignedAccountId: old.assignedAccountId, offBudget: old.offBudget });
     } else lines.push(fresh);
   });
   // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
@@ -700,7 +702,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
   );
   const chosenIds = new Set(chosen.map(l => l.id));
   const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, importedIds: [], failedIds: [] };
-  const assignment = (l: PreviewLine) => (l.assignedAccountId ? { assignedAccountId: l.assignedAccountId } : {});
+  const assignment = (l: PreviewLine) => (l.assignedAccountId ? { assignedAccountId: l.assignedAccountId } : l.offBudget ? { offBudget: true as const } : {});
   const traceOf = (l: PreviewLine): ImportTrace => ({ importAccountId: l.accountId!, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date });
 
   const imported: PreviewLine[] = [];

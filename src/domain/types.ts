@@ -147,6 +147,11 @@ export interface Transaction {
    * listed in the detail of that account, WITHOUT moving any money (its own account and its bank balances are untouched). Absent = counted in the budget.
    */
   assignedAccountId?: string;
+  /**
+   * « Hors budget » (spec 0031): a `var`, `fix` or `rev` operation that leaves the budget figures WITHOUT any savings account (money that is not the user's,
+   * e.g. a pooled gift). Same effect as an assignment on every figure and balance. Only ever `true`; absent = counted. Exclusive with `assignedAccountId`.
+   */
+  offBudget?: true;
   /** `rev` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
   source?: string;
 }
