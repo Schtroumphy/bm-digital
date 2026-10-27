@@ -78,6 +78,15 @@ export interface MonthData {
   checks?: Record<string, LineCheck>;
   /** Bank account id → statement of this month (one per account and month; spec 0009, RG62). */
   accountBalances?: Record<string, AccountBalanceEntry>;
+  /** Personal notes of the month, in creation order (spec 0027, RG12). Editable even on a locked or uninitialized month; never copied to another month. */
+  notes?: MonthNote[];
+}
+
+/** A note of the « Notes du mois » card of the dashboard (spec 0027). */
+export interface MonthNote {
+  id: string;
+  text: string;
+  done: boolean;
 }
 
 export interface Envelope {

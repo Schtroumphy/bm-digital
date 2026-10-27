@@ -452,6 +452,41 @@ export type Database = {
           },
         ]
       }
+      month_notes: {
+        Row: {
+          done: boolean
+          id: string
+          month: string
+          position: number
+          text: string
+          user_id: string
+        }
+        Insert: {
+          done?: boolean
+          id: string
+          month: string
+          position?: number
+          text: string
+          user_id?: string
+        }
+        Update: {
+          done?: boolean
+          id?: string
+          month?: string
+          position?: number
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "month_notes_user_id_month_fkey"
+            columns: ["user_id", "month"]
+            isOneToOne: false
+            referencedRelation: "months"
+            referencedColumns: ["user_id", "month"]
+          },
+        ]
+      }
       months: {
         Row: {
           closed: boolean | null

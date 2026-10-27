@@ -168,6 +168,15 @@ export class Ledger {
         const paid = line?.actual ?? 0;
         const out = sumTx(d, m, 'epa', a.key);
         const expected = round2(start + paid - out);
+        // A line with a dedicated bank account reads it, like the Accounts screen: opening, real money in and out, closing balance.
+        const bank = line?.linkedAccountId && !md!.lines.some(o => o.key !== a.key && o.linkedAccountId === line.linkedAccountId) ? this.bank.get(`${m}|${line.linkedAccountId}`) : undefined;
+        if (bank) {
+          const st = d.statements[m]?.[a.key];
+          const r = { start: bank.start, paid: bank.in, out: bank.out, expected: bank.balance, statement: st === undefined ? null : st, balance: st ?? bank.balance };
+          this.acc.set(`${m}|${a.key}`, r);
+          accBal[a.key] = r.balance;
+          continue;
+        }
         const st = d.statements[m]?.[a.key];
         const statement = st === undefined ? null : st;
         const r = { start, paid, out, expected, statement, balance: statement ?? expected };

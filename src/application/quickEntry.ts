@@ -34,3 +34,13 @@ export function addLineEntry(d: BudgetData, m: MonthKey, key: string, entry: Qui
   if (!line.linkedAccountId) return false;
   return addTransfer(d, { id: entry.id, month: m, day: entry.day, label, amount, fromAccountId: accountIdOf(d, line.accountId), toAccountId: line.linkedAccountId, target: { kind: 'line', key } });
 }
+
+/**
+ * « + » on an envelope of the dashboard (spec 0027, RG8): an expense of the envelope, on its own account, the same entry as the Saisie screen
+ * makes (`addTransaction`, type `env`). Refused (false) on a locked or uninitialized month, an unknown envelope, an amount that is not positive or a day outside the month.
+ */
+export function addEnvelopeEntry(d: BudgetData, m: MonthKey, envelopeId: string, entry: QuickEntry): boolean {
+  const envelope = d.envelopes.find(e => e.id === envelopeId);
+  if (!envelope || !d.months[m]?.initialized || !(entry.amount > 0) || !Number.isInteger(entry.day) || entry.day < 1 || entry.day > daysInMonth(m)) return false;
+  return addTransaction(d, { id: entry.id, month: m, day: entry.day, label: entry.label.trim() || envelope.name, amount: round2(entry.amount), type: 'env', target: envelopeId });
+}

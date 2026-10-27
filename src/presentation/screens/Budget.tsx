@@ -18,7 +18,7 @@ import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAs
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
-import { envelopeCash } from '../../domain/envelopeCash';
+import { envelopeCash, envelopeConsumption } from '../../domain/envelopeCash';
 import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
@@ -667,6 +667,20 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                   Espèces <b>{money(envelopeCash(data, e.id, month))}</b>
                 </div>
               )}
+              {(() => {
+                const c = envelopeConsumption(data, ledger, e.id, month);
+                if (!c) return null;
+                return (
+                  <div className="has-tip" data-tip={`Solde de départ ${money(c.start)} · dépensé ${money(c.spent)} · reste ${money(c.remaining)}`}>
+                    <div className="progress dash-bar" style={{ background: vio.soft }}>
+                      <div style={{ width: `${c.consumed}%`, background: c.remaining < 0 ? 'oklch(0.62 0.18 25)' : vio.base }} />
+                    </div>
+                    <div className="env-tile-alloc">
+                      dépensé <b>{money(c.spent)}</b> sur {money(c.start)}
+                    </div>
+                  </div>
+                );
+              })()}
               {canEdit && editing === `ea:${e.id}` ? (
                 <AllocEditor
                   value={alloc[e.id] ?? 0}
