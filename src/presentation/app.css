@@ -1029,4 +1029,21 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .chip.is-disabled { opacity: 0.5; cursor: default; }
 .assigned-row { color: rgba(32, 30, 29, 0.5); }
 .assigned-summary { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: rgba(32, 30, 29, 0.04); font-size: 12px; font-weight: 600; color: rgba(32, 30, 29, 0.6); }
+.savings-filter { display: flex; align-items: center; gap: 5px; font-size: 12px; color: rgba(32, 30, 29, 0.6); cursor: pointer; white-space: nowrap; }
+.savings-filter input { margin: 0; accent-color: var(--violet-ink); }
+.savings-list { display: flex; flex-direction: column; }
+.savings-row { display: flex; flex-direction: column; gap: 3px; padding: 9px 0; border-top: 1px solid var(--hairline); }
+.savings-row:first-child { border-top: 0; padding-top: 2px; }
+.savings-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.savings-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.savings-flows { display: flex; gap: 14px; padding-left: 18px; font-size: 12px; color: rgba(32, 30, 29, 0.55); }
+.savings-flows b { font-weight: 600; color: rgba(32, 30, 29, 0.8); font-variant-numeric: tabular-nums; }
+.savings-assigned { margin: 3px 0 0 18px; padding: 4px 8px; border-radius: 8px; background: rgba(32, 30, 29, 0.05); font-size: 11px; line-height: 1.35; color: rgba(32, 30, 29, 0.6); display: flex; flex-direction: column; }
+.savings-assigned span:first-child { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; color: rgba(32, 30, 29, 0.5); }
+.savings-sep { margin: 4px 0 0; padding: 12px 0 2px; border-top: 1px solid var(--hairline); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(32, 30, 29, 0.5); }
+.savings-sep + .savings-row { border-top: 0; padding-top: 6px; }
+.savings-total { margin-top: 6px; padding: 12px; border: 0; border-radius: 12px; background: var(--hairline); }
+.savings-total .savings-line { font-weight: 700; }
+.savings-total .savings-flows, .savings-total .savings-assigned { padding-left: 0; margin-left: 0; }
+.savings-total .savings-assigned { background: rgba(255, 255, 255, 0.6); }
 .assigned-hint { font-size: 11px; font-style: italic; }

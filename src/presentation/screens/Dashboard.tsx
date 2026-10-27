@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { addEnvelopeEntry, addLineEntry } from '../../application/quickEntry';
-import { dashboardView, type DashboardView, type DonutId, type DashboardWealth, type YearlyMonth } from '../../domain/dashboard';
+import { dashboardView, hasMovement, type DashboardView, type DonutId, type DashboardWealth, type SavingsAccountRow, type YearlyMonth } from '../../domain/dashboard';
 import { isoDate } from '../../domain/checkoff';
 import { MONTH_NAMES, money, monthLabel, parseMonth, percent } from '../../domain/format';
 import type { GoalView } from '../../domain/goals';
@@ -344,6 +344,81 @@ function WealthCard({ w, emergency }: { w: DashboardWealth | null; emergency: Go
   );
 }
 
+const changeColor = (n: number) => (n > 0 ? GOOD : n < 0 ? BAD : MUTED);
+
+/** Received / spent of a savings row, and what is assigned to it outside its balance. */
+function SavingsFlows({ received, spent, assigned }: { received: number; spent: number; assigned?: { received: number; spent: number } }) {
+  return (
+    <>
+      <div className="savings-flows">
+        <span>Reçu <b>{money(received)}</b></span>
+        <span>Dépensé <b>{money(spent)}</b></span>
+      </div>
+      {assigned && (
+        <div className="savings-assigned">
+          <span>Affecté hors solde</span>
+          <span>reçu {money(assigned.received)} · dépensé {money(assigned.spent)}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function SavingsRow({ r }: { r: SavingsAccountRow }) {
+  return (
+    <div className="savings-row">
+      <div className="savings-line">
+        <i className="dot is-10" style={{ background: tone(r.hue).base }} />
+        <span className="savings-name">{r.name}</span>
+        <b style={{ color: changeColor(r.change) }}>{signed(r.change)}</b>
+      </div>
+      <SavingsFlows received={r.received} spent={r.spent} assigned={r.assigned} />
+    </div>
+  );
+}
+
+/** « Épargne » (spec 0029): month movements of the savings and investment accounts, read only. */
+function SavingsCard({ v }: { v: DashboardView }) {
+  const s = v.savingsAccounts;
+  const [onlyMoved, setOnlyMoved] = useState(true);
+  if (v.initialized && !s) return null;
+  // Hidden accounts have no movement and nothing assigned, so the total is the same with or without them.
+  const shown = (s?.rows ?? []).filter(r => !onlyMoved || hasMovement(r));
+  const invest = shown.filter(r => r.kind === 'invest');
+  const savings = shown.filter(r => r.kind === 'epargne');
+  return (
+    <div className="panel dash-card">
+      <div className="dash-card-head">
+        <div className="dash-card-title">Épargne</div>
+        <div style={{ flex: 1 }} />
+        {s && (
+          <label className="savings-filter" title="Masquer les comptes sans mouvement ce mois-ci">
+            <input type="checkbox" checked={onlyMoved} onChange={e => setOnlyMoved(e.target.checked)} />
+            Avec évolution
+          </label>
+        )}
+      </div>
+      {s ? (
+        <div className="savings-list">
+          {shown.length === 0 && <div className="dash-empty">Aucun compte n’a évolué ce mois-ci</div>}
+          {savings.map(r => <SavingsRow key={r.id} r={r} />)}
+          {invest.length > 0 && <div className="savings-sep">Investissements</div>}
+          {invest.map(r => <SavingsRow key={r.id} r={r} />)}
+          <div className="savings-row savings-total">
+            <div className="savings-line">
+              <span className="savings-name has-tip" data-tip="Les virements entre ces comptes sont comptés des deux côtés">Total</span>
+              <b style={{ color: changeColor(s.total.change) }}>{signed(s.total.change)}</b>
+            </div>
+            <SavingsFlows received={s.total.received} spent={s.total.spent} assigned={s.total.assigned} />
+          </div>
+        </div>
+      ) : (
+        <div className="dash-empty">{DASH}</div>
+      )}
+    </div>
+  );
+}
+
 function GoalsCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarget) => void }) {
   const rows: { view: GoalView | null; name: (g: GoalView) => string; color: string }[] = [
     { view: v.emergency, name: () => 'Fond de secours', color: 'oklch(0.72 0.12 190)' },
@@ -414,6 +489,7 @@ export function DashboardScreen({ month, onOpen }: { month: MonthKey; onOpen: (t
           <TodoCard v={v} onOpen={onOpen} />
           <MonthNotes month={month} notes={v.notes} />
           <WealthCard w={v.wealth} emergency={v.emergency} />
+          <SavingsCard v={v} />
           <GoalsCard v={v} onOpen={onOpen} />
         </div>
       </div>

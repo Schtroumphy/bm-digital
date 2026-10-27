@@ -7,7 +7,7 @@ import { MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID, assignableAccounts, canAssignTo, defa
 import { assignedOperations, assignedTotals } from './assignedOperations';
 import { availableReal, blockTotals, budgetLines, monthSummary, variableRemaining } from './budget';
 import { attachedMovements, countedAmount, estimatedMovements, flowOf, realMovements } from './bankMovements';
-import { dashboardView } from './dashboard';
+import { dashboardView, hasMovement } from './dashboard';
 import { emptyData } from './empty';
 import { Ledger } from './ledger';
 import { lineEntriesNote, derivedActual } from './lineActuals';
@@ -251,6 +251,54 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
     expect(view.variables!.rows.find(r => r.key === 'imp')!.actual).toBe(5);
     expect(dashboardView(budget(), led(budget()), M, '2026-10-20').assigned).toBeNull();
     expect(dashboardView(d, led(d), '2026-12', '2026-10-20').assigned).toBeNull();
+  });
+
+  it('carte Épargne (0029) : l’affecté est une ligne à part, hors flux et solde du compte', () => {
+    const d = budget();
+    addTransaction(d, tx('v', 'var', 'imp', 100, { assignedAccountId: LDDS }));
+    addTransaction(d, tx('r', 'rev', 'rbt', 30, { assignedAccountId: LDDS }));
+    const view = dashboardView(d, led(d), M, '2026-10-20');
+    const ldds = view.savingsAccounts!.rows.find(r => r.id === LDDS)!;
+    expect(ldds.assigned).toEqual({ received: 30, spent: 100 });
+    expect(ldds).toMatchObject({ received: 0, spent: 0, change: 0 });
+    expect(view.savingsAccounts!.rows.find(r => r.id === INV)!.assigned).toBeUndefined();
+    expect(view.savingsAccounts!.total.assigned).toEqual({ received: 30, spent: 100 });
+    expect(dashboardView(budget(), led(budget()), M, '2026-10-20').savingsAccounts!.rows.find(r => r.id === LDDS)!.assigned).toBeUndefined();
+    expect(dashboardView(d, led(d), '2026-12', '2026-10-20').savingsAccounts).toBeNull();
+  });
+
+  it('carte Épargne (0029, RG4) : reçu, dépensé et évolution viennent des flux réels du compte (bankMonth)', () => {
+    const d = budget();
+    d.adjustments = [
+      { id: 'a1', accountId: LDDS, date: '2026-10-05', amount: 50, label: 'relevé', createdOn: '2026-10-05' },
+      { id: 'a2', accountId: LDDS, date: '2026-10-06', amount: -20, label: 'relevé', createdOn: '2026-10-06' },
+    ];
+    const row = dashboardView(d, led(d), M, '2026-10-20').savingsAccounts!.rows.find(r => r.id === LDDS)!;
+    const b = led(d).bankMonth(LDDS, M)!;
+    expect([row.received, row.spent, row.change]).toEqual([b.in, b.out || 0, Math.round((b.balance - b.start) * 100) / 100]);
+    expect(row.change).toBe(row.received - row.spent);
+    expect(row.change).toBe(30);
+  });
+
+  it('carte Épargne (0029, RG3) : un compte archivé n’apparaît que s’il a un mouvement ou une affectée', () => {
+    const d = budget();
+    d.accounts.find(a => a.id === LDDS)!.archived = true;
+    const ids = () => dashboardView(d, led(d), M, '2026-10-20').savingsAccounts?.rows.map(r => r.id) ?? [];
+    expect(ids()).toEqual([INV]);
+    d.adjustments = [{ id: 'a1', accountId: LDDS, date: '2026-10-05', amount: 50, label: 'relevé', createdOn: '2026-10-05' }];
+    expect(ids()).toContain(LDDS);
+    d.adjustments = [];
+    d.transactions.push(tx('v', 'var', 'imp', 10, { assignedAccountId: LDDS })); // assigned before the archiving (addTransaction would now refuse)
+    expect(ids()).toContain(LDDS);
+  });
+
+  it('carte Épargne (0029) : le filtre « Avec évolution » garde les comptes qui ont bougé ou une affectée', () => {
+    const d = budget();
+    addTransaction(d, tx('v', 'var', 'imp', 10, { assignedAccountId: LDDS }));
+    const rows = dashboardView(d, led(d), M, '2026-10-20').savingsAccounts!.rows;
+    expect(rows.filter(hasMovement).map(r => r.id)).toEqual([LDDS]);
+    expect(rows.find(r => r.id === INV)).toBeDefined();
+    expect(hasMovement(rows.find(r => r.id === INV)!)).toBe(false);
   });
 
   it('CA16 : sans affectation rien ne change (opération non affectée = comportement d’avant)', () => {
