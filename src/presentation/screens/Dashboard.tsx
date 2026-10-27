@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { addEnvelopeEntry, addLineEntry } from '../../application/quickEntry';
-import { dashboardView, hasMovement, type DashboardView, type DonutId, type DashboardWealth, type SavingsAccountRow, type YearlyMonth } from '../../domain/dashboard';
+import { dashboardView, hasMovement, type DashboardView, type DonutId, type DashboardWealth, type DashboardWealthEvolution, type SavingsAccountRow, type YearlyMonth } from '../../domain/dashboard';
 import { isoDate } from '../../domain/checkoff';
 import { MONTH_NAMES, money, monthLabel, parseMonth, percent } from '../../domain/format';
 import type { GoalView } from '../../domain/goals';
@@ -233,14 +233,14 @@ function YearlyCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarg
       <div className="dash-card-head">
         <div className="dash-card-title">Dépenses prévues sur l’année</div>
         <div style={{ flex: 1 }} />
-        {y && <span className="dash-caption">Total {money(y.total)} · moyenne {money(y.average)} / mois</span>}
         <DetailLink to="prevAnn" onOpen={onOpen} />
       </div>
+      {y && <span className="dash-caption">Total {money(y.total)} · moyenne {money(y.average)} / mois</span>}
       {y ? (
         <div className="bars">
           {y.months.map(m => (
             <div key={m.month} className={`bar has-tip${m.selected ? ' is-selected' : ''}`} data-tip={`${MONTH_NAMES[m.month]} · ${money(m.amount)}${y.total > 0 ? ` (${percent((m.amount / y.total) * 100)} de l’année)` : ''}`}>
-              <span className="bar-amount">{money(m.amount)}</span>
+              <span className="bar-amount">{m.selected ? money(m.amount) : ''}</span>
               <div className="bar-col">
                 <div className="bar-fill" style={{ height: `${biggest > 0 ? Math.max(4, (m.amount / biggest) * 100) : 4}%` }} />
               </div>
@@ -248,6 +248,55 @@ function YearlyCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarg
             </div>
           ))}
         </div>
+      ) : (
+        <div className="dash-empty">{DASH}</div>
+      )}
+    </div>
+  );
+}
+
+function WealthEvolutionCard({ e, onOpen }: { e: DashboardWealthEvolution | null; onOpen: (t: DashboardTarget) => void }) {
+  const biggest = Math.max(0, ...(e?.series.map(p => p.total) ?? []));
+  const versus = e?.previous ? ` vs ${MONTH_NAMES[parseMonth(e.previous).month]}` : '';
+  const row = (label: string, hue: string, balance: number, delta: number | undefined) => (
+    <div className="wealth-row">
+      <i style={{ background: hue }} />
+      <span>{label}</span>
+      <b>{money(balance)}</b>
+      <b className="dash-delta" style={{ color: delta === undefined ? undefined : changeColor(delta) }}>{delta === undefined ? DASH : signed(delta)}</b>
+    </div>
+  );
+  return (
+    <div className="panel dash-card dash-evolution">
+      <div className="dash-card-head">
+        <div className="dash-card-title">Évolution du patrimoine</div>
+        <div style={{ flex: 1 }} />
+        <DetailLink to="goals" onOpen={onOpen} />
+      </div>
+      {e ? (
+        <>
+          <div className="dash-evolution-main">
+            <b className="dash-evolution-delta" style={{ color: e.change ? changeColor(e.change.total) : undefined }}>{e.change ? signed(e.change.total) : DASH}</b>
+            <span className="dash-caption">
+              {e.pct !== null ? `${e.pct > 0 ? '+' : ''}${percent(e.pct)}` : DASH}
+              {versus}
+            </span>
+          </div>
+          <div className="dash-wealth">
+            {row('Épargnes', 'oklch(0.7 0.12 300)', e.savings, e.change?.savings)}
+            {row('Investissements', 'oklch(0.7 0.13 250)', e.invest, e.change?.invest)}
+          </div>
+          <div className="dash-spark" aria-label="Patrimoine des 6 derniers mois">
+            {e.series.map(p => (
+              <div key={p.month} className={`bar has-tip${p.month === e.month ? ' is-selected' : ''}`} data-tip={`${MONTH_NAMES[parseMonth(p.month).month]} · ${money(p.total)}`}>
+                <div className="bar-col">
+                  <div className="bar-fill" style={{ height: `${biggest > 0 ? Math.max(4, (p.total / biggest) * 100) : 4}%` }} />
+                </div>
+                <span className="bar-month">{MONTH_TICKS[parseMonth(p.month).month]}</span>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="dash-empty">{DASH}</div>
       )}
@@ -483,7 +532,10 @@ export function DashboardScreen({ month, onOpen }: { month: MonthKey; onOpen: (t
             <VariablesCard v={v} month={month} canAdd={canAdd} onOpen={onOpen} />
             <EnvelopesCard v={v} month={month} canAdd={canAdd} onOpen={onOpen} />
           </div>
-          <YearlyCard v={v} onOpen={onOpen} />
+          <div className="dash-bottom">
+            <YearlyCard v={v} onOpen={onOpen} />
+            <WealthEvolutionCard e={v.wealthEvolution} onOpen={onOpen} />
+          </div>
         </div>
         <div className="dash-right">
           <TodoCard v={v} onOpen={onOpen} />
