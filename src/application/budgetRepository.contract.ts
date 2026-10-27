@@ -140,6 +140,20 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(await open().load()).toEqual(cleared);
     });
 
+    it('spec 0031 : le marquage « hors budget » d’une opération est conservé, puis retiré', async () => {
+      const repo = open();
+      const data = completeData();
+      data.transactions.find(t => t.id === 't-imp')!.offBudget = true;
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.transactions.find(t => t.id === 't-imp')!.offBudget).toBe(true);
+      expect(loaded.transactions.filter(t => t.id !== 't-imp').every(t => !('offBudget' in t))).toBe(true);
+      const cleared = structuredClone(loaded);
+      delete cleared.transactions.find(t => t.id === 't-imp')!.offBudget;
+      await repo.save(cleared);
+      expect(await open().load()).toEqual(cleared);
+    });
+
     it('spec 0016 : un virement lié (deux traces), un crédit seul, un débit « vers enveloppes » et la source d’un revenu sont conservés', async () => {
       const repo = open();
       const data = completeData();

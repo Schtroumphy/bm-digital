@@ -72,11 +72,17 @@ export function envelopeAccountAt(d: BudgetData, e: Pick<Envelope, 'accountId'>,
 /** Operations of an unknown account count in the budget (nothing to exclude them with). */
 export const isAccountInBudget = (d: BudgetData, accountId?: string): boolean => bankAccount(d, accountId)?.inBudget ?? true;
 
-/** True when the operation is « affectée » to a savings account (spec 0028, RG1): it leaves the budget figures, not the bank balances. */
+/** True when the operation is « affectée » to a savings account (spec 0028, RG1). */
 export const isTransactionAssigned = (t: Pick<Transaction, 'assignedAccountId'>): boolean => t.assignedAccountId !== undefined;
 
-/** A transaction counts in the budget figures unless its account is out of the budget (RG17) or it is assigned to a savings account (spec 0028, RG5). */
-export const isTransactionInBudget = (d: BudgetData, t: Transaction): boolean => !isTransactionAssigned(t) && isAccountInBudget(d, t.accountId);
+/**
+ * True when the operation was taken out of the budget figures by hand (spec 0028 and 0031): assigned to a savings account, or marked « hors budget ».
+ * It leaves the budget figures, never the bank balances.
+ */
+export const isTransactionOffBudget = (t: Pick<Transaction, 'assignedAccountId' | 'offBudget'>): boolean => t.assignedAccountId !== undefined || t.offBudget === true;
+
+/** A transaction counts in the budget figures unless its account is out of the budget (RG17) or it was taken out by hand (spec 0028, RG5; spec 0031, RG2). */
+export const isTransactionInBudget = (d: BudgetData, t: Transaction): boolean => !isTransactionOffBudget(t) && isAccountInBudget(d, t.accountId);
 
 /** Types of operation that can be assigned to a savings account (spec 0028, RG1). */
 export const isAssignableType = (type: Transaction['type']): boolean => type === 'var' || type === 'fix' || type === 'rev';

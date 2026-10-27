@@ -264,11 +264,13 @@ export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
  * An envelope expense may be paid in cash (`payMode: 'especes'`, spec 0026, RG5); it is refused when it exceeds the cash balance of the envelope (RG7), whatever its virtual balance.
  * The mode only exists on an envelope expense: it is dropped elsewhere, and `virtuel` is written as no mode at all.
  * An operation may be assigned to a savings account (`assignedAccountId`, spec 0028): only `var`, `fix` and `rev`, an active savings account other than the
- * operation's own (RG1, RG2, RG20). `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
+ * operation's own (RG1, RG2, RG20). It may instead be marked « hors budget » (`offBudget`, spec 0031): same types, no account, and never together with an assignment
+ * (RG3); `env` and `epa` are refused. `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
  */
 export function addTransaction(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
   if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
+  if (input.offBudget !== undefined && (!isAssignableType(input.type) || input.assignedAccountId !== undefined)) return false;
   if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input, keepAssignment);
   const given = d.accounts.find(a => a.id === input.accountId);
   if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
@@ -328,6 +330,8 @@ export interface TransactionPatch {
   target: string;
   /** Savings account the operation is assigned to (spec 0028, RG18): undefined = keep the current one, null = remove it. */
   assignedAccountId?: string | null;
+  /** Marked « hors budget » (spec 0031): undefined = keep the current marking. Dropped when the operation is assigned to an account. */
+  offBudget?: boolean;
 }
 
 /**
@@ -342,11 +346,12 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   if (!old || isMonthLocked(d, old.month) || !label || !(patch.amount > 0) || !valid) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
-  const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, ...kept } = old;
+  const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, offBudget: _o, ...kept } = old;
   const assigned = patch.assignedAccountId === undefined ? old.assignedAccountId : (patch.assignedAccountId ?? undefined);
+  const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;
@@ -393,11 +398,11 @@ export function monthCsv(lines: Line[], blockTitles: Record<BlockKey, string>, i
 }
 
 /** One exported operation (`amount` signed: + credit, − debit): every field already resolved to its display text. */
-export interface TransactionCsvRow { date: string; label: string; detail: string; type: string; imputation: string; account: string; assignedTo: string; amount: number }
+export interface TransactionCsvRow { date: string; label: string; detail: string; type: string; imputation: string; account: string; assignedTo: string; offBudget: boolean; amount: number }
 
 /** CSV of the selected expenses and entries, in the same French spreadsheet dialect as `monthCsv`. */
 export function transactionsCsv(rows: TransactionCsvRow[]): string {
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const body = rows.map(r => [r.date, q(r.label), q(r.detail), q(r.type), q(r.imputation), q(r.account), q(r.assignedTo), `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
-  return '\uFEFF' + ['Date;Libellé;Détail;Nature;Imputation;Compte;Affectée à;Montant', ...body].join('\r\n');
+  const body = rows.map(r => [r.date, q(r.label), q(r.detail), q(r.type), q(r.imputation), q(r.account), q(r.assignedTo), r.offBudget ? 'oui' : 'non', `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
+  return '\uFEFF' + ['Date;Libellé;Détail;Nature;Imputation;Compte;Affectée à;Hors budget;Montant', ...body].join('\r\n');
 }

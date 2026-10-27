@@ -92,14 +92,15 @@ function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
   );
 }
 
-/** Mention under the KPI band (spec 0028, RG25): operations assigned to a savings account do not count in the figures above. */
+/** Mention under the KPI band (spec 0028 RG25, spec 0031 RG5): operations assigned to a savings account or marked « hors budget » do not count in the figures above. */
 function AssignedNote({ v }: { v: DashboardView }) {
   const a = v.assigned;
   if (!a) return null;
-  const tip = a.byAccount.map(x => `${x.accountName} : ${x.count} ${x.count > 1 ? 'opérations' : 'opération'} (dépenses ${money(x.expenses)}, entrées ${money(x.entries)})`).join('\n');
+  const line = (name: string, x: { count: number; expenses: number; entries: number }) => `${name} : ${x.count} ${x.count > 1 ? 'opérations' : 'opération'} (dépenses ${money(x.expenses)}, entrées ${money(x.entries)})`;
+  const tip = [...(a.offBudget ? [line('Hors budget', a.offBudget)] : []), ...a.byAccount.map(x => line(x.accountName, x))].join('\n');
   return (
     <div className="dash-assigned has-tip" data-tip={tip}>
-      {a.count} {a.count > 1 ? 'opérations' : 'opération'} ({money(a.expenses)} de dépenses, {money(a.entries)} d’entrées) {a.count > 1 ? 'sont affectées' : 'est affectée'} à un compte d’épargne et {a.count > 1 ? 'ne comptent' : 'ne compte'} pas dans ces chiffres
+      {a.count} {a.count > 1 ? 'opérations' : 'opération'} ({money(a.expenses)} de dépenses, {money(a.entries)} d’entrées) {a.count > 1 ? 'sont hors budget ou affectées' : 'est hors budget ou affectée'} à un compte d’épargne et {a.count > 1 ? 'ne comptent' : 'ne compte'} pas dans ces chiffres
     </div>
   );
 }
