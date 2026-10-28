@@ -316,6 +316,36 @@ export interface Settings {
   emergencyDue?: string;
   /** Due date of the « Investir » goal, `YYYY-MM-DD`; absent = to be defined (spec 0025). */
   investDue?: string;
+  /** Spec 0032, RG15: the three goals above have been turned into `BudgetData.goals`. The fields above are never read again. */
+  goalsMigrated?: true;
+}
+
+/** The four kinds of annual goal (spec 0032): amount on accounts, savings rate, spending ceiling, amount saved during the year. */
+export type GoalKind = 'amount' | 'rate' | 'cap' | 'saved';
+
+/** What a spending ceiling watches: a whole block of expenses, one section of a block, or one line (spec 0032, RG4). */
+export type GoalScope =
+  | { kind: 'block'; block: 'cre' | 'fix' | 'var' }
+  | { kind: 'section'; block: 'cre' | 'fix' | 'var'; section: string }
+  | { kind: 'line'; key: string };
+
+/** An annual goal (spec 0032, RG1). The kind and the scope of a ceiling never change after creation. */
+export interface Goal {
+  id: string;
+  /** Calendar year, January to December. */
+  year: number;
+  kind: GoalKind;
+  name: string;
+  /** Always > 0; a percentage (≤ 100) for a savings rate. */
+  target: number;
+  /** `amount` goals only: due date `YYYY-MM-DD`, absent = to be defined. */
+  due?: string;
+  /** `amount` and `saved` goals: keys of the `epa` / `inv` lines taken into account. */
+  accounts?: string[];
+  /** `cap` goals only. */
+  scope?: GoalScope;
+  /** Creation order; goals of a year are shown by increasing position. */
+  position: number;
 }
 
 export interface BudgetData {
@@ -343,6 +373,8 @@ export interface BudgetData {
   importAccountLinks?: ImportAccountLink[];
   /** Corrections of bank accounts (spec 0009). Absent = none. */
   adjustments?: Adjustment[];
+  /** Annual goals (spec 0032). Absent = none (or data saved before the goals existed, see `Settings.goalsMigrated`). */
+  goals?: Goal[];
   planned: PlannedItem[];
   closes: Record<string, YearClose>;
   settings: Settings;

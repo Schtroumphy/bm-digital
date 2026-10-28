@@ -4,6 +4,8 @@ import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
+import { goalHue, goalSummaryText } from '../components/goalStyle';
+import { currentYear, firstGoalOfKind, goalView, summaryGoals } from '../../domain/goals';
 import { Icon, type IconName } from '../components/Icon';
 import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
 import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
@@ -149,14 +151,16 @@ export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKe
   );
 }
 
-export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: MonthKey; closeAttempt: boolean; onDismissClose: () => void }) {
+export function BudgetScreen({ month, closeAttempt, onDismissClose, onOpenGoals }: { month: MonthKey; closeAttempt: boolean; onDismissClose: () => void; onOpenGoals: () => void }) {
   const { data, ledger, update } = useStore();
   const uninit = !data.months[month]?.initialized;
   const locked = isMonthLocked(data, month);
   const today = isoDate();
   const s = monthSummary(data, ledger, month);
-  const st = data.settings;
-  const emergencyPct = st.emergencyTarget ? (s.emergency / st.emergencyTarget) * 100 : 0;
+  // « Fond de secours »: the first `amount` goal of the current year (spec 0032, Q2); nothing to show without one.
+  const emergencyGoal = firstGoalOfKind(data, 'amount');
+  const emergency = emergencyGoal ? goalView(data, ledger, emergencyGoal) : null;
+  const emergencyPct = emergency?.pct ?? 0;
   // Why « Clôturer le mois » was refused, recomputed live: it disappears once the month can be closed (RG28).
   const closeTexts = closeAttempt ? closeBlockers(data, month).map(closeBlockerText).filter((t): t is string => t !== null) : [];
   return (
@@ -222,11 +226,17 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
           <Kpi label="Taux d’épargne" hue={HUE.obj} value={percent(s.savingsRate)} sub={'Brut : ' + percent(s.grossSavingsRate)} />
           <div className="panel kpi emergency">
             <div className="emergency-head">
-              <span className="kpi-label">Fond de secours</span>
-              <span className="emergency-pct">{percent(emergencyPct)}</span>
+              <span className="kpi-label">{emergency ? emergency.name : 'Fond de secours'}</span>
+              <span className="emergency-pct">{emergency ? percent(emergencyPct) : '—'}</span>
             </div>
             <div className="emergency-value">
-              {money(s.emergency)} <span>/ {money(st.emergencyTarget)}</span>
+              {emergency ? (
+                <>
+                  {money(emergency.current)} <span>/ {money(emergency.target)}</span>
+                </>
+              ) : (
+                '—'
+              )}
             </div>
             <div className="progress is-obj">
               <div style={{ width: `${Math.min(100, emergencyPct)}%` }} />
@@ -238,7 +248,7 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose }: { month: M
           <div className="budget-col">
             <BlockCard block="rev" month={month} locked={locked || uninit} today={today} />
             <BlockCard block="cre" month={month} locked={locked || uninit} today={today} />
-            <GoalsCard month={month} />
+            <GoalsCard onOpenGoals={onOpenGoals} />
           </div>
           <div className="budget-col">
             <BlockCard block="fix" month={month} locked={locked || uninit} today={today} />
@@ -506,16 +516,11 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
   );
 }
 
-function GoalsCard({ month }: { month: MonthKey }) {
+/** « Objectifs annuels » (spec 0032, RG16): the first 3 goals of the current year, by creation order, with the calculation of the Objectifs screen. */
+function GoalsCard({ onOpenGoals }: { onOpenGoals: () => void }) {
   const { data, ledger } = useStore();
-  const s = monthSummary(data, ledger, month);
-  const st = data.settings;
-  const status = (pct: number) => (pct >= 100 ? 'Atteint' : pct >= 75 ? 'En bonne voie' : 'En progression');
-  const goals = [
-    { name: 'Fond de secours', value: s.emergency, target: st.emergencyTarget, text: `${money(s.emergency)} / ${money(st.emergencyTarget)}`, hue: HUE.obj },
-    { name: `Investir ${st.investTarget / 1000}K`, value: s.investTotal, target: st.investTarget, text: `${money(s.investTotal)} / ${money(st.investTarget)}`, hue: HUE.rev },
-    { name: `Taux d’épargne > ${st.savingsRateTarget} %`, value: s.savingsRate, target: st.savingsRateTarget, text: `${percent(s.savingsRate)} / ${st.savingsRateTarget} %`, hue: 85, rate: true },
-  ];
+  const year = currentYear();
+  const views = summaryGoals(data, ledger).map(view => ({ view, hue: goalHue(data, view.goal) }));
   return (
     <div className="panel block" style={toneVars(HUE.obj)}>
       <div className="block-head">
@@ -523,26 +528,30 @@ function GoalsCard({ month }: { month: MonthKey }) {
           <Icon name="goals" size={14} />
         </div>
         <div className="block-title">Objectifs annuels</div>
+        <div style={{ flex: 1 }} />
+        <button type="button" className="btn-quiet is-discreet" onClick={onOpenGoals}>
+          Voir les objectifs
+        </button>
       </div>
       <div className="goals">
-        {goals.map(g => {
-          const pct = g.target ? Math.min(100, (g.value / g.target) * 100) : 0;
-          const label = g.rate ? (g.value >= g.target ? 'Atteint' : 'À rattraper') : status(pct);
-          const t = tone(g.hue);
+        {views.length === 0 && <div className="empty">Aucun objectif {year}</div>}
+        {views.map(({ view, hue }) => {
+          const t = tone(hue);
+          const bad = view.status === 'Dépassé';
           return (
-            <div key={g.name} className="goal">
+            <div key={view.id} className="goal">
               <div className="goal-head">
-                <span className="goal-name">{g.name}</span>
-                <span className="pill" style={{ background: t.soft, color: t.ink }}>
-                  {label}
+                <span className="goal-name">{view.name}</span>
+                <span className="pill" style={{ background: bad ? tone(25).soft : t.soft, color: bad ? tone(25).ink : t.ink }}>
+                  {view.status}
                 </span>
               </div>
               <div className="goal-values">
-                <span>{g.text}</span>
-                <b>{percent(pct)}</b>
+                <span>{view.defined ? goalSummaryText(view) : '—'}</span>
+                <b>{view.defined ? percent(view.pct) : 'À définir'}</b>
               </div>
               <div className="progress is-obj">
-                <div style={{ width: `${pct}%`, background: g.rate ? 'oklch(0.82 0.13 90)' : undefined }} />
+                <div style={{ width: `${view.pct}%`, background: bad ? BAD : view.kind === 'rate' ? 'oklch(0.82 0.13 90)' : undefined }} />
               </div>
             </div>
           );

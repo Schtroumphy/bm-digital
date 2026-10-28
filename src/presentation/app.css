@@ -1050,3 +1050,18 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .savings-total .savings-flows, .savings-total .savings-assigned { padding-left: 0; margin-left: 0; }
 .savings-total .savings-assigned { background: rgba(255, 255, 255, 0.6); }
 .assigned-hint { font-size: 11px; font-style: italic; }
+
+/* objectifs par année (spec 0032) */
+.goals-bar { display: flex; align-items: center; gap: 12px; }
+.goals-empty { padding: 40px 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.goals-empty-title { font-size: 16px; font-weight: 700; }
+.goals-empty-sub { color: rgba(32, 30, 29, 0.6); font-size: 13px; }
+.goal-card-delete { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 10px; border: 0; background: transparent; color: rgba(32, 30, 29, 0.55); cursor: pointer; }
+.goal-card-delete:hover { background: #fff; color: oklch(0.5 0.18 25); }
+.goal-card-warn { color: oklch(0.54 0.18 25); }
+.goal-card-name.is-name, .goal-field.is-name { min-width: 160px; }
+.goal-chip:disabled { cursor: default; }
+.goal-form { gap: 16px; padding-top: 18px; padding-bottom: 24px; }
+.goal-form .goal-card-error { max-width: none; margin-top: 4px; }
+.goal-select { margin-top: 8px; }
+.goal-form-actions { display: flex; justify-content: flex-end; gap: 10px; }

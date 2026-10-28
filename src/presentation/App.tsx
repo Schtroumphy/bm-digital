@@ -218,7 +218,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             }}
           />
         )}
-        {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} />}
+        {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} onOpenGoals={() => go('goals')} />}
         {screen === 'dep' && <ExpensesScreen initialTab={expensesTab} month={month} statementSource={statementSource} fundEnvelope={fundEnvelope} onFundUsed={() => setFundEnvelope(null)} />}
         {screen === 'env' && <EnvelopesScreen month={month} onFundCash={id => { setFundEnvelope(id); go('dep'); }} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}

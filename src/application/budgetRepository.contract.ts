@@ -20,6 +20,15 @@ export function completeData(): BudgetData {
   d.months['2026-11'].closed = true;
   // Spec 0025 : lignes d'« Investir » choisies et échéances des objectifs.
   d.settings = { ...d.settings, investAccounts: ['l-ep'], emergencyDue: '2027-12-31', investDue: '2028-06-30' };
+  // Spec 0032 : un objectif de chaque type, le marqueur de migration posé.
+  d.settings.goalsMigrated = true;
+  d.goals = [
+    { id: 'g1', year: 2026, kind: 'amount', name: 'Fonds de secours', target: 22950.5, accounts: ['e-la', 'e-ld'], due: '2027-12-31', position: 0 },
+    { id: 'g2', year: 2026, kind: 'rate', name: 'Taux d’épargne', target: 60, position: 1 },
+    { id: 'g3', year: 2027, kind: 'cap', name: 'Restaurants', target: 1200, scope: { kind: 'line', key: 'resto' }, position: 2 },
+    { id: 'g4', year: 2027, kind: 'cap', name: 'Sorties', target: 900, scope: { kind: 'section', block: 'var', section: 'Sorties' }, position: 3 },
+    { id: 'g5', year: 2027, kind: 'saved', name: 'Épargné 2027', target: 8000, accounts: ['l-ep'], position: 4 },
+  ];
   const dec = d.months['2026-12'];
   dec.lines[0] = { ...dec.lines[0], accountId: 'acc-sav', payMode: 'especes', linkedAccountId: 'acc-inv', dueDay: 5, execMode: 'prelevement' };
   d.template.lines[0] = { ...d.template.lines[0], accountId: 'acc-sav', payMode: 'virtuel', linkedAccountId: 'acc-inv', dueDay: 28, execMode: 'informatif' };
@@ -204,6 +213,32 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(reloaded.settings).not.toHaveProperty('emergencyDue');
       expect(reloaded.settings).not.toHaveProperty('investDue');
       expect(reloaded).toEqual(old);
+    });
+
+    it('spec 0032 : les objectifs sont restitués à l’identique et dans l’ordre ; absents, aucun plantage', async () => {
+      const repo = open();
+      const data = completeData();
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.goals).toEqual(data.goals);
+      expect(loaded.settings.goalsMigrated).toBe(true);
+      const old = structuredClone(data);
+      delete old.goals;
+      delete old.settings.goalsMigrated;
+      await repo.save(old);
+      const reloaded = (await repo.load())!;
+      expect(reloaded).not.toHaveProperty('goals');
+      expect(reloaded.settings).not.toHaveProperty('goalsMigrated');
+      expect(reloaded).toEqual(old);
+    });
+
+    it('spec 0032 : supprimer un objectif le supprime aussi de la base', async () => {
+      const repo = open();
+      const data = completeData();
+      await repo.save(data);
+      data.goals = data.goals!.filter(g => g.id !== 'g3');
+      await repo.save(data);
+      expect((await repo.load())!.goals!.map(g => g.id)).toEqual(['g1', 'g2', 'g4', 'g5']);
     });
 
     it('des sauvegardes rapprochées s’appliquent dans l’ordre : la dernière gagne', async () => {

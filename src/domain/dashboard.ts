@@ -3,7 +3,7 @@ import { assignedOperations, assignedTotals, monthAssignedSummary, type Assigned
 import { isLineInBudget, kindOf } from './bank';
 import { envelopeConsumption } from './envelopeCash';
 import { effectiveDueDay, envelopeCheck, isEnvelopePointable, isLate, lineCheck, lineCounted } from './checkoff';
-import { goalView, referenceMonth, type GoalView } from './goals';
+import { currentYear, firstGoalOfKind, goalView, referenceMonth, summaryGoals, type GoalView } from './goals';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, monthAlloc, monthLines, type Ledger } from './ledger';
 import type { BudgetData, MonthKey, MonthNote } from './types';
@@ -25,7 +25,8 @@ export interface DashboardKpis {
   variableRemaining: number;
   /** Real savings rate, in %. */
   savingsRate: number;
-  savingsRateTarget: number;
+  /** Target of the first savings rate goal of the current year (spec 0032); null when there is none. */
+  savingsRateTarget: number | null;
   grossSavings: number;
   realSavings: number;
   /** Real minus gross savings. */
@@ -186,9 +187,11 @@ export interface DashboardView {
   wealth: DashboardWealth | null;
   /** Same reference month as `wealth`. */
   wealthEvolution: DashboardWealthEvolution | null;
+  /** First `amount` goal of the current year (the emergency fund once migrated), spec 0032, Q2. Null when there is none. */
   emergency: GoalView | null;
-  invest: GoalView | null;
-  savings: GoalView | null;
+  /** The first 3 goals of the current year, by creation order, and that year (spec 0032, RG16). */
+  goals: GoalView[];
+  goalsYear: number;
   /** « Épargne » card (spec 0029): month movements of the savings and investment accounts, outside the figures above; null when the month is not initialized or there is no account to show. */
   savingsAccounts: DashboardSavingsAccounts | null;
   /** Mention under the KPI band (spec 0028, RG25): operations assigned to a savings account, outside the figures above; null when the month is not initialized or has none. */
@@ -271,7 +274,13 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
   const ref = referenceMonth(d, todayMonth);
   const wealth = ref === null ? null : wealthAt(d, ledger, ref);
   const wealthEvolution = ref === null ? null : wealthEvolutionAt(d, ledger, ref);
-  const goals = { emergency: goalView(d, ledger, 'emergency', todayMonth), invest: goalView(d, ledger, 'invest', todayMonth), savings: goalView(d, ledger, 'savings', todayMonth) };
+  const year0 = currentYear(todayMonth);
+  const firstAmount = firstGoalOfKind(d, 'amount', todayMonth);
+  const goals = {
+    emergency: firstAmount ? goalView(d, ledger, firstAmount, todayMonth) : null,
+    goals: summaryGoals(d, ledger, todayMonth),
+    goalsYear: year0,
+  };
   if (!initialized) return { month, initialized, kpis: null, donut: null, variables: null, envelopes: null, yearly: null, todo: null, notes: notesView, wealth, wealthEvolution, ...goals, savingsAccounts: null, assigned: null };
 
   const s = monthSummary(d, ledger, month);
@@ -284,7 +293,7 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
     expenses: s.expenses,
     variableRemaining: variableRemaining(d, month),
     savingsRate: s.savingsRate,
-    savingsRateTarget: d.settings.savingsRateTarget,
+    savingsRateTarget: firstGoalOfKind(d, 'rate', todayMonth)?.target ?? null,
     grossSavings: s.grossSavings,
     realSavings: s.realSavings,
     savingsVsGross: round2(s.realSavings - s.grossSavings),

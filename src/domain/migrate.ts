@@ -1,7 +1,8 @@
 import { defaultBankAccounts, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
-import { currentMonthKey, round2 } from './format';
+import { accounts } from './ledger';
+import { currentMonthKey, parseMonth, round2 } from './format';
 import { hasStaleActuals, manualActualCount, syncLineActuals } from './lineActuals';
-import type { BudgetData, TemplateLine, Transaction, Transfer } from './types';
+import type { BudgetData, Goal, MonthKey, TemplateLine, Transaction, Transfer } from './types';
 
 /** Shapes of the data saved before bank accounts existed. */
 type LegacyTransaction = Omit<Transaction, 'accountId'> & { source?: 'vir' | 'esp' };
@@ -80,4 +81,30 @@ export function migrateEnvelopeOpeningCash(d: BudgetData): BudgetData {
     const { cash, ...rest } = e as typeof e & { cash?: number };
     return { ...rest, openingCash: Math.max(0, round2(e.openingCash ?? cash ?? 0)) };
   }) };
+}
+
+/** Ids of the goals created from the three old settings (spec 0032, RG15): fixed, so that migrating twice can never duplicate them. */
+export const MIGRATED_GOAL_IDS = { emergency: 'goal-emergency', invest: 'goal-invest', savings: 'goal-savings' } as const;
+
+/**
+ * Spec 0032, RG15: the three fixed goals of the settings become goals of the current year, in this order: the emergency fund and « Investir »
+ * (kind `amount`, with their accounts, target and due date), then the savings rate. A target of 0 creates nothing. Triggered by the absence of
+ * `settings.goalsMigrated`, which is then set: so deleting every goal later never brings them back. The old settings are kept but never read again.
+ * Pure: the data given is returned untouched when it is already migrated, and it is never mutated.
+ */
+export function migrateGoals(d: BudgetData, today: MonthKey = currentMonthKey()): BudgetData {
+  if (d.settings.goalsMigrated) return d;
+  const st = d.settings;
+  const year = parseMonth(today).year;
+  const goals: Goal[] = [...(d.goals ?? [])];
+  const add = (g: Omit<Goal, 'year' | 'position'>) => goals.push({ ...g, year, position: goals.length });
+  if (st.emergencyTarget > 0) {
+    add({ id: MIGRATED_GOAL_IDS.emergency, kind: 'amount', name: 'Fonds de secours', target: st.emergencyTarget, accounts: [...st.emergencyAccounts], ...(st.emergencyDue ? { due: st.emergencyDue } : {}) });
+  }
+  if (st.investTarget > 0) {
+    const keys = st.investAccounts ?? accounts(d).filter(a => a.block === 'inv').map(a => a.key);
+    add({ id: MIGRATED_GOAL_IDS.invest, kind: 'amount', name: `Investir ${String(st.investTarget / 1000).replace('.', ',')}K`, target: st.investTarget, accounts: [...keys], ...(st.investDue ? { due: st.investDue } : {}) });
+  }
+  if (st.savingsRateTarget > 0) add({ id: MIGRATED_GOAL_IDS.savings, kind: 'rate', name: 'Taux d’épargne', target: st.savingsRateTarget });
+  return { ...d, goals, settings: { ...st, goalsMigrated: true } };
 }

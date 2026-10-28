@@ -363,6 +363,42 @@ export type Database = {
         }
         Relationships: []
       }
+      goals: {
+        Row: {
+          due: string | null
+          id: string
+          kind: string
+          name: string
+          params: Json
+          position: number
+          target: number
+          user_id: string
+          year: number
+        }
+        Insert: {
+          due?: string | null
+          id: string
+          kind: string
+          name: string
+          params?: Json
+          position?: number
+          target: number
+          user_id?: string
+          year: number
+        }
+        Update: {
+          due?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          params?: Json
+          position?: number
+          target?: number
+          user_id?: string
+          year?: number
+        }
+        Relationships: []
+      }
       import_account_links: {
         Row: {
           account_id: string | null
@@ -547,6 +583,7 @@ export type Database = {
           emergency_due: string | null
           emergency_target: number
           first_month: string | null
+          goals_migrated: boolean
           invest_accounts: string[] | null
           invest_due: string | null
           invest_target: number
@@ -559,6 +596,7 @@ export type Database = {
           emergency_due?: string | null
           emergency_target?: number
           first_month?: string | null
+          goals_migrated?: boolean
           invest_accounts?: string[] | null
           invest_due?: string | null
           invest_target?: number
@@ -571,6 +609,7 @@ export type Database = {
           emergency_due?: string | null
           emergency_target?: number
           first_month?: string | null
+          goals_migrated?: boolean
           invest_accounts?: string[] | null
           invest_due?: string | null
           invest_target?: number

@@ -19,6 +19,6 @@ export function emptyData(): BudgetData {
     transfers: [],
     planned: [],
     closes: {},
-    settings: { emergencyAccounts: [], emergencyTarget: 0, investTarget: 0, savingsRateTarget: 0 },
+    settings: { emergencyAccounts: [], emergencyTarget: 0, investTarget: 0, savingsRateTarget: 0, goalsMigrated: true },
   };
 }

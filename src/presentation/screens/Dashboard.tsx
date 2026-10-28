@@ -7,6 +7,7 @@ import type { GoalView } from '../../domain/goals';
 import { isMonthLocked } from '../../domain/ledger';
 import type { MonthKey } from '../../domain/types';
 import { Donut, DONUT_COLORS } from '../components/Donut';
+import { goalHue } from '../components/goalStyle';
 import { Icon } from '../components/Icon';
 import { MonthNotes } from '../components/MonthNotes';
 import { QuickEntryPopup } from '../components/QuickEntryPopup';
@@ -55,7 +56,7 @@ function PlusButton({ month, name, hue, record }: { month: MonthKey; name: strin
 function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
   const k = v.kpis;
   const cell = (f: (x: NonNullable<typeof k>) => string) => (k ? f(k) : DASH);
-  const rateOk = !!k && k.savingsRate >= k.savingsRateTarget;
+  const rateOk = !!k && k.savingsRateTarget !== null && k.savingsRate >= k.savingsRateTarget;
   return (
     <div className="dash-kpis">
       <div className="dash-kpi is-hero">
@@ -76,7 +77,7 @@ function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
       <div className="dash-kpi">
         <div className="kpi-label">Taux d’épargne</div>
         <div className="dash-val">{cell(x => percent(x.savingsRate))}</div>
-        {k && <div className="dash-sub" style={{ color: rateOk ? GOOD : BAD }}>Objectif {k.savingsRateTarget} %</div>}
+        {k && k.savingsRateTarget !== null && <div className="dash-sub" style={{ color: rateOk ? GOOD : BAD }}>Objectif {k.savingsRateTarget} %</div>}
       </div>
       <div className="dash-kpi">
         <div className="kpi-label">Épargne brute</div>
@@ -469,33 +470,34 @@ function SavingsCard({ v }: { v: DashboardView }) {
   );
 }
 
+/** « Objectifs annuels » (spec 0032, RG16): the first 3 goals of the current year, same calculation as the Objectifs screen. */
 function GoalsCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarget) => void }) {
-  const rows: { view: GoalView | null; name: (g: GoalView) => string; color: string }[] = [
-    { view: v.emergency, name: () => 'Fond de secours', color: 'oklch(0.72 0.12 190)' },
-    { view: v.invest, name: g => g.name, color: 'oklch(0.72 0.12 190)' },
-    { view: v.savings, name: g => `Taux d’épargne > ${g.target} %`, color: 'oklch(0.82 0.13 90)' },
-  ];
+  const { data } = useStore();
   return (
     <div className="panel dash-card dash-goals" role="link" tabIndex={0} onClick={() => onOpen('goals')} onKeyDown={e => e.key === 'Enter' && onOpen('goals')}>
       <div className="dash-card-head">
         <div className="dash-card-title">Objectifs annuels</div>
+        <div style={{ flex: 1 }} />
+        <span className="btn-quiet dash-detail">Voir les objectifs</span>
       </div>
       <div className="dash-goal-list">
-        {rows.map(({ view, name, color }, i) =>
-          view ? (
-            <div key={i} className="dash-goal">
+        {v.goals.length === 0 && <div className="dash-empty">Aucun objectif {v.goalsYear}</div>}
+        {v.goals.map(view => {
+          const bad = view.status === 'Dépassé';
+          return (
+            <div key={view.id} className="dash-goal">
               <div className="wealth-row">
-                <span>{name(view)}</span>
-                <b>{view.defined ? percent(view.pct) : 'À définir'}</b>
+                <span>{view.name}</span>
+                <b style={{ color: bad ? BAD : undefined }}>{view.defined ? percent(view.pct) : 'À définir'}</b>
               </div>
               {view.defined && (
                 <div className="progress dash-goal-bar">
-                  <div style={{ width: `${view.pct}%`, background: color }} />
+                  <div style={{ width: `${view.pct}%`, background: bad ? BAD : view.kind === 'rate' ? 'oklch(0.82 0.13 90)' : tone(goalHue(data, view.goal)).base }} />
                 </div>
               )}
             </div>
-          ) : null,
-        )}
+          );
+        })}
       </div>
     </div>
   );
