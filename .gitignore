@@ -10,3 +10,6 @@ docs/explanations/
 
 # Config direnv personnelle (compte Claude Code perso)
 .envrc
+
+# Fichier de travail personnel (tableur)
+docs/travaux_octobre_2026.numbers
