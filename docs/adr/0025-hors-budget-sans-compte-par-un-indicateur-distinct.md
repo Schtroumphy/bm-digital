@@ -1,6 +1,6 @@
 # 0025 — « Hors budget » sans compte : un indicateur distinct de l'affectation
 
-- Statut : proposée
+- Statut : acceptée
 - Date : 2026-10-27
 - Spec liée : [0031-operation-hors-budget](../specs/0031-operation-hors-budget.md)
 
