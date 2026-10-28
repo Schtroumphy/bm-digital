@@ -664,6 +664,60 @@ export type Database = {
         }
         Relationships: []
       }
+      simulations: {
+        Row: {
+          id: string
+          name: string
+          notes: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          id: string
+          name?: string
+          notes?: string
+          position?: number
+          user_id?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          notes?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      simulation_rows: {
+        Row: {
+          amount: string
+          block: string
+          id: string
+          name: string
+          position: number
+          simulation_id: string
+          user_id: string
+        }
+        Insert: {
+          amount?: string
+          block: string
+          id: string
+          name?: string
+          position?: number
+          simulation_id: string
+          user_id?: string
+        }
+        Update: {
+          amount?: string
+          block?: string
+          id?: string
+          name?: string
+          position?: number
+          simulation_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           account_id: string | null
