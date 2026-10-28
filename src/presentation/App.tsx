@@ -4,7 +4,7 @@ import { Icon, type IconName } from './components/Icon';
 import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { useAuth } from './state/auth';
-import { useStore } from './state/store';
+import { newId, useStore } from './state/store';
 import { useUi } from './state/ui';
 import { AccountsActions, AccountsScreen } from './screens/Accounts';
 import { BudgetScreen, BudgetActions, MonthCloseControl } from './screens/Budget';
@@ -14,11 +14,13 @@ import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
 import { GoalsScreen } from './screens/Goals';
 import { PlanningScreen } from './screens/Planning';
+import { SimulationScreen } from './screens/Simulation';
 import { SetupActions, SetupScreen } from './screens/Setup';
 import { TemplateScreen } from './screens/Template';
 import { useSetupDraft } from './state/setupDraft';
+import { newSimulation, type SimulationDraft } from '../domain/simulation';
 
-export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals';
+export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals' | 'simulation';
 
 const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'dashboard', label: 'Accueil', icon: 'house' },
@@ -29,6 +31,7 @@ const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolea
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
   { id: 'template', label: 'Modèle', icon: 'copy' },
   { id: 'goals', label: 'Objectifs', icon: 'target' },
+  { id: 'simulation', label: 'Simulation', icon: 'flask' },
   { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
   { id: 'setup', label: 'Démarrage', icon: 'flag' },
   { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
@@ -45,6 +48,7 @@ const TITLES: Record<Screen, string> = {
   setup: 'Initialisation',
   close: 'Clôture de l’année',
   goals: 'Objectifs',
+  simulation: 'Simulation',
 };
 
 const MONTH_KEY = 'budget-perso:month';
@@ -94,7 +98,11 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   const idx = months.indexOf(month);
   // Tab of Opérations opened by the dashboard's « soldes à saisir » (spec 0027, RG10); the sidebar always opens « Saisie ».
   const [expensesTab, setExpensesTab] = useState<'saisie' | 'soldes'>('saisie');
+  // Simulation being edited (spec 0034, RG19): kept here so that changing tab does not lose it; never saved until « Enregistrer ».
+  const [simDraft, setSimDraft] = useState<SimulationDraft | null>(null);
   const go = (s: Screen) => {
+    // First visit: a new simulation started from the budget model (RG20).
+    if (s === 'simulation' && simDraft === null) setSimDraft(newSimulation('model', data, () => newId('sr')));
     setExpensesTab('saisie');
     setScreen(s);
     setCloseAttempt(false);
@@ -167,7 +175,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
                 <Icon name="chevronRight" />
               </button>
             </div>
-          ) : screen === 'setup' || screen === 'template' || screen === 'goals' ? null : (
+          ) : screen === 'setup' || screen === 'template' || screen === 'goals' || screen === 'simulation' ? null : (
             <div className="picker">
               <button className="picker-arrow" disabled={idx <= 0} onClick={() => setMonth(months[idx - 1])} aria-label="Mois précédent">
                 <Icon name="chevronLeft" />
@@ -235,6 +243,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
           />
         )}
         {screen === 'goals' && <GoalsScreen />}
+        {screen === 'simulation' && simDraft && <SimulationScreen draft={simDraft} setDraft={setSimDraft} />}
         {screen === 'close' && <ClosingScreen year={year} />}
       </main>
 
