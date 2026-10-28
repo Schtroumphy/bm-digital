@@ -36,7 +36,12 @@ function started(): BudgetData {
     d.months[m] = { initialized: true, lines: lines.map(l => ({ ...l })), alloc: { vac: 200, san: 0 }, transfersDone: {} };
   }
   d.statements[M] = { lt: 5000 };
-  d.settings = { emergencyAccounts: ['lt'], emergencyTarget: 10000, investTarget: 21000, savingsRateTarget: 20 };
+  d.goals = [
+    { id: 'g-secours', year: 2027, kind: 'amount', name: 'Fonds de secours', target: 10000, accounts: ['lt'], position: 0 },
+    { id: 'g-invest', year: 2027, kind: 'amount', name: 'Investir 21K', target: 21000, accounts: ['etf'], position: 1 },
+    { id: 'g-taux', year: 2027, kind: 'rate', name: 'Taux d’épargne', target: 20, position: 2 },
+    { id: 'g-resto', year: 2027, kind: 'cap', name: 'Loisirs', target: 600, scope: { kind: 'line', key: 'loi' }, position: 3 },
+  ];
   return d;
 }
 const view = (d: BudgetData) => dashboardView(d, new Ledger(d, '2027-03'), M, TODAY);
@@ -277,21 +282,36 @@ describe('Patrimoine et fonds de secours (CA11, CA12)', () => {
     expect(w.savingsShare).toBeCloseTo(w.savings / w.total, 10);
   });
 
-  it('le fonds de secours reprend goalView (valeur, cible, reste)', () => {
+  it('le fonds de secours est le premier objectif de type A et reprend goalView (valeur, cible, reste)', () => {
     const d = started();
-    const g = goalView(d, new Ledger(d, '2027-03'), 'emergency', '2027-03')!;
+    const g = goalView(d, new Ledger(d, '2027-03'), d.goals![0], '2027-03');
     const v = view(d).emergency!;
     expect([v.current, v.target, v.left, v.pct, v.status]).toEqual([g.current, g.target, g.left, g.pct, g.status]);
   });
 
-  it('cible à 0 ou aucun compte coché : « À définir », sans barre', () => {
+  it('CA14 : la carte montre les 3 premiers objectifs de l’année en cours, par ordre de création', () => {
+    const v = view(started());
+    expect(v.goalsYear).toBe(2027);
+    expect(v.goals.map(g => g.id)).toEqual(['g-secours', 'g-invest', 'g-taux']);
+  });
+
+  it('aucun compte coché : « À définir », sans barre', () => {
     const d = started();
-    d.settings.emergencyAccounts = [];
-    d.settings.savingsRateTarget = 0;
+    d.goals![0].accounts = [];
     const v = view(d);
     expect(v.emergency!.status).toBe('À définir');
     expect(v.emergency!.defined).toBe(false);
-    expect(v.savings!.status).toBe('À définir');
+  });
+
+  it('sans objectif : pas de fonds de secours, pas de cible d’épargne, liste vide', () => {
+    const d = started();
+    d.goals = [];
+    const v = view(d);
+    expect([v.emergency, v.goals, v.kpis!.savingsRateTarget]).toEqual([null, [], null]);
+  });
+
+  it('la cible d’épargne du bandeau est celle du premier objectif de type B', () => {
+    expect(view(started()).kpis!.savingsRateTarget).toBe(20);
   });
 
   it('les objectifs ne changent pas avec le mois choisi', () => {
@@ -299,7 +319,7 @@ describe('Patrimoine et fonds de secours (CA11, CA12)', () => {
     const ledger = new Ledger(d, '2027-03');
     const a = dashboardView(d, ledger, '2027-01', TODAY);
     const b = dashboardView(d, ledger, M, TODAY);
-    expect([a.emergency, a.invest, a.savings, a.wealth]).toEqual([b.emergency, b.invest, b.savings, b.wealth]);
+    expect([a.emergency, a.goals, a.wealth]).toEqual([b.emergency, b.goals, b.wealth]);
   });
 });
 

@@ -41,7 +41,6 @@ describe('seed data matches the design', () => {
     expect(s.envelopeSpent).toBe(145);
     expect(s.savingsOut).toBe(300);
     expect(s.realSavings).toBe(1615);
-    expect(s.emergency).toBe(13950);
     expect(s.investTotal).toBe(15219);
   });
 

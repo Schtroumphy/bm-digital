@@ -1,6 +1,6 @@
 import type {
   AccountBalanceEntry, AccountMovement, Adjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, ExecMode, Line, LineCheck,
-  MonthData, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
+  MonthData, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
 
@@ -33,7 +33,22 @@ export function toRows(d: BudgetData): TableRows {
     invest_accounts: orNull(d.settings.investAccounts),
     emergency_due: orNull(d.settings.emergencyDue),
     invest_due: orNull(d.settings.investDue),
+    goals_migrated: d.settings.goalsMigrated === true,
   });
+
+  (d.goals ?? []).forEach(g =>
+    rows.goals.push({
+      id: g.id,
+      year: g.year,
+      kind: g.kind,
+      name: g.name,
+      target: g.target,
+      due: orNull(g.due),
+      // Parameters of the kind: the ticked lines (`amount`, `saved`) or the scope of a ceiling (`cap`).
+      params: compact({ accounts: g.accounts, scope: g.scope }),
+      position: g.position,
+    }),
+  );
 
   d.accounts.forEach((a, position) =>
     rows.bank_accounts.push({
@@ -407,6 +422,21 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     envelopeId: r.envelope_id,
   }));
 
+  const goals: Goal[] = byPosition(rows.goals).map(r => {
+    const params = (r.params ?? {}) as { accounts?: unknown; scope?: unknown };
+    return compact({
+      id: r.id,
+      year: r.year,
+      kind: r.kind as GoalKind,
+      name: r.name,
+      target: r.target,
+      due: orUndefined(r.due),
+      accounts: Array.isArray(params.accounts) ? params.accounts.filter((k): k is string => typeof k === 'string') : undefined,
+      scope: params.scope && typeof params.scope === 'object' ? (params.scope as GoalScope) : undefined,
+      position: r.position,
+    });
+  });
+
   const closes: Record<string, YearClose> = {};
   for (const r of rows.year_closes) closes[String(r.year)] = { closed: r.closed, overrides: r.overrides as Record<string, number> };
 
@@ -425,6 +455,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     ...(importRules.length ? { importRules } : {}),
     ...(importAccountLinks.length ? { importAccountLinks } : {}),
     ...(adjustments.length ? { adjustments } : {}),
+    ...(goals.length ? { goals } : {}),
     planned,
     closes,
     settings: compact({
@@ -435,6 +466,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       investAccounts: orUndefined(s.invest_accounts),
       emergencyDue: orUndefined(s.emergency_due),
       investDue: orUndefined(s.invest_due),
+      goalsMigrated: s.goals_migrated ? (true as const) : undefined,
     }),
   };
 }

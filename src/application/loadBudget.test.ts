@@ -48,3 +48,32 @@ describe('chargement (spec 0019, RG22, CA20)', () => {
     for (const m of [M, '2026-11']) for (const a of d.accounts) expect(realMonthBalance(d, m, a.id)?.end).toBe(ledger.bankMonth(a.id, m)?.balance);
   });
 });
+
+describe('objectifs (spec 0032, RG15)', () => {
+  const legacyGoals = (): BudgetData => {
+    const d = emptyData();
+    d.firstMonth = M;
+    d.accounts = defaultBankAccounts(M);
+    d.settings = { emergencyAccounts: ['l'], emergencyTarget: 5000, investTarget: 0, savingsRateTarget: 30 };
+    return d;
+  };
+
+  it('migre les réglages au chargement, les enregistre, et ne recommence pas au chargement suivant', async () => {
+    const repo = memory(legacyGoals());
+    const first = await loadBudget(repo, emptyData);
+    expect(first.data.goals!.map(g => g.id)).toEqual(['goal-emergency', 'goal-savings']);
+    const stored = (await repo.load())!;
+    expect(stored.settings.goalsMigrated).toBe(true);
+    // L'utilisateur supprime tout : rien ne revient.
+    stored.goals = [];
+    await repo.save(stored);
+    expect((await loadBudget(repo, emptyData)).data.goals).toEqual([]);
+  });
+
+  it('un compte neuf n’enregistre rien au chargement', async () => {
+    let saved = 0;
+    const repo: BudgetRepository = { load: async () => null, save: async () => { saved++; } };
+    await loadBudget(repo, emptyData);
+    expect(saved).toBe(0);
+  });
+});
