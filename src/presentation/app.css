@@ -1094,52 +1094,62 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 }
 .sim-saved.is-open { border-color: oklch(0.72 0.13 300); background: oklch(0.97 0.025 300); }
 .sim-saved-x { width: 20px; height: 20px; border: 0; background: none; padding: 0; }
-.sim-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.sim-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
 .sim-block { display: flex; flex-direction: column; }
-.sim-block.is-wide { grid-column: 1 / span 3; }
-.sim-block.is-wide .sim-rows { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 14px; }
+.sim-block .sim-rows { flex: 1; align-content: start; }
+.sim-block.is-wide { grid-column: 1 / span 2; }
+.sim-block.is-wide .sim-rows { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; }
 .sim-per-year { font-weight: 500; opacity: 0.75; }
-.sim-rows { padding: 6px 8px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.sim-rows { padding: 4px 8px 2px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .sim-empty { padding: 8px 6px; color: rgba(32, 30, 29, 0.5); grid-column: 1 / -1; }
 .sim-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px 70px 22px; gap: 4px; align-items: center; }
 .sim-input {
-  height: 28px; width: 100%; box-sizing: border-box; border: 1px solid transparent; border-radius: 8px; background: transparent;
+  height: 25px; width: 100%; box-sizing: border-box; border: 1px solid transparent; border-radius: 8px; background: transparent;
   outline: none; padding: 0 8px; font: inherit; font-size: 12.5px; font-weight: 500; color: var(--ink);
 }
 .sim-input:hover { border-color: rgba(32, 30, 29, 0.14); }
 .sim-input:focus { border-color: var(--t-base); background: #fff; }
 .sim-input.is-amount { text-align: right; padding-right: 22px; font-variant-numeric: tabular-nums; background: var(--page); }
 .sim-amount { position: relative; }
-.sim-euro { position: absolute; right: 8px; top: 6px; color: rgba(32, 30, 29, 0.4); pointer-events: none; }
+.sim-euro { position: absolute; right: 8px; top: 4px; color: rgba(32, 30, 29, 0.4); pointer-events: none; }
 .sim-year { text-align: right; font-weight: 600; color: rgba(32, 30, 29, 0.62); white-space: nowrap; }
 .sim-remove { border: 0; background: none; padding: 0; }
 .sim-add {
-  font: inherit; display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 0; border-top: 1px solid var(--hairline);
+  font: inherit; display: flex; align-items: center; gap: 6px; padding: 5px 14px; border: 0; border-top: 1px solid var(--hairline);
   background: none; cursor: pointer; font-weight: 600; font-size: 11.5px; color: var(--t-ink); text-align: left;
 }
 .sim-add-icon { width: 20px; height: 20px; border-radius: 7px; background: var(--t-bg); display: flex; align-items: center; justify-content: center; }
-.sim-summary { grid-column: 4; grid-row: 1 / span 2; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-.sim-remaining { font-size: 36px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
+.sim-summary { grid-column: 4; grid-row: 1 / span 3; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.sim-remaining { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .sim-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sim-tile { border-radius: 11px; background: var(--page); padding: 8px 10px; }
+.sim-tile { border-radius: 11px; background: var(--page); padding: 6px 10px; }
 .sim-tile b { font-size: 15px; }
-.sim-bars { display: flex; flex-direction: column; gap: 9px; }
+.sim-bars { display: flex; flex-direction: column; gap: 3px; }
+.sim-bar-row { padding: 2px 6px; margin: 0 -6px; border-radius: 8px; cursor: pointer; outline: none; }
+.sim-bar-row.is-on { background: var(--page); }
+.sim-bar-pct { display: inline-block; min-width: 44px; text-align: right; font-weight: 700; color: var(--ink); }
 .sim-bar-label { display: flex; justify-content: space-between; margin-bottom: 3px; color: rgba(32, 30, 29, 0.75); }
 .sim-bar-year { color: rgba(32, 30, 29, 0.55); margin-left: 8px; }
 .sim-bar { height: 6px; border-radius: 99px; background: var(--hairline); overflow: hidden; }
 .sim-bar > div { height: 100%; border-radius: 99px; }
-.sim-compare { padding-top: 14px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 4px; }
+.sim-compare { padding-top: 8px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 4px; }
 .sim-compare > div { display: flex; justify-content: space-between; }
 .sim-compare span { color: var(--muted); }
-.sim-notes { grid-column: 4; display: flex; flex-direction: column; align-self: stretch; }
+.sim-notes { grid-column: 3; display: flex; flex-direction: column; align-self: stretch; }
 .sim-notes-text {
-  flex: 1; min-height: 90px; resize: none; border: 0; outline: none; background: transparent; padding: 10px 14px;
+  flex: 1; min-height: 60px; resize: none; border: 0; outline: none; background: transparent; padding: 10px 14px;
   font: inherit; font-size: 12.5px; line-height: 1.45; color: var(--ink); border-radius: 0 0 13px 13px;
 }
 
 /* indicateur Épargne de la simulation (spec 0034, amendement) */
-.sim-savings { padding-top: 14px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 4px; }
+.sim-savings { padding-top: 8px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 4px; }
 .sim-savings-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 13.5px; }
 .sim-savings-line { display: flex; justify-content: space-between; align-items: baseline; color: rgba(32, 30, 29, 0.75); }
 .sim-savings-line.is-invest { padding: 6px 8px; border-radius: 10px; background: oklch(0.968 0.028 250); font-size: 14px; font-weight: 700; }
 .sim-invest-share { display: block; text-align: right; font-size: 11px; font-weight: 600; opacity: 0.8; }
+.sim-pie { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sim-pie > .kpi-label { align-self: flex-start; }
+.sim-pie-empty { color: var(--muted); padding: 8px 0; text-align: center; }
+.sim-pie-wedge { stroke: #fff; stroke-width: 1.5; cursor: pointer; outline: none; transition: transform 0.12s, opacity 0.12s; }
+.sim-pie-info { min-height: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); }
+.sim-pie-info b { color: inherit; }

@@ -64,6 +64,25 @@ export function simulationTotals(rows: readonly SimulationRow[]): SimulationTota
 /** Share of the revenues taken by a block, 0 to 100; 0 when the revenues are not positive (RG7). */
 export const blockShare = (t: SimulationTotals, block: SimBlockKey): number => (t.revenue > 0 ? Math.min(100, (t.blocks[block] / t.revenue) * 100) : 0);
 
+export interface RevenueSlice {
+  /** An outgoing block, or what is left of the revenues. */
+  id: SimBlockKey | 'remaining';
+  /** Monthly amount, always positive. */
+  amount: number;
+  /** Share of the revenues, in %: NOT capped, outgoings above the revenues give more than 100 in total. */
+  pct: number;
+}
+
+/**
+ * How the revenues are split (pie chart): one slice per outgoing block that is not empty, then what is left when positive.
+ * Without positive revenues there is nothing to split: no slice.
+ */
+export function revenueSplit(t: SimulationTotals): RevenueSlice[] {
+  if (t.revenue <= 0) return [];
+  const parts = [...SIM_OUTGOING_BLOCKS.map(id => ({ id, amount: t.blocks[id] })), { id: 'remaining' as const, amount: t.remaining }];
+  return parts.filter(p => p.amount > 0).map(p => ({ ...p, pct: round2((p.amount / t.revenue) * 100) }));
+}
+
 /** Blocks of the savings indicator, in display order (spec 0034, RG23, RG25). */
 export const SIM_SAVINGS_BLOCKS = ['env', 'epa', 'inv'] as const satisfies readonly SimBlockKey[];
 
