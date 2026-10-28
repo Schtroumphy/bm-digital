@@ -348,6 +348,28 @@ export interface Goal {
   position: number;
 }
 
+/** The 7 blocks of a simulation: the 6 budget blocks plus « Enveloppes », which a simulation holds as free lines (spec 0034, RG1). */
+export type SimBlockKey = BlockKey | 'env';
+
+/** A line of a simulation: free text and a monthly amount, linked to nothing real (spec 0034, RG2). */
+export interface SimulationRow {
+  id: string;
+  block: SimBlockKey;
+  /** Free, may be empty. */
+  name: string;
+  /** Monthly amount as typed (« 1 234,5 »). Empty = 0, unreadable = 0 (spec 0034, RG2, RG3). Read by `simulationAmount`. */
+  amount: string;
+}
+
+/** A saved simulation: a sandbox month that never touches the real budget (spec 0034). */
+export interface Simulation {
+  id: string;
+  name: string;
+  notes: string;
+  /** In display order. */
+  rows: SimulationRow[];
+}
+
 export interface BudgetData {
   version: 1;
   /**
@@ -375,6 +397,8 @@ export interface BudgetData {
   adjustments?: Adjustment[];
   /** Annual goals (spec 0032). Absent = none (or data saved before the goals existed, see `Settings.goalsMigrated`). */
   goals?: Goal[];
+  /** Saved simulations, most recent first (spec 0034). Absent = none. */
+  simulations?: Simulation[];
   planned: PlannedItem[];
   closes: Record<string, YearClose>;
   settings: Settings;

@@ -61,6 +61,14 @@ describe('conversion domaine ↔ lignes', () => {
     expect(back.months['2027-03'].notes).toEqual([{ id: 'n3', text: 'Préparer le mois', done: false }]);
     expect('notes' in back.months['2026-11']).toBe(false);
   });
+
+  it('simulations : une ligne par simulation et par ligne, avec leur position, restituées dans l’ordre (spec 0034, CA10)', () => {
+    const d = completeData();
+    const rows = toRows(d);
+    expect(rows.simulations.map(r => [r.id, r.position])).toEqual([['sim2', 0], ['sim1', 1]]);
+    expect(rows.simulation_rows.map(r => [r.simulation_id, r.id, r.position])).toEqual([['sim2', 'sr1', 0], ['sim2', 'sr2', 1], ['sim2', 'sr3', 2]]);
+    expect(fromRows(withUser(rows))!.simulations).toEqual(d.simulations);
+  });
 });
 
 function withUser(rows: ReturnType<typeof toRows>) {

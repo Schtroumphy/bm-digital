@@ -1,5 +1,5 @@
 import type {
-  AccountBalanceEntry, AccountMovement, Adjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, ExecMode, Line, LineCheck,
+  AccountBalanceEntry, AccountMovement, Adjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
   MonthData, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
@@ -49,6 +49,12 @@ export function toRows(d: BudgetData): TableRows {
       position: g.position,
     }),
   );
+  (d.simulations ?? []).forEach((s, position) => {
+    rows.simulations.push({ id: s.id, name: s.name, notes: s.notes, position });
+    s.rows.forEach((r, rowPosition) =>
+      rows.simulation_rows.push({ simulation_id: s.id, id: r.id, block: r.block, name: r.name, amount: r.amount, position: rowPosition }),
+    );
+  });
 
   d.accounts.forEach((a, position) =>
     rows.bank_accounts.push({
@@ -436,6 +442,12 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       position: r.position,
     });
   });
+  const simulations: Simulation[] = byPosition(rows.simulations).map(r => ({
+    id: r.id,
+    name: r.name,
+    notes: r.notes,
+    rows: byPosition(rows.simulation_rows.filter(x => x.simulation_id === r.id)).map(x => ({ id: x.id, block: x.block as SimBlockKey, name: x.name, amount: x.amount })),
+  }));
 
   const closes: Record<string, YearClose> = {};
   for (const r of rows.year_closes) closes[String(r.year)] = { closed: r.closed, overrides: r.overrides as Record<string, number> };
@@ -456,6 +468,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     ...(importAccountLinks.length ? { importAccountLinks } : {}),
     ...(adjustments.length ? { adjustments } : {}),
     ...(goals.length ? { goals } : {}),
+    ...(simulations.length ? { simulations } : {}),
     planned,
     closes,
     settings: compact({

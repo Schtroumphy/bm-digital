@@ -70,6 +70,15 @@ export function completeData(): BudgetData {
     { id: 'r-fix', pattern: 'edf', nature: 'depense', target: { kind: 'line', key: fixLine.key } },
     { id: 'r-rev', pattern: 'acme', nature: 'revenu', target: { kind: 'line', key: revLine.key } },
   ];
+  // Spec 0034 : deux simulations, la plus récente en tête, avec notes et lignes dans l'ordre (dont une ligne sans nom ni montant).
+  d.simulations = [
+    { id: 'sim2', name: 'Passage à 80 %', notes: 'Hypothèses :\n- loyer en hausse', rows: [
+      { id: 'sr1', block: 'rev', name: 'Salaire', amount: '2 100,5' },
+      { id: 'sr2', block: 'env', name: 'Vacances', amount: '150' },
+      { id: 'sr3', block: 'fix', name: '', amount: '' },
+    ] },
+    { id: 'sim1', name: 'Vide', notes: '', rows: [] },
+  ];
   return d;
 }
 
@@ -239,6 +248,25 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       data.goals = data.goals!.filter(g => g.id !== 'g3');
       await repo.save(data);
       expect((await repo.load())!.goals!.map(g => g.id)).toEqual(['g1', 'g2', 'g4', 'g5']);
+    });
+
+    it('spec 0034 : les simulations sont restituées (noms, notes, lignes dans l’ordre) ; supprimer une simulation supprime ses lignes', async () => {
+      const repo = open();
+      const data = completeData();
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.simulations).toEqual(data.simulations);
+      expect(loaded.simulations![0].rows.map(r => r.id)).toEqual(['sr1', 'sr2', 'sr3']);
+      const fewer = structuredClone(loaded);
+      fewer.simulations!.shift();
+      await repo.save(fewer);
+      expect((await open().load())!.simulations).toEqual([{ id: 'sim1', name: 'Vide', notes: '', rows: [] }]);
+      const none = structuredClone(fewer);
+      delete none.simulations;
+      await repo.save(none);
+      const reloaded = (await open().load())!;
+      expect(reloaded).not.toHaveProperty('simulations');
+      expect(reloaded).toEqual(none);
     });
 
     it('des sauvegardes rapprochées s’appliquent dans l’ordre : la dernière gagne', async () => {
