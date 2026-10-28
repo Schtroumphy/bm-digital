@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { templateSummary } from './budget';
 import { seedData } from './seed';
 import {
-  blockShare, simulationSavings, duplicateSimulation, gapWithModel, newSimulation, openSimulation, rowAnnual, sanitizeSimulationAmount, simulationAmount, simulationTotals,
+  blockShare, simulationSavings, duplicateSimulation, gapWithModel, newSimulation, openSimulation, rowAnnual, revenueSplit, sanitizeSimulationAmount, simulationAmount, simulationTotals,
 } from './simulation';
 import type { SimBlockKey, SimulationRow } from './types';
 
@@ -169,5 +169,26 @@ describe('simulation : indicateur Épargne (spec 0034, amendement)', () => {
     expect(t.outgoing).toBe(1743.34);
     expect(t.remaining).toBe(1256.66);
     expect(s.details.reduce((a, d) => a + d.monthly, 0)).toBeCloseTo(s.monthly, 10);
+  });
+});
+
+describe('simulation : répartition des revenus (camembert)', () => {
+  it('une part par bloc de sortie non vide, puis le reste, en pourcentage des revenus', () => {
+    const s = revenueSplit(simulationTotals(rows(['rev', '2000'], ['fix', '500'], ['var', '300'], ['epa', '200'])));
+    expect(s.map(x => [x.id, x.amount, x.pct])).toEqual([['fix', 500, 25], ['var', 300, 15], ['epa', 200, 10], ['remaining', 1000, 50]]);
+  });
+
+  it('sans revenus positifs, aucune part', () => {
+    expect(revenueSplit(simulationTotals(rows(['fix', '500'])))).toEqual([]);
+  });
+
+  it('des sorties au-dessus des revenus : pas de part « reste », les pourcentages dépassent 100 au total', () => {
+    const s = revenueSplit(simulationTotals(rows(['rev', '1000'], ['fix', '800'], ['var', '400'])));
+    expect(s.map(x => x.id)).toEqual(['fix', 'var']);
+    expect(s.reduce((n, x) => n + x.pct, 0)).toBe(120);
+  });
+
+  it('les lignes à 0 et les blocs vides ne donnent pas de part', () => {
+    expect(revenueSplit(simulationTotals(rows(['rev', '100'], ['fix', '0']))).map(x => x.id)).toEqual(['remaining']);
   });
 });

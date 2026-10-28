@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { deleteSimulation, saveSimulation, simulationSaveError } from '../../application/simulations';
 import { Icon } from '../components/Icon';
 import { SIM_BLOCK_META, SimulationBlock } from '../components/SimulationBlock';
+import { SimulationPie, type SliceId } from '../components/SimulationPie';
 import { BAD, GOOD, MUTED, tone, toneVars } from '../components/tone';
 import { money, percent } from '../../domain/format';
 import {
@@ -27,6 +28,8 @@ const SAVED_MESSAGE = 'Simulation enregistrée';
 export function SimulationScreen({ draft, setDraft }: { draft: SimulationDraft; setDraft: (d: SimulationDraft) => void }) {
   const { data, update } = useStore();
   // Result of the last save attempt; any edit clears it (RG12, RG22).
+  // Slice of the pie shared with the bars of the summary, which are its legend.
+  const [activeSlice, setActiveSlice] = useState<SliceId | null>(null);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
   const totals = simulationTotals(draft.rows);
@@ -145,14 +148,24 @@ export function SimulationScreen({ draft, setDraft }: { draft: SimulationDraft; 
               <div className="kpi-label">{money(totals.annual.outgoing)} / an</div>
             </div>
           </div>
+          <SimulationPie totals={totals} active={activeSlice} onActive={setActiveSlice} />
           <div className="sim-bars">
             {SIM_OUTGOING_BLOCKS.map(b => (
-              <div key={b}>
+              <div
+                key={b}
+                className={`sim-bar-row${activeSlice === b ? ' is-on' : ''}`}
+                tabIndex={0}
+                onMouseEnter={() => setActiveSlice(b)}
+                onMouseLeave={() => setActiveSlice(null)}
+                onFocus={() => setActiveSlice(b)}
+                onBlur={() => setActiveSlice(null)}
+              >
                 <div className="sim-bar-label">
                   <span>{SIM_BLOCK_META[b].title}</span>
                   <span>
                     <b>{money(totals.blocks[b])}</b>
                     <span className="sim-bar-year">{money(totals.annual.blocks[b])}/an</span>
+                    <span className="sim-bar-pct">{percent(totals.revenue > 0 ? (totals.blocks[b] / totals.revenue) * 100 : 0)}</span>
                   </span>
                 </div>
                 <div className="sim-bar">
