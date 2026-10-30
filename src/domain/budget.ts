@@ -160,6 +160,10 @@ export interface MonthSummary {
   paidIn: number;
   envelopeSpent: number;
   savingsOut: number;
+  /** Expenses paid from a savings account and categorised by a savings line (`epd`, spec 0035): they lower the real savings, never the available money. */
+  fundedBySavings: number;
+  /** Real expenses of the month: actuals of the credit, fixed and variable lines plus the expenses funded by savings (spec 0035, RG6). Budgets are untouched. */
+  expensesReal: number;
   realSavings: number;
   /** Sum of the balances of every `inv` line at the end of the month (« Total global » of the Investissements block). */
   investTotal: number;
@@ -177,9 +181,11 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const txs = d.transactions.filter(t => t.month === m && isTransactionInBudget(d, t));
   const envelopeSpent = sum(txs.filter(t => t.type === 'env').map(t => t.amount));
   const savingsOut = sum(txs.filter(t => t.type === 'epa').map(t => t.amount));
+  const fundedBySavings = sum(txs.filter(t => t.type === 'epd').map(t => t.amount));
+  const expensesReal = round2(blockTotals(lines, 'cre').actual + blockTotals(lines, 'fix').actual + blockTotals(lines, 'var').actual + fundedBySavings);
   const rate = (v: number) => (income ? (v / income) * 100 : 0);
   const grossSavings = round2(savings + allocSum);
-  const realSavings = round2(grossSavings - envelopeSpent - savingsOut);
+  const realSavings = round2(grossSavings - envelopeSpent - savingsOut - fundedBySavings);
   const bal = (key: string) => ledger.accMonth(key, m)?.balance ?? 0;
   return {
     surplus: surplus(d, m),
@@ -194,6 +200,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
     paidIn,
     envelopeSpent,
     savingsOut,
+    fundedBySavings,
+    expensesReal,
     realSavings,
     investTotal: sum(accounts(d).filter(a => a.block === 'inv').map(a => bal(a.key))),
   };

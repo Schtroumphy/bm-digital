@@ -134,6 +134,8 @@ export function fixedTransactionAccountId(d: BudgetData, t: Pick<Transaction, 't
     const e = d.envelopes.find(x => x.id === t.target);
     return e ? envelopeAccountAt(d, e, t.month)?.id : undefined;
   }
+  // An expense funded by savings is always paid from the dedicated account of its savings line (spec 0035, RG4).
+  if (t.type === 'epd') return savingsExpenseAccountId(d, t.month, t.target);
   const box = transactionBox(d, t);
   if (!box?.accountId || box.payMode === 'especes') return undefined;
   const resolved = resolveBoxAccountId(d, box);
@@ -152,7 +154,7 @@ export function transactionBox(d: BudgetData, t: Pick<Transaction, 'type' | 'mon
  * the one resolved from its box for a variable expense, the main account otherwise (savings withdrawal).
  */
 export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string {
-  if (t.type === 'fix' || t.type === 'rev') return fixedTransactionAccountId(d, t) ?? mainAccount(d).id;
+  if (t.type === 'fix' || t.type === 'rev' || t.type === 'epd') return fixedTransactionAccountId(d, t) ?? mainAccount(d).id;
   if (t.type === 'env') return d.envelopes.find(e => e.id === t.target)?.accountId ?? mainAccount(d).id;
   const box = transactionBox(d, t);
   return box ? resolveBoxAccountId(d, box) : mainAccount(d).id;
@@ -184,6 +186,21 @@ export function linkedAccountOfLine(d: BudgetData, m: MonthKey, key: string): st
   const md = d.months[m];
   return md?.initialized ? md.lines.find(l => l.key === key && isSavingsBlock(l.block))?.linkedAccountId : undefined;
 }
+
+/**
+ * Dedicated account of the `epa` line `key` in month `m` when an expense can be funded from it (spec 0035, RG3): an initialized month, an `epa` line
+ * (never `inv`), tied to an active account of kind `epargne`. Undefined otherwise.
+ */
+export function savingsExpenseAccountId(d: BudgetData, m: MonthKey, key: string): string | undefined {
+  const md = d.months[m];
+  const linked = md?.initialized ? md.lines.find(l => l.key === key && l.block === 'epa')?.linkedAccountId : undefined;
+  const account = d.accounts.find(a => a.id === linked);
+  return account && !account.archived && kindOf(account) === 'epargne' ? account.id : undefined;
+}
+
+/** The `epa` lines of month `m` an expense paid from the savings account `accountId` can be categorised by (spec 0035, RG1, RG2). */
+export const savingsExpenseLines = (d: BudgetData, m: MonthKey, accountId: string): Line[] =>
+  (d.months[m]?.initialized ? d.months[m].lines : []).filter(l => l.block === 'epa' && savingsExpenseAccountId(d, m, l.key) === accountId);
 
 /** A withdrawal from a linked line cannot be credited to the line's own dedicated account (spec 0007, RG7). */
 export const isSavingsWithdrawalAllowed = (d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target' | 'accountId'>): boolean =>

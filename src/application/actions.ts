@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID, savingsExpenseAccountId } from '../domain/bank';
 import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { syncLineActual } from '../domain/lineActuals';
@@ -272,6 +272,7 @@ export function addTransaction(d: BudgetData, input: Transaction, keepAssignment
   if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
   if (input.offBudget !== undefined && (!isAssignableType(input.type) || input.assignedAccountId !== undefined)) return false;
   if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input, keepAssignment);
+  if (input.type === 'epd') return addSavingsExpense(d, input);
   const given = d.accounts.find(a => a.id === input.accountId);
   if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
   // A variable expense on a line with an assigned account stays on it: another account is refused (spec 0006 amended, 0011 RG10).
@@ -311,6 +312,20 @@ function addLineExpense(d: BudgetData, input: Transaction, keepAssignment?: stri
   return true;
 }
 
+/**
+ * Expense funded by savings (spec 0035): categorised by a savings (`epa`) line of the month that has a dedicated account, and paid from that account.
+ * Refused on a locked month, on a line that is not a savings line with a dedicated account (RG3), or on another account than the line's (RG12).
+ * Nothing is credited anywhere. It feeds no line actual: the line's own balance and its account's balance stay two figures (RG10).
+ */
+function addSavingsExpense(d: BudgetData, input: Transaction): boolean {
+  const payer = savingsExpenseAccountId(d, input.month, input.target);
+  if (payer === undefined || (input.accountId !== undefined && input.accountId !== payer)) return false;
+  const detail = normalizeDetail(input.detail);
+  const { detail: _raw, payMode: _mode, ...rest } = input;
+  d.transactions.push(detail === undefined ? { ...rest, accountId: payer } : { ...rest, accountId: payer, detail });
+  return true;
+}
+
 /** Sets, changes or clears (empty text) the detail of a transaction, nothing else. Allowed on a locked month: it changes no figure (spec 0020, RG6, RG11). */
 export function setTransactionDetail(d: BudgetData, id: string, detail: string): boolean {
   const t = d.transactions.find(x => x.id === id);
@@ -344,6 +359,8 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   const label = patch.label.trim();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(patch.date) && new Date(`${patch.date}T00:00:00Z`).toISOString().startsWith(patch.date);
   if (!old || isMonthLocked(d, old.month) || !label || !(patch.amount > 0) || !valid) return false;
+  // An expense funded by savings stays one (spec 0035, RG12): its only category is a savings line of its own paying account.
+  if ((old.type === 'epd') !== (patch.type === 'epd')) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
   const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, offBudget: _o, ...kept } = old;
@@ -351,7 +368,7 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;

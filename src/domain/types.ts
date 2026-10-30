@@ -116,8 +116,10 @@ export interface EnvHistory {
  * - `epa`: withdrawal from a savings/investment account (target = line key)
  * - `fix`: expense on a fixed or credit line (target = line key, spec 0014); on the account of the line
  * - `rev`: money coming in on a revenue line (target = line key, spec 0015); an ENTRY, never to be added up as an expense
+ * - `epd`: expense paid from a savings account and categorised by a savings line (target = `epa` line key, `accountId` = the PAYER, the dedicated
+ *   account of that line; spec 0035). It is an expense funded by savings, not a withdrawal: no account is credited (unlike `epa`).
  */
-export type TxType = 'var' | 'env' | 'epa' | 'fix' | 'rev';
+export type TxType = 'var' | 'env' | 'epa' | 'fix' | 'rev' | 'epd';
 
 export interface Transaction {
   id: string;
@@ -216,8 +218,8 @@ export interface ImportAccountLink {
   accountId: string | null;
 }
 
-/** Where an imported line goes: a `var` line or a fixed/credit `line` (stable key), an envelope (id) or a bank account (id; withdrawals and internal transfers). */
-export type ImportTarget = { kind: 'var'; key: string } | { kind: 'line'; key: string } | { kind: 'env'; id: string } | { kind: 'account'; id: string };
+/** Where an imported line goes: a `var` line or a fixed/credit `line` (stable key), an envelope (id), a bank account (id; withdrawals and internal transfers) or a `savings` (`epa`) line of the account (key; spec 0035). */
+export type ImportTarget = { kind: 'var'; key: string } | { kind: 'line'; key: string } | { kind: 'env'; id: string } | { kind: 'account'; id: string } | { kind: 'savings'; key: string };
 
 /** What an imported debit is: `depense` and `externe` become a `Transaction`, `retrait` and `interne` an `AccountMovement` (spec 0013, RG9). */
 export type ImportNature = 'depense' | 'retrait' | 'interne' | 'externe' | 'revenu' | 'recu';

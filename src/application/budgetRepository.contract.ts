@@ -59,6 +59,8 @@ export function completeData(): BudgetData {
   // Spec 0015 : entrée sur une ligne de revenu, avec une date bancaire différente du mois de rattachement.
   const revLine = dec.lines.find(l => l.block === 'rev')!;
   d.transactions.push({ id: 't-rev', month: '2026-12', day: 1, label: 'Salaire', amount: 2480, type: 'rev', target: revLine.key, accountId: revLine.accountId ?? 'acc-main', bankDate: '2026-11-28' });
+  // Spec 0035 : dépense financée par l'épargne (payeur = compte d'épargne, cible = clé de la ligne epa) et règle mémorisée vers une ligne d'épargne.
+  d.transactions.push({ id: 't-epd', month: '2026-12', day: 9, label: 'Billets avion', amount: 30, type: 'epd', target: 'line-key', accountId: 'acc-sav', importAccountId: 'acc-sav', fingerprint: '2026-12-09|30.00|billets avion', rank: 1, bankDate: '2026-12-09' });
   d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08', target: { kind: 'env', id: 'e-vc' } }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
@@ -68,6 +70,7 @@ export function completeData(): BudgetData {
     { id: 'r1', pattern: 'carrefour', nature: 'depense', target: { kind: 'var', key: 'courses' } },
     { id: 'r2', pattern: 'retrait', nature: 'retrait', target: { kind: 'account', id: 'acc-cash' } },
     { id: 'r-fix', pattern: 'edf', nature: 'depense', target: { kind: 'line', key: fixLine.key } },
+    { id: 'r-sav', pattern: 'billets', nature: 'depense', target: { kind: 'savings', key: 'line-key' } },
     { id: 'r-rev', pattern: 'acme', nature: 'revenu', target: { kind: 'line', key: revLine.key } },
   ];
   // Spec 0034 : deux simulations, la plus récente en tête, avec notes et lignes dans l'ordre (dont une ligne sans nom ni montant).

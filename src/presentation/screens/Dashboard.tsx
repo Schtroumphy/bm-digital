@@ -72,7 +72,7 @@ function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
       <div className="dash-kpi">
         <div className="kpi-label">Dépenses</div>
         <div className="dash-val">{cell(x => money(x.expenses))}</div>
-        {k && <div className="dash-sub" style={{ color: k.variableRemaining < 0 ? BAD : GOOD }}>Restant variables {money(k.variableRemaining)}</div>}
+        {k && <div className="dash-sub" style={{ color: k.variableRemaining < 0 ? BAD : GOOD }}>Réel {money(k.expensesReal)} · Restant variables {money(k.variableRemaining)}</div>}
       </div>
       <div className="dash-kpi">
         <div className="kpi-label">Taux d’épargne</div>

@@ -221,7 +221,7 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose, onOpenGoals 
             {s.surplus < 0 && <div className="kpi-sub" style={{ color: BAD }}>Marge négative</div>}
           </div>
           <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
-          <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
+          <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} sub={'Réelles : ' + money(s.expensesReal)} />
           <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.grossSavings)} sub={'Réelle : ' + money(s.realSavings)} />
           <Kpi label="Taux d’épargne" hue={HUE.obj} value={percent(s.savingsRate)} sub={'Brut : ' + percent(s.grossSavingsRate)} />
           <div className="panel kpi emergency">
