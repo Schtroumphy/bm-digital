@@ -591,7 +591,7 @@ function EntryTab({ month }: { month: MonthKey }) {
 /** Transfers of the month (spec 0013, RG10d; spec 0019): created by the import or by the « Transfert » form, edited (label, amount) or deleted here. */
 function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked: boolean; showDetail: boolean }) {
   const { data, update } = useStore();
-  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string; date: string; from: string; to: string } | null>(null);
   // Detail-only editing, also on a locked month (spec 0020, RG6, RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
   const movements = (data.accountMovements ?? []).filter(m => m.month === month);
@@ -604,6 +604,8 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
     setEditingDetail(null);
   };
   const nameOf = (id: string) => movementAccountName(data, id);
+  // Accounts offered when editing a transfer: active ones, plus the current ones (possibly archived); never the reserved cash account.
+  const editableAccounts = data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID && (!a.archived || a.id === editing?.from || a.id === editing?.to));
   // « Réparti dans les enveloppes » next to a debit « vers enveloppes » (spec 0016, RG29): calculated, never typed, no balance.
   const split = envelopeSplit(data, month);
   // Several debits « vers enveloppes » in a month: the monthly total is shown once, on the first one listed.
@@ -624,7 +626,7 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
   };
   const save = () => {
     if (!editing) return;
-    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail }));
+    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail, date: editing.date, fromAccountId: editing.from, toAccountId: editing.to }));
     setEditing(null);
   };
   return (
@@ -639,11 +641,24 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
           editing?.id === m.id ? (
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
-                <EntryDate entry={m} attachedWord="Rattaché" />
+                <input className="text-input" type="date" value={editing.date} onChange={e => setEditing({ ...editing, date: e.target.value })} />
                 <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
-                <span className="muted ellipsis">
-                  {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
-                </span>
+                {!isEnvelopesPool(m.fromAccountId) && !isEnvelopesPool(m.toAccountId) ? (
+                  <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <select className="text-input" value={editing.from} onChange={e => setEditing({ ...editing, from: e.target.value })}>
+                      {editableAccounts.filter(a => a.id !== editing.to || a.id === editing.from).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    →
+                    <select className="text-input" value={editing.to} onChange={e => setEditing({ ...editing, to: e.target.value })}>
+                      {editableAccounts.filter(a => a.id !== editing.from).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      {!isEnvelopeAccount(data.accounts.find(a => a.id === editing.from)) && <option value={CASH_ID}>{CASH_LABEL} (retrait)</option>}
+                    </select>
+                  </span>
+                ) : (
+                  <span className="muted ellipsis" title="Comptes figés : virement vers les enveloppes.">
+                    {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
+                  </span>
+                )}
                 <input className="text-input is-amount" value={editing.amount} inputMode="decimal" disabled={linkStateOf(m) === 'lie'} title={linkStateOf(m) === 'lie' ? 'Montant figé : les deux lignes du fichier ont ce montant. Déliez ou supprimez le virement.' : undefined} onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
                 <span className="icon-btn" title="Enregistrer" onClick={save}>
                   <Icon name="check" size={14} />
@@ -668,7 +683,7 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
                   <span />
                 ) : (
                   <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
-                    <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '' })}>
+                    <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '', date: bankDateOf(m, data), from: m.fromAccountId, to: m.toAccountId })}>
                       <span style={{ fontSize: 11 }}>Modifier</span>
                     </span>
                     {linkStateOf(m) === 'lie' && (

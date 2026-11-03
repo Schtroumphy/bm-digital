@@ -2,9 +2,9 @@ import { applyDetail, normalizeDetail } from '../domain/detail';
 import { round2 } from '../domain/format';
 import { daysInMonth } from '../domain/checkoff';
 import { isMonthLocked } from '../domain/ledger';
-import { isRealDate } from '../domain/periods';
+import { deducedDate, isRealDate } from '../domain/periods';
 import { syncLineActual } from '../domain/lineActuals';
-import { CASH_ID, linkStateOf } from '../domain/internalTransfers';
+import { CASH_ID, isEnvelopesPool, linkStateOf } from '../domain/internalTransfers';
 import { isEnvelopeAccount } from '../domain/bank';
 import { isValidTransferTarget } from '../domain/transfers';
 import type { AccountMovement, BudgetData, MonthKey, MovementTarget } from '../domain/types';
@@ -65,15 +65,37 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
  * Changes the label and the amount of a transfer, and its detail when `patch.detail` is given (spec 0020, RG6; empty clears it).
  * Refused (false) on a locked month, an empty label or an amount that is not positive, and for a changed amount on a transfer linked to
  * two lines of the bank file (« Lié »): both lines have that amount, the transfer has to be unlinked or deleted first (spec 0016, RG15).
+ * `date` (`YYYY-MM-DD`, a real date) changes its bank date, as for an expense: the month of attachment stays; the date is kept only when the day alone does not give it.
+ * `fromAccountId` / `toAccountId` change its accounts, under the rules of `addTransfer` (active, different, cash withdrawal only from a non-envelope
+ * account); refused for a transfer from or to the envelopes pool. The import traces are kept (they carry their own account). A new destination drops a target that
+ * no longer fits it.
  */
-export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; detail?: string }): boolean {
+export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; detail?: string; date?: string; fromAccountId?: string; toAccountId?: string }): boolean {
   const mv = d.accountMovements?.find(x => x.id === id);
   const label = patch.label.trim();
   if (!mv || isMonthLocked(d, mv.month) || !label || !(patch.amount > 0)) return false;
   if (linkStateOf(mv) === 'lie' && round2(patch.amount) !== mv.amount) return false;
+  if (patch.date !== undefined && !isRealDate(patch.date)) return false;
+  const from = patch.fromAccountId ?? mv.fromAccountId;
+  const to = patch.toAccountId ?? mv.toAccountId;
+  const before = mv.target;
+  if (from !== mv.fromAccountId || to !== mv.toAccountId) {
+    const active = (a: string) => d.accounts.some(x => x.id === a && !x.archived);
+    if (isEnvelopesPool(mv.fromAccountId) || isEnvelopesPool(mv.toAccountId) || isEnvelopesPool(from) || isEnvelopesPool(to)) return false;
+    if (to === CASH_ID ? !active(from) || isEnvelopeAccount(d.accounts.find(a => a.id === from)) : from === to || !active(from) || !active(to)) return false;
+    mv.fromAccountId = from;
+    mv.toAccountId = to;
+    if (mv.target && (to === CASH_ID || !isValidTransferTarget(d, mv.month, to, mv.target))) delete mv.target;
+  }
   mv.label = label;
   mv.amount = round2(patch.amount);
+  if (patch.date !== undefined) {
+    mv.day = Number(patch.date.slice(8, 10));
+    if (patch.date === deducedDate(d, mv.month, mv.day)) delete mv.bankDate;
+    else mv.bankDate = patch.date;
+  }
   if (patch.detail !== undefined) applyDetail(mv, patch.detail);
+  syncTarget(d, mv.month, before);
   syncTarget(d, mv.month, mv.target);
   return true;
 }
