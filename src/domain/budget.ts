@@ -131,20 +131,29 @@ export function estimatedBalanceTotal(d: BudgetData, ledger: Ledger, m: MonthKey
 }
 
 /**
- * « Surplus »: the margin of the account, from the real figures. Real income minus everything that leaves
- * (credits, expenses, savings, investments, envelope allocations). A line without an actual yet counts at its budget,
- * as when the month is validated. Meant to stay at 0 or above.
+ * « Écart dépenses » (spec 0038): budget − actual over credits, fixed and variable expenses. Positive = spent less than planned.
+ * A line without an actual counts at its budget (gap 0), as when the month is validated. Income is not involved.
  */
-export function surplus(d: BudgetData, m: MonthKey): number {
+function expenseGap(d: BudgetData, m: MonthKey): number {
   const lines = budgetLines(d, m);
-  const real = (k: BlockKey) => sum(lines.filter(l => l.block === k).map(l => l.actual ?? l.budget));
-  const allocSum = sum(Object.values(monthAlloc(d, m)));
-  return round2(real('rev') - (real('cre') + real('fix') + real('var') + real('epa') + real('inv') + allocSum));
+  const spent = lines.filter(l => l.block === 'cre' || l.block === 'fix' || l.block === 'var');
+  return sum(spent.map(l => l.budget - (l.actual ?? l.budget)));
+}
+
+/**
+ * « Écart épargne » (spec 0038): actual − budget over savings and investments. Positive = saved more than planned.
+ * Envelope allocations are part of the definition but have no actual: they count at their budget, so they add 0.
+ */
+function savingsGap(d: BudgetData, m: MonthKey): number {
+  const lines = budgetLines(d, m).filter(l => l.block === 'epa' || l.block === 'inv');
+  return sum(lines.map(l => (l.actual ?? l.budget) - l.budget));
 }
 
 export interface MonthSummary {
-  /** Margin of the account from the real figures (see `surplus`). */
-  surplus: number;
+  /** Budget − actual of credits, fixed and variable expenses; positive = spent less than planned. */
+  expenseGap: number;
+  /** Actual − budget of savings and investments; positive = saved more than planned. */
+  savingsGap: number;
   income: number;
   expenses: number;
   savings: number;
@@ -182,7 +191,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const realSavings = round2(grossSavings - envelopeSpent - savingsOut);
   const bal = (key: string) => ledger.accMonth(key, m)?.balance ?? 0;
   return {
-    surplus: surplus(d, m),
+    expenseGap: expenseGap(d, m),
+    savingsGap: savingsGap(d, m),
     income,
     expenses,
     savings,

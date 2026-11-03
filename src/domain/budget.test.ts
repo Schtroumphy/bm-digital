@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envelopeAlerts, lineHistory, monthSummary, surplus } from './budget';
+import { envelopeAlerts, lineHistory, monthSummary } from './budget';
 import { money, parseAmount } from './format';
 import { Ledger, monthRange } from './ledger';
 import { seedData } from './seed';
@@ -75,12 +75,56 @@ describe('seed data matches the design', () => {
   });
 });
 
-describe('surplus', () => {
-  it('is real income minus real outflows, a line without actual counting at its budget', async () => {
+describe('écarts dépenses et épargne', () => {
+  type L = { key: string; block: 'rev' | 'cre' | 'var' | 'epa'; section: string; name: string; budget: number; actual: number | null; accountId?: string };
+  const line = (key: string, block: L['block'], budget: number, actual: number | null, accountId?: string): L => ({ key, block, section: '', name: key, budget, actual, ...(accountId ? { accountId } : {}) });
+  async function summary(lines: L[], alloc: Record<string, number> = {}, tweak?: (d: import('./types').BudgetData) => void) {
     const { emptyData } = await import('./empty');
     const d = emptyData();
-    const line = (key: string, block: 'rev' | 'cre' | 'epa', budget: number, actual: number | null) => ({ key, block, section: '', name: key, budget, actual });
-    d.months['2026-11'] = { initialized: true, alloc: { e1: 10 }, transfersDone: {}, lines: [line('s', 'rev', 100, 90), line('c', 'cre', 80, 75.25), line('v', 'epa', 5, null)] };
-    expect(surplus(d, '2026-11')).toBe(-0.25);
+    d.months['2026-11'] = { initialized: true, alloc, transfersDone: {}, lines };
+    tweak?.(d);
+    return monthSummary(d, new Ledger(d, TODAY), '2026-11');
+  }
+
+  it('AC1: are 0 without any actual', async () => {
+    const s = await summary([line('v', 'var', 100, null), line('e', 'epa', 200, null), line('c', 'cre', 80, null)]);
+    expect(s.expenseGap).toBe(0);
+    expect(s.savingsGap).toBe(0);
+  });
+  it('AC2: spent less than planned is positive', async () => {
+    expect((await summary([line('v', 'var', 100, 80)])).expenseGap).toBe(20);
+  });
+  it('AC3: spent more than planned is negative', async () => {
+    expect((await summary([line('c', 'cre', 80, 90)])).expenseGap).toBe(-10);
+  });
+  it('AC4: saved more than planned is positive', async () => {
+    expect((await summary([line('e', 'epa', 200, 250)])).savingsGap).toBe(50);
+  });
+  it('AC5: an envelope allocation does not change the savings gap', async () => {
+    const lines = [line('e', 'epa', 200, 250)];
+    expect((await summary(lines, { e1: 10 })).savingsGap).toBe((await summary(lines)).savingsGap);
+  });
+  it('AC6: income does not influence the gaps', async () => {
+    const s = await summary([line('r', 'rev', 100, 150), line('v', 'var', 100, 80), line('e', 'epa', 200, 250)]);
+    expect(s.expenseGap).toBe(20);
+    expect(s.savingsGap).toBe(50);
+  });
+  it('AC7: a line of an out-of-budget account is ignored', async () => {
+    const s = await summary([line('c', 'cre', 100, 50, 'hb'), line('c2', 'cre', 10, 10)], {}, d => {
+      d.accounts.push({ id: 'hb', name: 'Hors budget', hue: 0, isDefault: false, openingBalance: 0, openingMonth: '2026-01', inBudget: false, archived: false });
+    });
+    expect(s.expenseGap).toBe(0);
+  });
+  it('saved less than planned is negative', async () => {
+    expect((await summary([line('e', 'epa', 200, 150)])).savingsGap).toBe(-50);
+  });
+  it('savings gap is unchanged by lines of an out-of-budget account (savings lines are never filtered by account)', async () => {
+    const s = await summary([line('e', 'epa', 200, 250), line('c', 'cre', 100, 10, 'hb'), line('r', 'rev', 100, 10, 'hb')], {}, d => {
+      d.accounts.push({ id: 'hb', name: 'Hors budget', hue: 0, isDefault: false, openingBalance: 0, openingMonth: '2026-01', inBudget: false, archived: false });
+    });
+    expect(s.savingsGap).toBe(50);
+  });
+  it('RG6: rounds to 2 decimals', async () => {
+    expect((await summary([line('v', 'var', 0.3, 0.1), line('w', 'var', 0.3, 0.1)])).expenseGap).toBe(0.4);
   });
 });

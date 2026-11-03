@@ -327,11 +327,12 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose, onOpenGoals 
 
 /** KPI of a gap against the budget: signed amount, red when negative, neutral and without caption at 0 (spec 0038, RG8-RG9). */
 function GapKpi({ label, title, value, positive, negative }: { label: string; title: string; value: number; positive: string; negative: string }) {
+  const color = value > 0 ? GOOD : value < 0 ? BAD : undefined;
   return (
     <div className="panel kpi">
       <div className="kpi-label" title={title}>{label}</div>
-      <div className="kpi-value" style={{ color: value < 0 ? BAD : undefined }}>{money(value, true)}</div>
-      {value !== 0 && <div className="kpi-sub" style={{ color: value < 0 ? BAD : undefined }}>{value > 0 ? positive : negative}</div>}
+      <div className="kpi-value" style={{ color }}>{money(value, true)}</div>
+      {value !== 0 && <div className="kpi-sub" style={{ color }}>{value > 0 ? positive : negative}</div>}
     </div>
   );
 }
