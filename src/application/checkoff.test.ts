@@ -770,7 +770,7 @@ describe('mouvements ignorés en gris (amendement 7, limités aux contreparties 
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
     expect(accountPointage(d, M, SWILE, T)!.estimated).toBe(170);
     expect(bank(d, SWILE)).toBe(50);
-    expect(main(d).ignored).toEqual([{ date: '2027-01-08', label: 'cantine → Swile (pointé)', amount: -120, reason: IGNORED_REASON }]);
+    expect(main(d).ignored).toEqual([{ date: '2027-01-08', label: '✅ cantine → Swile', amount: -120, reason: IGNORED_REASON }]);
   });
 
   it('CA98 et CA103: la liste grise n’entre dans aucune somme; le solde estimé est celui de la chaîne', () => {
@@ -784,8 +784,8 @@ describe('mouvements ignorés en gris (amendement 7, limités aux contreparties 
     expect(p.estimated).toBe(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end);
     const counted = flowOf(p.realMovements.filter(x => x.counted));
     expect([p.inflow, p.outflow]).toEqual([counted.in, counted.out]);
-    expect(p.estimatedMovements.some(x => x.label === 'cantine → Swile (pointé)')).toBe(false);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).some(x => x.label === 'cantine → Swile (pointé)')).toBe(false);
+    expect(p.estimatedMovements.some(x => x.label === '✅ cantine → Swile')).toBe(false);
+    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).some(x => x.label === '✅ cantine → Swile')).toBe(false);
     // Relevé 1 000 € au 20/01 contre le solde réel (1 000 − 50 + 5 de régularisation) : l'écart est -5 (le transfert est du 01/01).
     expect(p.gap).toBe(1000 - (1000 - 50 + 5));
     expect(p.real!.end).toBe(bank(d, MAIN_ACCOUNT_ID));
@@ -830,15 +830,15 @@ describe('mouvements ignorés en gris (amendement 7, limités aux contreparties 
 
       const counted = new Set(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.label));
       const ignored = new Set(ignoredMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.label));
-      const fictive = 'cantine → Swile (pointé)';
+      const fictive = '✅ cantine → Swile';
       expect(counted.has(fictive) !== ignored.has(fictive)).toBe(true); // exactly one of the two
       expect((inBudget ? counted : ignored).has(fictive)).toBe(true);
       // the transfers are real: counted whatever the budget status, never grey
-      for (const label of ['Sortant → Swile (transfert)', 'Entrant depuis Swile (transfert)']) {
+      for (const label of ['🔁 Sortant → Swile', '🔁 Entrant depuis Swile']) {
         expect([label, counted.has(label), ignored.has(label)]).toEqual([label, true, false]);
       }
       // a 0 € counterpart is in neither list (RG108)
-      expect(['vide', counted.has('vide → Swile (pointé)'), ignored.has('vide → Swile (pointé)')]).toEqual(['vide', false, false]);
+      expect(['vide', counted.has('✅ vide → Swile'), ignored.has('✅ vide → Swile')]).toEqual(['vide', false, false]);
     }
   });
 
@@ -918,7 +918,7 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
     const { withLine } = pair();
     const before = main(withLine).estimated;
     expect(checkLine(withLine, M, 'swile', '2027-01-08')).toBe(true);
-    expect(main(withLine).ignored.map(x => x.label)).toEqual(['swile → Swile (pointé)']);
+    expect(main(withLine).ignored.map(x => x.label)).toEqual(['✅ swile → Swile']);
     expect(main(withLine).estimated).toBe(before);
   });
 
@@ -932,7 +932,7 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
       ];
       for (const labels of [realMovements(d, MAIN_ACCOUNT_ID, M), estimatedMovements(d, MAIN_ACCOUNT_ID, M)].map(l => l.map(x => x.label))) {
         expect(labels.filter(l => l.startsWith('Zéro'))).toEqual([]);
-        expect(labels).toContain('Non nul → Swile (transfert)');
+        expect(labels).toContain('🔁 Non nul → Swile');
       }
       expect(ignoredMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
     }

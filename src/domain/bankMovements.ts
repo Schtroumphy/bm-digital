@@ -5,6 +5,18 @@ import { creditDateOf, debitDateOf, hasEnvelopesDebit, isEnvelopesPool, movement
 import { isCashFunding, isItemTransferred } from './movementTargets';
 import type { BudgetData, MonthKey, Transaction } from './types';
 
+/** Émoji de fin de libellé d'un mouvement (légende affichée dans le détail du compte : `MOVE_LEGEND`). */
+export const MOVE_MARK = { expense: '💸', entry: '📥', withdrawal: '🏧', transfer: '🔁', saving: '🐖', checked: '✅', received: '📩' } as const;
+export const MOVE_LEGEND: { mark: string; meaning: string }[] = [
+  { mark: MOVE_MARK.expense, meaning: 'dépense' },
+  { mark: MOVE_MARK.entry, meaning: 'entrée d’argent' },
+  { mark: MOVE_MARK.withdrawal, meaning: 'retrait' },
+  { mark: MOVE_MARK.transfer, meaning: 'transfert' },
+  { mark: MOVE_MARK.saving, meaning: 'versement d’épargne' },
+  { mark: MOVE_MARK.checked, meaning: 'ligne pointée (estimé)' },
+  { mark: MOVE_MARK.received, meaning: 'ligne reçue' },
+];
+
 /*
  * The money movements of a bank account in a month, dated and signed (positive = in), in two separate chains (spec 0019):
  * - `realMovements`: only real entries (expenses, entries of money, transfers, adjustments). They make the REAL balance, the one
@@ -71,9 +83,9 @@ function transferMovements(d: BudgetData, id: string, m: MonthKey): BankMovement
   const nameOf = (accountId: string) => movementAccountName(d, accountId);
   for (const mv of d.accountMovements ?? []) {
     if (mv.amount === 0) continue;
-    if (mv.fromAccountId === id && !isEnvelopesPool(id) && debitDateOf(mv).startsWith(m)) out.push({ date: debitDateOf(mv), label: `${mv.label} → ${nameOf(mv.toAccountId)} (transfert)`, amount: -mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.fromAccountId === id && !isEnvelopesPool(id) && debitDateOf(mv).startsWith(m)) out.push({ date: debitDateOf(mv), label: `${MOVE_MARK.transfer} ${mv.label} → ${nameOf(mv.toAccountId)}`, amount: -mv.amount, kind: 'transfer', counterpart: true });
     // The cash funding of an envelope credits its cash balance, not its account (spec 0026, RG4).
-    if (mv.toAccountId === id && !isEnvelopesPool(id) && !isCashFunding(d, mv) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${mv.label} depuis ${nameOf(mv.fromAccountId)} (transfert)`, amount: mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.toAccountId === id && !isEnvelopesPool(id) && !isCashFunding(d, mv) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${nameOf(mv.fromAccountId)}`, amount: mv.amount, kind: 'transfer', counterpart: true });
   }
   return out;
 }
@@ -91,11 +103,11 @@ export function realMovements(d: BudgetData, id: string, m: MonthKey): BankMovem
     if (!date.startsWith(m)) continue;
     const attached = date.slice(0, 7) !== t.month ? t.month : undefined;
     if (t.type === 'epa' && linked.some(l => l.key === t.target)) {
-      out.push({ date, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
+      out.push({ date, label: `${MOVE_MARK.withdrawal} ${t.label} (${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
     }
     // An envelope expense paid in cash leaves the envelope's cash balance, never its account (spec 0026, RG6).
     if (isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
+    out.push({ date, label: `${t.type === 'epa' ? MOVE_MARK.withdrawal : t.type === 'rev' ? MOVE_MARK.entry : MOVE_MARK.expense} ${t.label}`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
   }
   // A transfer is real: both faces count, whatever the budget status of the accounts (RG2, RG12).
   out.push(...transferMovements(d, id, m));
@@ -114,7 +126,7 @@ export function attachedMovements(d: BudgetData, id: string, m: MonthKey): BankM
   for (const t of d.transactions) {
     const date = bankDateOf(t);
     if (t.month !== m || date.startsWith(m) || isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : t.type === 'rev' ? 'entrée' : 'dépense'})`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
+    out.push({ date, label: `${t.type === 'epa' ? MOVE_MARK.withdrawal : t.type === 'rev' ? MOVE_MARK.entry : MOVE_MARK.expense} ${t.label}`, amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
   }
   return out;
 }
@@ -137,10 +149,10 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
 
   // Money sent to another account, once checked, as a fictive counterpart. The main account is never touched by an account out of the
   // budget, which records its own side alone (spec 0009, RG92; spec 0019, RG12: only for fictive counterparts).
-  const counterpart = (to: string, amount: number, date: string, name: string, key: string, toName: string, done = 'pointé') => {
+  const counterpart = (to: string, amount: number, date: string, name: string, key: string, toName: string, done: string = MOVE_MARK.checked) => {
     if (to === main || amount === 0) return;
-    if (id === main && isAccountInBudget(d, to)) out.push({ date, label: `${name} → ${toName} (${done})`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
-    else if (id === to) out.push({ date, label: `${name} (${done})`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
+    if (id === main && isAccountInBudget(d, to)) out.push({ date, label: `${done} ${name} → ${toName}`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
+    else if (id === to) out.push({ date, label: `${done} ${name}`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
   };
 
   for (const l of lines) {
@@ -158,8 +170,8 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
     const onlyAssigned = l.actual === null && d.transactions.some(t => (t.type === 'fix' || t.type === 'rev') && t.month === m && t.target === l.key && isTransactionOffBudget(t));
     const counted = onlyAssigned ? { amount: 0, source: 'actual' as const } : countedAmount(l);
     const sign = l.block === 'rev' ? 1 : -1;
-    if (mine(l.accountId)) out.push({ date: c.doneOn, label: `${l.name} (${l.block === 'rev' ? 'reçu' : 'pointé'}${counted.source === 'actual' ? ', réel' : ''})`, amount: sign * counted.amount, kind: 'check', lineKey: l.key, fictive: true });
-    if (isSavingsBlock(l.block) && l.linkedAccountId === id) out.push({ date: c.doneOn, label: `${l.name} (versement, pointé)`, amount: counted.amount, kind: 'check', lineKey: l.key, fictive: true });
+    if (mine(l.accountId)) out.push({ date: c.doneOn, label: `${l.block === 'rev' ? MOVE_MARK.received : MOVE_MARK.checked} ${l.name}${counted.source === 'actual' ? ' (réel)' : ''}`, amount: sign * counted.amount, kind: 'check', lineKey: l.key, fictive: true });
+    if (isSavingsBlock(l.block) && l.linkedAccountId === id) out.push({ date: c.doneOn, label: `${MOVE_MARK.saving} ${l.name}`, amount: counted.amount, kind: 'check', lineKey: l.key, fictive: true });
   }
 
   // Envelope allocations (spec 0011): read from the accounts of the envelopes, so that deleting an envelope leaves its past allocations in
@@ -171,8 +183,8 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
       const key = envelopeCheckKey(account.envelopeId);
       const c = md.checks?.[key];
       if (amount === 0 || !c || pooled || isItemTransferred(d, m, { kind: 'env', id: account.envelopeId })) continue;
-      if (id === main) out.push({ date: c.doneOn, label: `Allocation → ${account.name} (pointée)`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
-      else if (id === account.id) out.push({ date: c.doneOn, label: `Allocation ${account.name} (pointée)`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
+      if (id === main) out.push({ date: c.doneOn, label: `${MOVE_MARK.checked} Allocation → ${account.name}`, amount: -amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
+      else if (id === account.id) out.push({ date: c.doneOn, label: `${MOVE_MARK.checked} Allocation ${account.name}`, amount, kind: 'check', lineKey: key, counterpart: true, fictive: true });
     }
     // Before its account exists, a checked allocation keeps the account recorded when it was checked (spec 0009, RG88, RG90, RG91; spec 0011, RG18).
     for (const e of d.envelopes) {
@@ -189,18 +201,18 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
       // balance stays what it was before the assignment, with no double count (spec 0028, RG10). A line not checked holds nothing, assigned or not.
       const date = bankDateOf(t);
       if (isTransactionOffBudget(t) && date.startsWith(m) && mine(t.accountId) && d.months[t.month]?.checks?.[t.target]) {
-        out.push({ date, label: `${t.label} (${t.type === 'rev' ? 'entrée' : 'dépense'}, ${isTransactionAssigned(t) ? 'affectée' : 'hors budget'})`, amount: t.type === 'rev' ? t.amount : -t.amount, kind: 'expense' });
+        out.push({ date, label: `${t.type === 'rev' ? MOVE_MARK.entry : MOVE_MARK.expense} ${t.label} ${isTransactionAssigned(t) ? '(affectée)' : '(hors budget)'}`, amount: t.type === 'rev' ? t.amount : -t.amount, kind: 'expense' });
       }
       continue;
     }
     const date = bankDateOf(t);
     if (!date.startsWith(m)) continue;
     if (t.type === 'epa' && linked.some(l => l.key === t.target)) {
-      out.push({ date, label: `${t.label} (retrait de ${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
+      out.push({ date, label: `${MOVE_MARK.withdrawal} ${t.label} (${linked.find(l => l.key === t.target)!.name})`, amount: -t.amount, kind: 'expense' });
     }
     if (isCashExpense(t) || !mine(t.accountId)) continue;
     const attached = date.slice(0, 7) !== t.month ? t.month : undefined;
-    out.push({ date, label: `${t.label} (${t.type === 'epa' ? 'retrait' : 'dépense'})`, amount: t.type === 'epa' ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
+    out.push({ date, label: `${t.type === 'epa' ? MOVE_MARK.withdrawal : MOVE_MARK.expense} ${t.label}`, amount: t.type === 'epa' ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
   }
   // Transfers are real and also count here, on both faces (RG9, RG12).
   out.push(...transferMovements(d, id, m));

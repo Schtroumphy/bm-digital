@@ -2,7 +2,7 @@ import { accountIdOf, envelopeAccountAt, isAccountInBudget, isEnvelopeAccount, i
 import { isItemTransferred } from './movementTargets';
 import { isMonthInBalanceRange } from './balanceRange';
 import { lineEntriesNote } from './lineActuals';
-import { countedAmount, envelopeCheckKey, estimatedMovements, flowOf, realMovements, type BankMovement, type CountedSource } from './bankMovements';
+import { MOVE_MARK, countedAmount, envelopeCheckKey, estimatedMovements, flowOf, realMovements, type BankMovement, type CountedSource } from './bankMovements';
 import { addMonths, compareMonths, money, parseMonth, round2 } from './format';
 import { closeKey, isMonthLocked, isYearClosed, monthLines } from './ledger';
 import type { AccountBalanceEntry, BankAccount, BudgetData, ExecMode, Line, LineCheck, MonthKey } from './types';
@@ -327,13 +327,13 @@ export function ignoredMovements(d: BudgetData, accountId: string, m: MonthKey):
   for (const l of md.lines) {
     const c = md.checks?.[l.key];
     const to = l.block === 'var' && c ? varAccountId(d, l) : null;
-    if (c && to && outOfBudget(to) && l.budget !== 0 && !isItemTransferred(d, m, { kind: 'line', key: l.key })) out.push({ date: c.doneOn, label: `${l.name} → ${nameOf(to)} (pointé)`, amount: -l.budget, reason: IGNORED_REASON });
+    if (c && to && outOfBudget(to) && l.budget !== 0 && !isItemTransferred(d, m, { kind: 'line', key: l.key })) out.push({ date: c.doneOn, label: `${MOVE_MARK.checked} ${l.name} → ${nameOf(to)}`, amount: -l.budget, reason: IGNORED_REASON });
   }
   for (const e of d.envelopes) {
     const c = md.checks?.[envelopeCheckKey(e.id)];
     const amount = md.alloc[e.id] ?? 0;
     // From the month its own account exists, an envelope never leaves the budget (spec 0011, RG4): only older checks are concerned.
-    if (!envelopeAccountAt(d, e, m) && c?.accountId && outOfBudget(c.accountId) && amount !== 0 && !isItemTransferred(d, m, { kind: 'env', id: e.id })) out.push({ date: c.doneOn, label: `Allocation ${e.name} → ${nameOf(c.accountId)} (pointée)`, amount: -amount, reason: IGNORED_REASON });
+    if (!envelopeAccountAt(d, e, m) && c?.accountId && outOfBudget(c.accountId) && amount !== 0 && !isItemTransferred(d, m, { kind: 'env', id: e.id })) out.push({ date: c.doneOn, label: `${MOVE_MARK.checked} Allocation ${e.name} → ${nameOf(c.accountId)}`, amount: -amount, reason: IGNORED_REASON });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }

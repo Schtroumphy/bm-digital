@@ -70,7 +70,7 @@ function defaultDay(month: MonthKey) {
   return new Date(year, m + 1, 0).getDate();
 }
 
-/** Libellé d'une écriture (+ détail) : clic souris sur le libellé, et crayon (seul arrêt clavier) visible au survol/focus pour ajouter ou modifier le détail. */
+/** Libellé d'une écriture (+ détail) : clic sur le libellé pour ajouter ou modifier le détail (le crayon de fin de ligne modifie toute l'écriture). */
 /** `attach`: where the entry is attached (budget line, or the link of a transfer), shown under the detail. */
 function EntryLabel({ entry, attach, hideDetail, onOpen }: { entry: { id: string; label: string; detail?: string }; attach?: string; hideDetail?: boolean; onOpen: (id: string, detail?: string) => void }) {
   const open = () => onOpen(entry.id, entry.detail);
@@ -84,9 +84,6 @@ function EntryLabel({ entry, attach, hideDetail, onOpen }: { entry: { id: string
         {entry.detail && !hideDetail && <div className="entry-detail">{entry.detail}</div>}
         {attach && !hideDetail && <div className="entry-detail is-attach">{attach}</div>}
       </div>
-      <button type="button" className="entry-edit" aria-label={editLabel} title={editLabel} onClick={open}>
-        <Icon name="pencil" size={12} stroke={2} />
-      </button>
     </div>
   );
 }

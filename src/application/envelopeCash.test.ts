@@ -405,7 +405,7 @@ describe('historique par enveloppe (spec 0026, RG16 à RG19)', () => {
     feed(d, 150, MAIN_ACCOUNT_ID);
     spend(d, 130, 'virtuel');
     const rows = virtualHistory(d, 'loisirs', M);
-    expect(shape(rows)).toEqual([['Ouverture', 100, 100], [expect.stringContaining('Alimentation'), 150, 250], ['Sortie (dépense)', -130, 120]]);
+    expect(shape(rows)).toEqual([['Ouverture', 100, 100], [expect.stringContaining('Alimentation'), 150, 250], ['💸 Sortie', -130, 120]]);
     expect(rows.at(-1)!.balance).toBe(bank(d, envAccount(d)));
     expect(rows.map(r => r.kind)).toEqual(['opening', 'movement', 'expense']);
   });
@@ -435,8 +435,8 @@ describe('historique par enveloppe (spec 0026, RG16 à RG19)', () => {
     d.transactions[0].day = 20;
     addTransaction(d, { id: 'a', month: M, day: 3, label: 'Tôt', amount: 1, type: 'env', target: 'loisirs' });
     addTransaction(d, { id: 'c', month: '2027-01', day: 2, label: 'Plus tard', amount: 2, type: 'env', target: 'loisirs' });
-    expect(virtualHistory(d, 'loisirs', M).map(r => r.label)).toEqual(['Ouverture', 'Tôt (dépense)', 'Sortie (dépense)']);
-    expect(virtualHistory(d, 'loisirs', '2027-01').map(r => r.label)).toEqual(['Ouverture', 'Tôt (dépense)', 'Sortie (dépense)', 'Plus tard (dépense)']);
+    expect(virtualHistory(d, 'loisirs', M).map(r => r.label)).toEqual(['Ouverture', '💸 Tôt', '💸 Sortie']);
+    expect(virtualHistory(d, 'loisirs', '2027-01').map(r => r.label)).toEqual(['Ouverture', '💸 Tôt', '💸 Sortie', '💸 Plus tard']);
     expect(virtualHistory(d, 'loisirs', '2026-11')).toEqual([]);
   });
 

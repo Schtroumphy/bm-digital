@@ -21,7 +21,7 @@ import { decideAccountKind, linkLineToAccount } from '../../application/accountK
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
 import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
 import { assignedOperations, assignedTotals } from '../../domain/assignedOperations';
-import { attachedMovements, realMovements } from '../../domain/bankMovements';
+import { MOVE_LEGEND, attachedMovements, realMovements } from '../../domain/bankMovements';
 import { IN_BUDGET_HINT, OPENING_MESSAGE } from '../components/hints';
 import { openingCashRefusal, setEnvelopeOpeningCash } from '../../application/envelopes';
 import { envelopeAccountTotal, envelopeCash, envelopesGroupTotals } from '../../domain/envelopeCash';
@@ -558,6 +558,11 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
               Affecté ce mois-ci : dépenses {money(assignedSum.expenses)} · entrées {money(assignedSum.entries)} · net {money(assignedSum.net, true)}
             </div>
           )}
+          <p className="muted is-small cpt-legend" aria-label="Légende des émojis">
+            {MOVE_LEGEND.map(l => (
+              <span key={l.mark} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>{l.mark} {l.meaning}</span>
+            ))}
+          </p>
           <ul className="cpt-list">
             {listed.map((item, i) => {
               if (item.assigned) {
