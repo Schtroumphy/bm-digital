@@ -16,3 +16,6 @@ docs/travaux_octobre_2026.numbers
 
 # Sauvegardes de la base (données financières personnelles)
 backups/
+
+# Relevés bancaires exportés (données financières personnelles)
+docs/relevés/
