@@ -189,7 +189,7 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
     // Before its account exists, a checked allocation keeps the account recorded when it was checked (spec 0009, RG88, RG90, RG91; spec 0011, RG18).
     for (const e of d.envelopes) {
       const c = md.checks?.[envelopeCheckKey(e.id)];
-      if (!pooled && !envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), 'pointée');
+      if (!pooled && !envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), MOVE_MARK.checked);
     }
   }
 
