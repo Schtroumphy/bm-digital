@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { closeBlockersAfterReconcile, closeMonthReconciling } from '../../application/cash';
-import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
+import { closeBlockers, closeMonth, overPlacedAmount, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { reconcilableLines, type ReconcilableLine } from '../../domain/cash';
 import { money, monthLabel, parseMonth } from '../../domain/format';
 import { isMonthClosed, isYearClosed } from '../../domain/ledger';
@@ -23,7 +23,7 @@ export function blockerItems(b: CloseBlocker): BlockerItem[] {
     return b.accounts.map(a => ({ accountId: a.accountId, text: `${a.name} : ${a.reason === 'missing' ? 'relevé à saisir' : `écart de ${money(a.gap, true)} à régulariser`}` }));
   }
   if (b.amount > 0) return [{ link: { kind: 'budget' }, text: `Il reste ${money(b.amount)} à placer. Place-les (versement sur une épargne ou un placement, allocation d’une enveloppe) ou baisse le budget des revenus concernés pour revenir à 0 € avant de clôturer.` }];
-  return [{ link: { kind: 'budget' }, text: `Tu as placé ${money(-b.amount)} de plus que disponible. Réduis un versement ou une allocation d’enveloppe, ou saisis le revenu manquant, pour revenir à 0 € avant de clôturer.` }];
+  return [];
 }
 
 /**
@@ -53,7 +53,9 @@ export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKe
     // Cash lines not fully entered: the closing offers to regularise them first (spec 0037, RG19).
     if (reconcilableLines(data, month).length) return setReconciling(true);
     if (closeBlockers(data, month).length) return onRefused();
-    if (!window.confirm(`Clôturer ${monthLabel(month)} ? Le mois deviendra en lecture seule.`)) return;
+    const over = overPlacedAmount(data, month);
+    const warning = over > 0 ? `\n\nAttention : tu as placé ${money(over)} de plus que disponible.` : '';
+    if (!window.confirm(`Clôturer ${monthLabel(month)} ? Le mois deviendra en lecture seule.${warning}`)) return;
     update(d => void closeMonth(d, month));
     onDone();
   };

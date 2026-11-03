@@ -19,7 +19,7 @@ export type CloseBlocker =
   | { kind: 'unavailable' }
   /** The previous initialized month must be closed first (RG35). */
   | { kind: 'previous'; month: MonthKey }
-  /** Some money is still to be placed (positive) or over-placed (negative) (RG27). */
+  /** Some money is still to be placed (RG27). Over-placed money (negative) no longer blocks: see `overPlacedAmount`. */
   | { kind: 'available'; amount: number }
   /** Some accounts have no statement, or a statement with a gap (spec 0041, RG13): the accounts at fault, each with its reason. */
   | { kind: 'statements'; accounts: ReleveFailure[] };
@@ -34,10 +34,17 @@ export function closeBlockers(d: BudgetData, m: MonthKey, today = isoDate()): Cl
   const prev = previousInitializedMonth(d, m);
   if (prev !== null && !isMonthLocked(d, prev)) out.push({ kind: 'previous', month: prev });
   const amount = availableReal(d, m) ?? 0;
-  if (amount !== 0) out.push({ kind: 'available', amount });
+  // Over-placed money (negative) only warns: savings and off-budget accounts such as Swile are not entered in the budget, so it can be legitimate.
+  if (amount > 0.005) out.push({ kind: 'available', amount });
   const accounts = releveFailures(d, m, today);
   if (accounts.length) out.push({ kind: 'statements', accounts });
   return out;
+}
+
+/** The amount placed beyond what is available (positive number), or 0. Does not forbid closing: the screen warns before closing. */
+export function overPlacedAmount(d: BudgetData, m: MonthKey): number {
+  const amount = availableReal(d, m) ?? 0;
+  return amount < -0.005 ? -amount : 0;
 }
 
 /** Closes the month (read-only from now on). Returns true when applied. */

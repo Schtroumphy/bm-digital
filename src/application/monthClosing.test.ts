@@ -4,7 +4,7 @@ import { addEnvelope } from './envelopes';
 import { setLineAccount, setTransactionAccount } from './bankAccounts';
 import { settleStatements } from '../domain/releve.fixture';
 import { setAccountStatement } from './checkoff';
-import { closeBlockers, closeMonth, reopenBlocker, reopenMonth } from './monthClosing';
+import { closeBlockers, closeMonth, overPlacedAmount, reopenBlocker, reopenMonth } from './monthClosing';
 import { availableReal } from '../domain/budget';
 import { emptyData } from '../domain/empty';
 import { isMonthLocked, previousInitializedMonth } from '../domain/ledger';
@@ -22,7 +22,7 @@ function budgetWith(...months: string[]): BudgetData {
 }
 
 describe('clôturer le mois', () => {
-  it('CA21: refusée tant que le disponible n’est pas 0 (positif ou négatif), sans rien modifier', () => {
+  it('CA21: refusée tant qu’il reste du disponible à placer, sans rien modifier', () => {
     const d = budgetWith('2027-01');
     d.months['2027-01'].lines[0].actual = 1300; // +300
     const before = structuredClone(d);
@@ -30,11 +30,17 @@ describe('clôturer le mois', () => {
     expect(closeBlockers(d, '2027-01')).toEqual([{ kind: 'available', amount: 300 }]);
     expect(closeMonth(d, '2027-01')).toBe(false);
     d.months['2027-01'].lines[0].actual = 950; // -50
-    expect(closeBlockers(d, '2027-01')).toEqual([{ kind: 'available', amount: -50 }]);
-    expect(closeMonth(d, '2027-01')).toBe(false);
     d.months['2027-01'].lines[0].actual = 1000;
     expect(d.months['2027-01'].closed).toBeUndefined();
     expect(before.months['2027-01'].closed).toBeUndefined();
+  });
+
+  it('placé plus que disponible : n’empêche plus la clôture, un avertissement seulement', () => {
+    const d = budgetWith('2027-01');
+    d.months['2027-01'].lines[0].actual = 950; // -50
+    expect(closeBlockers(d, '2027-01')).toEqual([]);
+    expect(overPlacedAmount(d, '2027-01')).toBe(50);
+    expect(closeMonth(d, '2027-01')).toBe(true);
   });
 
   it('CA21: acceptée à 0 et à 0,004 (arrondi à 2 décimales)', () => {
