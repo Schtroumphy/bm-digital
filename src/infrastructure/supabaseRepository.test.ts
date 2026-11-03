@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { completeData } from '../application/budgetRepository.contract';
 import { emptyData } from '../domain/empty';
+import { migrateLineStatements } from '../domain/migrate';
 import { createMemoryRemote } from './memoryRemote';
 import { createSupabaseRepository } from './supabaseRepository';
 import { fromRows, toRows } from './supabaseRows';
@@ -89,6 +90,29 @@ describe('conversion domaine ↔ lignes', () => {
 function withUser(rows: ReturnType<typeof toRows>) {
   return Object.fromEntries(TABLE_ORDER.map(t => [t, rows[t].map(r => ({ user_id: 'u1', ...r }))])) as unknown as Parameters<typeof fromRows>[0];
 }
+
+describe('spec 0041 : relevés de ligne convertis (account_statements / account_balances)', () => {
+  it('la conversion déplace le relevé vers account_balances et supprime la ligne account_statements : rien n’est relu en double', async () => {
+    const remote = createMemoryRemote();
+    const repo = createSupabaseRepository(remote);
+    const month = '2026-12';
+    const data = completeData();
+    data.firstMonth = month;
+    data.statements = { [month]: { livret: 800 } };
+    delete data.months[month].accountBalances;
+    await repo.save(data);
+    expect(toRows(data).account_statements).toHaveLength(1);
+    const converted = migrateLineStatements({ ...data, months: { ...data.months, [month]: { ...data.months[month], initialized: true, lines: [{ key: 'livret', block: 'epa', section: '', name: 'Livret', budget: 0, actual: null, linkedAccountId: data.accounts[0].id }] } } }, '2027-01-10').data;
+    expect(converted.statements[month]).toBeUndefined();
+    remote.calls.length = 0;
+    await repo.save(converted);
+    expect(remote.calls).toContain('remove:account_statements');
+    const reloaded = (await createSupabaseRepository(remote).load())!;
+    expect(reloaded.statements[month]).toBeUndefined();
+    expect(reloaded.months[month].accountBalances).toEqual({ [data.accounts[0].id]: { amount: 800, on: '2026-12-31' } });
+    expect(reloaded).toEqual(converted);
+  });
+});
 
 describe('SupabaseRepository : écriture par diff', () => {
   async function synced() {

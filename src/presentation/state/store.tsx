@@ -18,6 +18,9 @@ interface Store {
   /** Number of actuals typed by hand that the loading emptied (spec 0019, RG22); 0 = nothing to tell. Shown once, then dismissed. */
   clearedActuals: number;
   dismissClearedActuals: () => void;
+  /** Number of statements of savings lines that could not become the statement of an account (spec 0041, RG24); 0 = nothing to tell. Shown once, then dismissed. */
+  unconvertedStatements: number;
+  dismissUnconvertedStatements: () => void;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -36,6 +39,7 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
   const [attempt, setAttempt] = useState(0);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [clearedActuals, setClearedActuals] = useState(0);
+  const [unconvertedStatements, setUnconvertedStatements] = useState(0);
   const tracker = useMemo(() => createSaveTracker(repository, setSaveStatus), [repository]);
 
   useEffect(() => {
@@ -45,6 +49,7 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
       loaded => {
         if (cancelled) return;
         setClearedActuals(loaded.cleared);
+        setUnconvertedStatements(loaded.unconverted);
         setData(loaded.data);
       },
       () => {
@@ -73,12 +78,13 @@ export function StoreProvider({ children, repository, initialData }: StoreProvid
 
   const retrySave = useCallback(() => tracker.retry(), [tracker]);
   const dismissClearedActuals = useCallback(() => setClearedActuals(0), []);
+  const dismissUnconvertedStatements = useCallback(() => setUnconvertedStatements(0), []);
 
   const ledger = useMemo(() => (data ? new Ledger(data) : null), [data]);
 
   if (loadFailed) return <LoadError onRetry={() => setAttempt(a => a + 1)} />;
   if (!data || !ledger) return <p className="auth-wait">Chargement de vos données…</p>;
-  return <StoreContext.Provider value={{ data, ledger, update, saveStatus, retrySave, clearedActuals, dismissClearedActuals }}>{children}</StoreContext.Provider>;
+  return <StoreContext.Provider value={{ data, ledger, update, saveStatus, retrySave, clearedActuals, dismissClearedActuals, unconvertedStatements, dismissUnconvertedStatements }}>{children}</StoreContext.Provider>;
 }
 
 export function useStore(): Store {

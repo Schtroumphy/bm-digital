@@ -477,6 +477,16 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 }
 .group-head.is-icon { display: flex; align-items: center; gap: 9px; padding: 11px 18px; }
 .acc-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) 96px 104px 96px 96px 108px 128px 100px 106px; column-gap: 10px; padding: 0 20px; }
+.rel-cols { grid-template-columns: minmax(0, 1.3fr) 92px 94px 88px 88px 104px 128px 118px 88px 190px; }
+.rel-head { padding: 10px 20px 4px; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
+.rel-row { transition: background 0.4s; }
+.rel-row.is-flash { background: oklch(0.95 0.06 85); }
+.rel-row.is-dim { opacity: 0.55; }
+.rel-name { display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 0; }
+.rel-date { width: 124px; height: 26px; font-size: 12px; padding: 0 4px; }
+.rel-status { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.rel-error { padding: 0 20px 4px; }
+.rel-detail { padding: 4px 20px 10px 40px; }
 .acc-cols { padding: 10px 20px 4px; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
 .acc-row { align-items: center; height: 42px; border-top: 1px solid rgba(32, 30, 29, 0.05); }
 .acc-row:hover { background: rgba(32, 30, 29, 0.025); }

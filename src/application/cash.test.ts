@@ -6,6 +6,7 @@ import { loadBudget } from './loadBudget';
 import { addEnvelope } from './envelopes';
 import { setLinePayment } from './payment';
 import type { BudgetRepository } from './ports';
+import { settleStatements } from '../domain/releve.fixture';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { monthSummary } from '../domain/budget';
@@ -279,6 +280,22 @@ describe('réconciliation à la clôture (spec 0037, RG19, RG20)', () => {
     expect(d.transactions).toEqual([]);
     expect(d.months[M].closed).toBeUndefined();
     expect(closeBlockersAfterReconcile(d, M, ['alim']).length).toBeGreaterThan(0);
+  });
+});
+
+describe('clôture avec relevés manquants (spec 0041, RG13, RG18, CA24)', () => {
+  it('CA24: un relevé manquant refuse la clôture avec régularisation : rien n’est créé, tout ou rien', () => {
+    const d = october();
+    expect(closeBlockersAfterReconcile(d, M, ['alim']).map(b => b.kind)).toContain('statements');
+    expect(closeMonthReconciling(d, M, ['alim'], () => 'z')).toBe(false);
+    expect(d.transactions).toEqual([]);
+    expect(d.months[M].closed).toBeUndefined();
+  });
+
+  it('une fois les relevés en règle, le motif relevé disparaît du dialogue (la régularisation en espèces ne change aucun solde réel)', () => {
+    const d = october();
+    settleStatements(d, M);
+    expect(closeBlockersAfterReconcile(d, M, ['alim']).map(b => b.kind)).not.toContain('statements');
   });
 });
 

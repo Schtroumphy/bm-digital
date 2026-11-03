@@ -15,7 +15,7 @@ import { BAD, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { newId, useStore } from '../state/store';
 
 /** Where a link of the dashboard leads: a screen, or the « Soldes épargnes » tab of Opérations (spec 0027, RG10, RG16). */
-export type DashboardTarget = 'budget' | 'env' | 'prevAnn' | 'goals' | 'balances';
+export type DashboardTarget = 'budget' | 'env' | 'prevAnn' | 'goals' | 'releve';
 
 const DASH = '—';
 const SALMON = 35;
@@ -338,7 +338,7 @@ function TodoCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarget
           <TaskRow kind="transfer" onClick={() => onOpen('budget')} title={n(t.transfers.length, 'virement à effectuer', 'virements à effectuer')} sub={`${money(t.transfersTotal)} · ${t.transfersDone} / ${t.transfersAll} faits`} />
         )}
         {t && t.balancesToEnter.length > 0 && (
-          <TaskRow kind="balance" onClick={() => onOpen('balances')} title={n(t.balancesToEnter.length, 'solde de compte à saisir', 'soldes de compte à saisir')} sub={t.balancesToEnter.join(', ')} />
+          <TaskRow kind="balance" onClick={() => onOpen('releve')} title={n(t.balancesToEnter.length, 'relevé de compte à saisir', 'relevés de compte à saisir')} sub={t.balancesToEnter.join(', ')} />
         )}
         {nothing && <div className="dash-empty">Rien à faire ce mois-ci</div>}
       </div>

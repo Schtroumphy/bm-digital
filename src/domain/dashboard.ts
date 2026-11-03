@@ -5,7 +5,8 @@ import { envelopeConsumption } from './envelopeCash';
 import { effectiveDueDay, envelopeCheck, isEnvelopePointable, isLate, lineCheck, lineCounted } from './checkoff';
 import { currentYear, firstGoalOfKind, goalView, referenceMonth, summaryGoals, type GoalView } from './goals';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
-import { accounts, monthAlloc, monthLines, type Ledger } from './ledger';
+import { accounts, isMonthLocked, monthAlloc, monthLines, type Ledger } from './ledger';
+import { releveFailures } from './releve';
 import type { BudgetData, MonthKey, MonthNote } from './types';
 
 /*
@@ -343,7 +344,8 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
     transfersTotal: round2(transfers.reduce((a, t) => a + t.amount, 0)),
     transfersDone: all.length - transfers.length,
     transfersAll: all.length,
-    balancesToEnter: lines.filter(l => (l.block === 'epa' || l.block === 'inv') && d.statements[month]?.[l.key] === undefined).map(l => l.name),
+    // Accounts concerned by the month's statement page that are not in order yet (spec 0041, RG22); nothing to enter on a locked month.
+    balancesToEnter: isMonthLocked(d, month) ? [] : releveFailures(d, month, today).map(f => f.name),
   };
 
   return { month, initialized, kpis, donut: donutOf(d, month, s), variables, envelopes, yearly, todo, notes: notesView, wealth, wealthEvolution, ...goals, savingsAccounts: savingsAccountsOf(d, ledger, month), assigned: assignedOf(d, month) };

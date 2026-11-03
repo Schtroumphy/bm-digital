@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addTransfer } from './accountMovements';
-import { addTransaction, applyTemplate, createFirstMonth, duplicatePrevious, saveAsTemplate, setStatement } from './actions';
+import { addTransaction, applyTemplate, createFirstMonth, duplicatePrevious, saveAsTemplate } from './actions';
 import { addBankAccount, archiveBankAccount, setBankAccountInBudget, setBankAccountOpening, setLineAccount, setLineLinkedAccount, setTransactionAccount } from './bankAccounts';
 import { emptyDraft, type SetupRow } from './setup';
 import { availableReal, estimatedBalance, estimatedBalanceTotal, monthSummary } from '../domain/budget';
@@ -45,6 +45,11 @@ const est = (d: BudgetData, key: string, m = M) => {
   return estimatedBalance(d, new Ledger(d, TODAY), m, l)?.value ?? null;
 };
 const tx = (target: string, amount: number, accountId?: string, month = M) => ({ id: 't' + Math.random(), month, day: 5, label: 'sortie', amount, type: 'epa' as const, target, accountId });
+
+/** Relevé d'une ligne sans compte dédié, posé directement (l'ancienne saisie n'existe plus, spec 0041) : lu seulement quand il existe encore. */
+const setStatement = (d: BudgetData, m: string, key: string, v: number) => {
+  (d.statements[m] ??= {})[key] = v;
+};
 
 describe('soldes des comptes bancaires avec un compte dédié', () => {
   it('CA1: le versement crédite le dédié et débite la source une seule fois', () => {
@@ -112,9 +117,9 @@ describe('soldes des comptes bancaires avec un compte dédié', () => {
     expect(ledger.bankMonth(LIVRET, '2027-02')?.balance).toBe(1000);
   });
 
-  it('CA13: un relevé saisi sur la ligne ne modifie pas le dédié', () => {
+  it('CA13: un relevé saisi sur le compte dédié ne modifie pas son solde réel', () => {
     const d = started([line('livret', 'epa', 200, 200, { linkedAccountId: LIVRET })]);
-    setStatement(d, M, 'livret', 9999);
+    d.months[M].accountBalances = { [LIVRET]: { amount: 9999, on: `${M}-31` } };
     expect(bal(d, LIVRET)).toBe(1200);
   });
 });
@@ -374,7 +379,7 @@ describe('solde estimé cumulé sur les mois (RG20 à RG22ter)', () => {
     setStatement(d, NOV, 'pel', 4000);
     expect(at(d, DEC, 'pel')).toBe(4050);
     const withDedicated = twoMonths([linked(200, null)], [linked(200, null)]);
-    setStatement(withDedicated, NOV, 'livret', 9999);
+    withDedicated.months[NOV].accountBalances = { [LIVRET]: { amount: 9999, on: `${NOV}-30` } };
     expect(at(withDedicated, DEC)).toBe(1400);
   });
 

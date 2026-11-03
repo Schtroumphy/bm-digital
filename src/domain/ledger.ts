@@ -172,7 +172,8 @@ export class Ledger {
         // A line with a dedicated bank account reads it, like the Accounts screen: opening, real money in and out, closing balance.
         const bank = line?.linkedAccountId && !md!.lines.some(o => o.key !== a.key && o.linkedAccountId === line.linkedAccountId) ? this.bank.get(`${m}|${line.linkedAccountId}`) : undefined;
         if (bank) {
-          const st = d.statements[m]?.[a.key];
+          // The statement is the one of the dedicated account (spec 0041, RG25), no longer a statement of the line.
+          const st = md!.accountBalances?.[line!.linkedAccountId!]?.amount;
           const r = { start: bank.start, paid: bank.in, out: bank.out, expected: bank.balance, statement: st === undefined ? null : st, balance: st ?? bank.balance };
           this.acc.set(`${m}|${a.key}`, r);
           accBal[a.key] = r.balance;

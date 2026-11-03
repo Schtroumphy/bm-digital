@@ -258,7 +258,7 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
  * Money in and out of a movement list, split by the sign of each movement. A negative amount (for instance a negative
  * actual) therefore lands in the other column than its nature suggests; the net balance (in − out) is identical.
  */
-export function flowOf(movements: BankMovement[]): { in: number; out: number } {
+export function flowOf(movements: { amount: number }[]): { in: number; out: number } {
   return {
     in: round2(movements.filter(x => x.amount > 0).reduce((s, x) => s + x.amount, 0)),
     out: round2(-movements.filter(x => x.amount < 0).reduce((s, x) => s + x.amount, 0)),

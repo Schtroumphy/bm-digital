@@ -1,6 +1,8 @@
 import { availableReal } from '../domain/budget';
+import { isoDate } from '../domain/checkoff';
 import { compareMonths, parseMonth } from '../domain/format';
 import { isMonthClosed, isMonthLocked, isYearClosed, previousInitializedMonth } from '../domain/ledger';
+import { releveFailures, type ReleveFailure } from '../domain/releve';
 import type { BudgetData, MonthKey } from '../domain/types';
 
 /*
@@ -18,16 +20,23 @@ export type CloseBlocker =
   /** The previous initialized month must be closed first (RG35). */
   | { kind: 'previous'; month: MonthKey }
   /** Some money is still to be placed (positive) or over-placed (negative) (RG27). */
-  | { kind: 'available'; amount: number };
+  | { kind: 'available'; amount: number }
+  /** Some accounts have no statement, or a statement with a gap (spec 0041, RG13): the accounts at fault, each with its reason. */
+  | { kind: 'statements'; accounts: ReleveFailure[] };
 
-/** All the reasons that forbid closing `m`, the order rule first (RG35 then RG27). Empty = can be closed. */
-export function closeBlockers(d: BudgetData, m: MonthKey): CloseBlocker[] {
+/**
+ * All the reasons that forbid closing `m`, evaluated together: the order rule (RG35), the amount left to place (RG27), then the statements of the
+ * accounts (spec 0041, RG13). Empty = can be closed. `today` only bounds the default date of a statement.
+ */
+export function closeBlockers(d: BudgetData, m: MonthKey, today = isoDate()): CloseBlocker[] {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return [{ kind: 'unavailable' }];
   const out: CloseBlocker[] = [];
   const prev = previousInitializedMonth(d, m);
   if (prev !== null && !isMonthLocked(d, prev)) out.push({ kind: 'previous', month: prev });
   const amount = availableReal(d, m) ?? 0;
   if (amount !== 0) out.push({ kind: 'available', amount });
+  const accounts = releveFailures(d, m, today);
+  if (accounts.length) out.push({ kind: 'statements', accounts });
   return out;
 }
 

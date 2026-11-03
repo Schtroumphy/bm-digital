@@ -77,3 +77,25 @@ describe('objectifs (spec 0032, RG15)', () => {
     expect(saved).toBe(0);
   });
 });
+
+describe('chargement : relevés de ligne convertis (spec 0041, RG24, CA20 à CA22)', () => {
+  function withLineStatement(): BudgetData {
+    const d = withTypedActual();
+    d.accounts.push({ id: 'liv', name: 'Livret A', hue: 150, isDefault: false, openingBalance: 0, openingMonth: M, inBudget: true, archived: false, kind: 'epargne' });
+    d.months[M].lines.push({ key: 'livret', block: 'epa', section: '', name: 'Livret', budget: 0, actual: null, linkedAccountId: 'liv' }, { key: 'pel', block: 'epa', section: '', name: 'PEL', budget: 0, actual: null });
+    d.statements[M] = { livret: 800, pel: 50 };
+    return d;
+  }
+
+  it('le relevé de la ligne devient celui du compte, le relevé non repris est compté une seule fois, et tout est enregistré', async () => {
+    const repo = memory(withLineStatement());
+    const first = await loadBudget(repo, emptyData);
+    expect(first.unconverted).toBe(1);
+    expect(first.data.months[M].accountBalances!.liv).toMatchObject({ amount: 800 });
+    expect(first.data.statements[M]).toBeUndefined();
+    const second = await loadBudget(repo, emptyData);
+    expect(second.unconverted).toBe(0);
+    expect(second.data).toEqual(first.data);
+  });
+});
+

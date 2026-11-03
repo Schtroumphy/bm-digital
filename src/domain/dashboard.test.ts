@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultBankAccounts, newEnvelopeAccount } from './bank';
+import { MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from './bank';
 import { envelopeAlerts, lineRemaining, monthSummary, variableRemaining } from './budget';
 import { dashboardView, monthTransfers } from './dashboard';
 import { emptyData } from './empty';
@@ -261,12 +261,23 @@ describe('retard', () => {
   });
 });
 
-describe('à faire : soldes à saisir', () => {
-  it('lignes d’épargne et de placement sans solde saisi pour le mois', () => {
+describe('à faire : relevés de compte à saisir (spec 0041, RG22, CA19)', () => {
+  it('cite les comptes concernés sans relevé en règle, pas ceux sans mouvement ni solde', () => {
     const d = started();
-    expect(todo(d).balancesToEnter).toEqual(['Épargne MT', 'Placement ETF']);
-    d.statements[M].etf = 140;
-    expect(todo(d).balancesToEnter).toEqual(['Épargne MT']);
+    expect(todo(d).balancesToEnter).toEqual([]);
+    d.accounts.find(a => a.id === MAIN_ACCOUNT_ID)!.openingBalance = 500;
+    expect(todo(d).balancesToEnter).toEqual(['Compte principal']);
+    d.months[M].accountBalances = { [MAIN_ACCOUNT_ID]: { amount: 500, on: '2027-03-15' } };
+    expect(todo(d).balancesToEnter).toEqual([]);
+    d.months[M].accountBalances[MAIN_ACCOUNT_ID].amount = 499.99;
+    expect(todo(d).balancesToEnter).toEqual(['Compte principal']);
+  });
+
+  it('rien à saisir sur un mois clôturé', () => {
+    const d = started();
+    d.accounts.find(a => a.id === MAIN_ACCOUNT_ID)!.openingBalance = 500;
+    d.months[M].closed = true;
+    expect(todo(d).balancesToEnter).toEqual([]);
   });
 });
 

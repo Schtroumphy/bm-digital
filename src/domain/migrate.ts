@@ -1,7 +1,9 @@
 import { defaultBankAccounts, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
 import { CASH_ID } from './internalTransfers';
 import { accounts } from './ledger';
-import { currentMonthKey, parseMonth, round2 } from './format';
+import { compareMonths, currentMonthKey, parseMonth, round2 } from './format';
+import { isoDate } from './checkoff';
+import { periodOf } from './periods';
 import { hasStaleActuals, manualActualCount, syncLineActuals } from './lineActuals';
 import type { AccountMovement, BudgetData, Goal, MonthKey, TemplateLine, Transaction, Transfer } from './types';
 
@@ -153,4 +155,38 @@ export function migrateGoals(d: BudgetData, today: MonthKey = currentMonthKey())
   }
   if (st.savingsRateTarget > 0) add({ id: MIGRATED_GOAL_IDS.savings, kind: 'rate', name: 'Taux d’épargne', target: st.savingsRateTarget });
   return { ...d, goals, settings: { ...st, goalsMigrated: true } };
+}
+
+/**
+ * Spec 0041, RG24: the statements of the savings/investment lines of the managed months (from `firstMonth`) become the statement of the dedicated account of
+ * the line, dated at the end of the period of the month (today when it is still ahead). Not converted, and counted: a statement of a line with no dedicated
+ * account (or an unknown one), of a line sharing its account with another line of the month (ambiguous), or for an account that already has a statement
+ * for the month (the existing one is kept). Every statement of a managed month is then removed from `statements`, so a second run finds nothing to do.
+ * The months before `firstMonth` keep theirs (history). Pure: the data given is returned untouched when there is nothing to convert, and never mutated.
+ */
+export function migrateLineStatements(d: BudgetData, today: string = isoDate()): { data: BudgetData; unconverted: number } {
+  if (d.firstMonth === null) return { data: d, unconverted: 0 };
+  const first = d.firstMonth;
+  const managed = Object.keys(d.statements).filter(m => compareMonths(m, first) >= 0);
+  if (!managed.length) return { data: d, unconverted: 0 };
+  const out = structuredClone(d);
+  let unconverted = 0;
+  for (const m of managed) {
+    const lines = out.months[m]?.initialized ? out.months[m].lines : [];
+    const { start, end } = periodOf(out, m);
+    const on = end <= today ? end : today >= start ? today : start;
+    for (const [key, amount] of Object.entries(out.statements[m])) {
+      const line = lines.find(l => l.key === key && (l.block === 'epa' || l.block === 'inv'));
+      const id = line?.linkedAccountId;
+      const shared = !!id && lines.some(o => o.key !== key && o.linkedAccountId === id);
+      const balances = out.months[m]?.accountBalances;
+      if (!id || shared || !out.accounts.some(a => a.id === id) || balances?.[id]) {
+        unconverted++;
+        continue;
+      }
+      (out.months[m].accountBalances ??= {})[id] = { amount: round2(amount), on };
+    }
+    delete out.statements[m];
+  }
+  return { data: out, unconverted };
 }

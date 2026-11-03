@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { addLine, addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, setEnvelopeAllocation, setStatement, updateLine } from './actions';
+import { addLine, addTransaction, applyTemplate, deleteLine, deleteTransaction, duplicatePrevious, setEnvelopeAllocation, updateLine } from './actions';
 import { addEnvelope } from './envelopes';
 import { setLineAccount, setTransactionAccount } from './bankAccounts';
+import { settleStatements } from '../domain/releve.fixture';
+import { setAccountStatement } from './checkoff';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth } from './monthClosing';
 import { availableReal } from '../domain/budget';
 import { emptyData } from '../domain/empty';
@@ -49,14 +51,14 @@ describe('clôturer le mois', () => {
     d.accounts.push({ id: 'ded', name: 'Dédié', hue: 10, isDefault: false, openingBalance: 0, openingMonth: '2027-01', inBudget: true, archived: false });
     d.transfers.push({ id: 't1', name: 'v', amount: 10, fromAccountId: d.accounts[0].id });
     d.transactions.push({ id: 'tx', month: '2027-01', day: 2, label: 'c', amount: 1, type: 'env', target: 'sante', accountId: d.accounts[0].id });
-    d.statements['2027-01'] = { livret: 1000 };
-    closeMonth(d, '2027-01');
+    settleStatements(d, '2027-01');
+    expect(closeMonth(d, '2027-01')).toBe(true);
     const before = structuredClone(d);
     expect(updateLine(d, '2027-01', 'sal', { budget: 5 })).toBe(false);
     expect(deleteLine(d, '2027-01', 'sal')).toBe(false);
     expect(deleteTransaction(d, 'tx')).toBe(false);
     expect(setTransactionAccount(d, 'tx', 'ded')).toBe(false);
-    expect(setStatement(d, '2027-01', 'livret', 5)).toBe(false);
+    expect(setAccountStatement(d, '2027-01', d.accounts[0].id, 5, '2027-01-31', '2027-02-05')).toBe('locked');
     expect(updateLine(d, '2027-01', 'sal', { name: 'x' })).toBe(false);
     expect(addLine(d, '2027-01', 'rev', 'new')).toBe(false);
     expect(setLineAccount(d, '2027-01', 'sal', 'ded')).toBe(false);

@@ -4,6 +4,7 @@ import { addTransaction, applyTemplate, deleteTransaction } from './actions';
 import { addTransfer, deleteAccountMovement, setTransferTarget } from './accountMovements';
 import { checkEnvelope, checkLine, createAdjustment, setAccountStatement, uncheckLine } from './checkoff';
 import { closeMonth } from './monthClosing';
+import { settleStatements } from '../domain/releve.fixture';
 import { addBankAccount, setBankAccountInBudget } from './bankAccounts';
 import { addEnvelope } from './envelopes';
 import { addLineEntry } from './quickEntry';
@@ -193,6 +194,7 @@ describe('transfert : création, modification, suppression (RG14 à RG18)', () =
     expect(transfer(d, 10, { target: { kind: 'env', id: 'nope' } })).toBe(false);
     expect(d.accountMovements).toBeUndefined();
     expect(transfer(d, 40)).toBe(true);
+    settleStatements(d, M);
     expect(closeMonth(d, M)).toBe(true);
     expect(transfer(d, 5, { id: 'late' })).toBe(false);
     expect(deleteAccountMovement(d, 't0')).toBe(false);

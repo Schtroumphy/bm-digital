@@ -346,6 +346,18 @@ function detailOf(d: BudgetData, list: BankMovement[]): Movement[] {
   return list.map((x): Movement => ({ ...x, counted: true, ...(x.adjustmentId ? { createdOn: adjustments.get(x.adjustmentId)?.createdOn } : {}) }));
 }
 
+/** Real balance at the end of `date` (that day included): the start of the month plus the real movements dated up to it (spec 0009, RG63). */
+export function realBalanceOn(real: MonthBalance, counted: { date: string; amount: number }[], date: string): number {
+  const upTo = flowOf(counted.filter(x => x.date <= date));
+  return round2(real.start + upTo.in - upTo.out);
+}
+
+/** Gap of a statement: the statement minus the REAL balance at its date (RG4, RG63); null without a statement or before the account opens. `counted` = the active real movements of the month. */
+export function statementGap(real: MonthBalance | null, statement: AccountBalanceEntry | null, counted: { date: string; amount: number }[]): number | null {
+  if (!statement || !real) return null;
+  return round2(statement.amount - realBalanceOn(real, counted, statement.on));
+}
+
 /** Reste à sortir, real and estimated balances, statement gap and margin of one account for a month (RG4, RG11, RG58, RG63; spec 0019). */
 export function accountPointage(d: BudgetData, m: MonthKey, accountId: string, today: string): AccountPointage | null {
   const account = d.accounts.find(a => a.id === accountId);
@@ -371,11 +383,7 @@ export function accountPointage(d: BudgetData, m: MonthKey, accountId: string, t
   const statement = d.months[m]?.accountBalances?.[accountId] ?? null;
   const expectedL = expectedLines(d, m, accountId, today);
   // Gap: statement − REAL balance at the statement date, that day included (RG4, RG63).
-  let gap: number | null = null;
-  if (statement && real) {
-    const upTo = flowOf(realList.filter(x => x.counted && x.date <= statement.on));
-    gap = round2(statement.amount - round2(real.start + upTo.in - upTo.out));
-  }
+  const gap = statementGap(real, statement, realList.filter(x => x.counted));
   return {
     account, real, estimatedBalance: est, estimated,
     difference: real && est ? round2(real.end - est.end) : null,

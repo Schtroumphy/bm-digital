@@ -2,31 +2,33 @@ import { useState } from 'react';
 import type { StatementSource } from '../application/ports';
 import { Icon, type IconName } from './components/Icon';
 import { currentMonthKey, monthLabel, parseMonth } from '../domain/format';
-import { isMonthLocked } from '../domain/ledger';
+import { isMonthClosed, isMonthLocked, isYearClosed } from '../domain/ledger';
 import { useAuth } from './state/auth';
 import { newId, useStore } from './state/store';
 import { useUi } from './state/ui';
 import { AccountsActions, AccountsScreen } from './screens/Accounts';
-import { BudgetScreen, BudgetActions, MonthCloseControl } from './screens/Budget';
+import { BudgetScreen, BudgetActions } from './screens/Budget';
 import { ClosingScreen } from './screens/Closing';
 import { DashboardScreen, type DashboardTarget } from './screens/Dashboard';
 import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
 import { ExpensesScreen } from './screens/Expenses';
 import { GoalsScreen } from './screens/Goals';
 import { PlanningScreen } from './screens/Planning';
+import { ReleveScreen } from './screens/Releve';
 import { SimulationScreen } from './screens/Simulation';
 import { SetupActions, SetupScreen } from './screens/Setup';
 import { TemplateScreen } from './screens/Template';
 import { useSetupDraft } from './state/setupDraft';
 import { newSimulation, type SimulationDraft } from '../domain/simulation';
 
-export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals' | 'simulation';
+export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'releve' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals' | 'simulation';
 
 const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'dashboard', label: 'Accueil', icon: 'house' },
   { id: 'budget', label: 'Budget', icon: 'budget' },
   { id: 'dep', label: 'Opérations', icon: 'list' },
   { id: 'comptes', label: 'Comptes', icon: 'bank' },
+  { id: 'releve', label: 'Relevé', icon: 'check' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
   { id: 'template', label: 'Modèle', icon: 'copy' },
@@ -40,9 +42,10 @@ const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolea
 const TITLES: Record<Screen, string> = {
   dashboard: 'Tableau de bord',
   budget: 'Budget mensuel',
-  dep: 'Opérations et soldes',
+  dep: 'Opérations',
   env: 'Enveloppes',
   comptes: 'Comptes',
+  releve: 'Relevé de fin de mois',
   prevAnn: 'Prévisionnel annuel',
   template: 'Modèle de budget',
   setup: 'Initialisation',
@@ -68,7 +71,7 @@ const saveMonth = (m: string) => {
 };
 
 export function App({ statementSource }: { statementSource: StatementSource }) {
-  const { data, ledger, saveStatus, retrySave, clearedActuals, dismissClearedActuals } = useStore();
+  const { data, ledger, saveStatus, retrySave, clearedActuals, dismissClearedActuals, unconvertedStatements, dismissUnconvertedStatements } = useStore();
   const { user, signOut } = useAuth();
   const { setEditing, menu, closeMenu } = useUi();
   // Until the first month exists, the only usable screen is the assistant.
@@ -83,26 +86,19 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
     return ready[ready.length - 1] ?? months[0] ?? currentMonthKey();
   })();
   const setMonth = (m: string) => {
-    setCloseAttempt(false);
     setMonthState(m);
     saveMonth(m);
   };
   const [year, setYear] = useState(() => parseMonth(currentMonthKey()).year);
   const [monthMenu, setMonthMenu] = useState(false);
-  // « Clôturer le mois » was clicked and refused: the Budget screen explains why until the user dismisses it.
-  const [closeAttempt, setCloseAttempt] = useState(false);
 
   const idx = months.indexOf(month);
-  // Tab of Opérations opened by the dashboard's « soldes à saisir » (spec 0027, RG10); the sidebar always opens « Saisie ».
-  const [expensesTab, setExpensesTab] = useState<'saisie' | 'soldes'>('saisie');
   // Simulation being edited (spec 0034, RG19): kept here so that changing tab does not lose it; never saved until « Enregistrer ».
   const [simDraft, setSimDraft] = useState<SimulationDraft | null>(null);
   const go = (s: Screen) => {
     // First visit: a new simulation started from the budget model (RG20).
     if (s === 'simulation' && simDraft === null) setSimDraft(newSimulation('model', data, () => newId('sr')));
-    setExpensesTab('saisie');
     setScreen(s);
-    setCloseAttempt(false);
     setEditing(null);
     setMonthMenu(false);
   };
@@ -144,6 +140,19 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             <div style={{ flex: 1 }} />
             <button type="button" className="btn-dark" onClick={retrySave}>
               Réessayer
+            </button>
+          </div>
+        )}
+        {unconvertedStatements > 0 && (
+          <div className="banner" role="status">
+            <div style={{ flex: 1 }}>
+              <div className="banner-title">
+                {unconvertedStatements} {unconvertedStatements > 1 ? 'soldes de lignes d’épargne n’ont pas pu être repris' : 'solde de ligne d’épargne n’a pas pu être repris'}
+              </div>
+              <div className="banner-text">Saisis le relevé du compte dans la page Relevé.</div>
+            </div>
+            <button type="button" className="btn-quiet" onClick={dismissUnconvertedStatements}>
+              Compris
             </button>
           </div>
         )}
@@ -206,7 +215,12 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
               )}
             </div>
           )}
-          {screen === 'budget' && <MonthCloseControl month={month} onRefused={() => setCloseAttempt(true)} onDone={() => setCloseAttempt(false)} />}
+          {screen === 'budget' && isMonthClosed(data, month) && !isYearClosed(data, parseMonth(month).year) && (
+            <span className="month-closed">
+              <Icon name="lock" size={14} />
+              Mois clôturé
+            </span>
+          )}
           <div style={{ flex: 1 }} />
           {screen === 'budget' && <BudgetActions month={month} />}
           {screen === 'comptes' && <AccountsActions month={month} />}
@@ -217,14 +231,22 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
         {screen === 'dashboard' && (
           <DashboardScreen
             month={month}
-            onOpen={(t: DashboardTarget) => {
-              go(t === 'balances' ? 'dep' : t);
-              if (t === 'balances') setExpensesTab('soldes');
+            onOpen={(t: DashboardTarget) => go(t)}
+          />
+        )}
+        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenStatements={() => go('releve')} />}
+        {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} />}
+        {screen === 'releve' && (
+          <ReleveScreen
+            key={month}
+            month={month}
+            onOpenBudget={() => go('budget')}
+            onOpenMonth={m => {
+              setMonth(m);
+              go('releve');
             }}
           />
         )}
-        {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} onOpenGoals={() => go('goals')} />}
-        {screen === 'dep' && <ExpensesScreen initialTab={expensesTab} month={month} statementSource={statementSource} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}

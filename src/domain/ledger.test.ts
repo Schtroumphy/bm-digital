@@ -31,10 +31,16 @@ describe('soldes épargnes d’une ligne à compte dédié', () => {
     expect(l.accMonth('livret', DEC)).toMatchObject({ start: bank.start, paid: bank.in, out: bank.out, expected: bank.balance });
   });
 
-  it('garde le solde relevé comme comparaison, sans changer l’attendu', () => {
+  it('CA23 : lit le relevé du compte dédié (spec 0041, RG25), pas un relevé de ligne, comme comparaison, sans changer l’attendu', () => {
+    const d = base([line('livret', 'epa', { linkedAccountId: 'ep' })]);
+    d.months[DEC].accountBalances = { ep: { amount: 1100, on: '2026-12-31' } };
+    expect(new Ledger(d, DEC).accMonth('livret', DEC)).toMatchObject({ expected: 1150, statement: 1100, balance: 1100 });
+  });
+
+  it('CA23 : un relevé de ligne d’un mois géré n’est plus lu quand la ligne a un compte dédié', () => {
     const d = base([line('livret', 'epa', { linkedAccountId: 'ep' })]);
     d.statements[DEC] = { livret: 1100 };
-    expect(new Ledger(d, DEC).accMonth('livret', DEC)).toMatchObject({ expected: 1150, statement: 1100, balance: 1100 });
+    expect(new Ledger(d, DEC).accMonth('livret', DEC)).toMatchObject({ expected: 1150, statement: null, balance: 1150 });
   });
 
   it('reste sur l’ancien calcul sans compte dédié', () => {

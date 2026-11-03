@@ -1,12 +1,11 @@
 import { Fragment, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
-import { EditableAmount } from '../components/Editable';
 import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { DetailInput } from '../components/DetailInput';
 import { EntryDate } from '../components/EntryDate';
 import { Icon } from '../components/Icon';
-import { GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
-import { deleteTransaction, deleteTransactions, setStatement, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
+import { GOOD, HUE, tone } from '../components/tone';
+import { deleteTransaction, deleteTransactions, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
 import { addManualTransaction, addManualTransfer } from '../../application/manualEntry';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
@@ -21,8 +20,8 @@ import { defaultEntryDate, isRealDate } from '../../domain/periods';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { exceedsEnvelopeCash } from '../../domain/envelopeCash';
-import { addMonths, money, monthLabel, parseAmount, round2, sanitizeAmountInput } from '../../domain/format';
-import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
+import { money, monthLabel, parseAmount, round2, sanitizeAmountInput } from '../../domain/format';
+import { isMonthLocked, monthLines } from '../../domain/ledger';
 import type { AccountMovement, MonthKey, MovementTarget, PayMode, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
@@ -34,30 +33,20 @@ const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' 
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
-export function ExpensesScreen({ initialTab = 'saisie', month, statementSource }: { initialTab?: 'saisie' | 'soldes'; month: MonthKey; statementSource: StatementSource }) {
-  const [tab, setTab] = useState<'saisie' | 'soldes'>(initialTab);
+export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
   const [importing, setImporting] = useState(false);
   if (importing) return <ImportWizard source={statementSource} onClose={() => setImporting(false)} />;
   return (
     <>
       <div className="import-bar">
         <div className="tabs">
-          {(
-            [
-              ['saisie', 'Saisie des dépenses'],
-              ['soldes', 'Soldes épargnes'],
-            ] as const
-          ).map(([id, label]) => (
-            <div key={id} className={`tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
-              {label}
-            </div>
-          ))}
+          <div className="tab is-active">Saisie des dépenses</div>
         </div>
         <button type="button" className="btn-outline" onClick={() => setImporting(true)}>
           Importer
         </button>
       </div>
-      {tab === 'saisie' ? <EntryTab month={month} /> : <BalancesTab month={month} />}
+      <EntryTab month={month} />
     </>
   );
 }
@@ -723,119 +712,6 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
           ),
         )}
       <div style={{ height: 8 }} />
-    </div>
-  );
-}
-
-function BalancesTab({ month }: { month: MonthKey }) {
-  const { data, ledger, update } = useStore();
-  // accounts() also lists lines deleted or replaced in other months: only the month's own lines are shown.
-  const monthKeys = new Set(monthLines(data, month).map(l => l.key));
-  const accs = accounts(data).filter(a => monthKeys.has(a.key));
-  const locked = isMonthLocked(data, month);
-  let nOk = 0;
-  const groups = (
-    [
-      ['Épargnes', HUE.epa, 'epa'],
-      ['Investissements', HUE.inv, 'inv'],
-    ] as const
-  ).map(([title, hue, block]) => ({
-    title,
-    hue,
-    rows: accs
-      .filter(a => a.block === block)
-      .map(a => {
-        const r = ledger.accMonth(a.key, month);
-        if (!r) return null;
-        const has = r.statement !== null;
-        const gap = has ? round2(r.statement! - r.expected) : null;
-        const ok = has && Math.abs(gap!) < 0.005;
-        if (ok) nOk++;
-        const series = [5, 4, 3, 2, 1].map(k => ledger.accMonth(a.key, addMonths(month, -k))?.balance).filter((v): v is number => v !== undefined);
-        series.push(r.expected);
-        return { a, r, has, gap, ok, series };
-      })
-      .filter(x => x !== null),
-  }));
-  const total = groups.reduce((n, g) => n + g.rows.length, 0);
-
-  return (
-    <>
-      <div className="soldes-intro">
-        <div className="intro">Solde attendu = début de mois + versements réels − sorties. Saisis le solde relevé de chaque compte pour valider le mois.</div>
-        <div className="pill is-lg" style={{ background: 'oklch(0.95 0.05 150)', color: 'oklch(0.35 0.09 150)' }}>
-          {nOk} / {total} validés
-        </div>
-      </div>
-      {groups.map(g => (
-        <div key={g.title} className="panel-lg" style={toneVars(g.hue)}>
-          <div className="group-head">{g.title}</div>
-          <div className="acc-grid acc-cols">
-            <span>Compte</span>
-            <span>6 mois</span>
-            <span className="num">Début</span>
-            <span className="num">+ Versé</span>
-            <span className="num">− Sorties</span>
-            <span className="num">= Attendu</span>
-            <span className="num" style={{ paddingRight: 8 }}>
-              Solde relevé
-            </span>
-            <span className="num">Écart</span>
-            <span className="num">Statut</span>
-          </div>
-          {g.rows.map(({ a, r, has, gap, ok, series }) => {
-            const status = !has ? ['À saisir', 'rgba(32,30,29,.06)', 'rgba(32,30,29,.6)'] : ok ? ['Validé', 'oklch(0.95 0.05 150)', 'oklch(0.35 0.09 150)'] : ['À vérifier', 'oklch(0.95 0.06 85)', 'oklch(0.38 0.07 80)'];
-            return (
-              <div key={a.key} className="acc-grid acc-row">
-                <span style={{ fontWeight: 600 }}>{a.name}</span>
-                <Spark values={series} />
-                <span className="num muted">{money(r.start)}</span>
-                <span className="num muted">{r.paid ? money(r.paid) : '—'}</span>
-                <span className="num muted">{r.out ? money(-r.out) : '—'}</span>
-                <b className="num">{money(r.expected)}</b>
-                <div className="rel">
-                  <EditableAmount
-                    id={`rel:${a.key}`}
-                    value={r.statement}
-                    allowEmpty
-                    disabled={locked}
-                    onCommit={v => update(d => setStatement(d, month, a.key, v))}
-                    className="stmt-cell"
-                    style={{ background: has && !ok ? 'oklch(0.96 0.04 90)' : undefined }}
-                    inputClassName="cell-input is-stmt"
-                  >
-                    {has ? money(r.statement!) : 'Saisir…'}
-                  </EditableAmount>
-                </div>
-                <span className="num" style={{ fontWeight: 600, color: has && !ok ? 'oklch(0.45 0.1 70)' : MUTED }}>
-                  {has && !ok ? money(gap!, true) : '—'}
-                </span>
-                <span className="pill" style={{ justifySelf: 'end', background: status[1], color: status[2] }}>
-                  {status[0]}
-                </span>
-              </div>
-            );
-          })}
-          <div style={{ height: 8 }} />
-        </div>
-      ))}
-    </>
-  );
-}
-
-function Spark({ values }: { values: number[] }) {
-  if (values.length < 2) return <div />;
-  const mn = Math.min(...values);
-  const sp = Math.max(...values) - mn || 1;
-  const pts = values.map((v, i) => [(i * 84) / (values.length - 1), 3 + 20 * (1 - (v - mn) / sp)]);
-  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
-  const last = pts[pts.length - 1];
-  return (
-    <div>
-      <svg viewBox="0 0 84 26" width="84" height="26" style={{ display: 'block', overflow: 'visible' }}>
-        <path d={d} fill="none" stroke="var(--t-base)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={last[0]} cy={last[1]} r="3" fill="#fff" stroke="var(--t-base)" strokeWidth="2" />
-      </svg>
     </div>
   );
 }

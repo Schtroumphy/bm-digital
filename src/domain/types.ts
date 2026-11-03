@@ -400,7 +400,10 @@ export interface BudgetData {
   /** Bank accounts: always one main account and the « Espèces » account. */
   accounts: BankAccount[];
   envHistory: Record<MonthKey, Record<string, EnvHistory>>;
-  /** Statement balance entered for an account (epa/inv line key) at the end of a month. */
+  /**
+   * Statement balance of an epa/inv line (line key) at the end of a month. Imported history before the first month, and the starting balances of the assistant (ADR 0001).
+   * For the months of the budget it is no longer written: the statement of the dedicated account replaces it (`MonthData.accountBalances`, spec 0041, RG23).
+   */
   statements: Record<MonthKey, Record<string, number>>;
   transactions: Transaction[];
   transfers: Transfer[];

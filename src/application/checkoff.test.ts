@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { addTransfer } from './accountMovements';
-import { addTransaction, applyTemplate, deleteLine, duplicatePrevious, saveAsTemplate, setStatement, updateLine, monthCsv } from './actions';
+import { addTransaction, applyTemplate, deleteLine, duplicatePrevious, saveAsTemplate, updateLine, monthCsv } from './actions';
 import { cancelAdjustment, checkEnvelope, checkLine, createAdjustment, setAccountStatement, setLineSchedule, uncheckLine, updateCheck } from './checkoff';
 import { closeMonth } from './monthClosing';
+import { settleStatements } from '../domain/releve.fixture';
 import { addBankAccount, setBankAccountInBudget } from './bankAccounts';
 import { addEnvelope } from './envelopes';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, isLineInBudget, defaultBankAccounts } from '../domain/bank';
@@ -337,6 +338,7 @@ describe('chargement et indépendance', () => {
   it('clôture: un mois pointé peut se clôturer, les pointages restent', () => {
     const d = started([ln('sal', 'rev', 100, { actual: 100 }), ln('liv', 'epa', 100)]);
     checkLine(d, M, 'liv', '2027-01-05');
+    settleStatements(d, M);
     expect(closeMonth(d, M)).toBe(true);
     expect(d.months[M].checks!.liv.doneOn).toBe('2027-01-05');
   });
@@ -430,6 +432,7 @@ describe('revenus pointables : « reçu » (amendement 3)', () => {
     const before = snap(d);
     checkLine(d, M, 'sal', '2027-01-05');
     expect(snap(d)).toEqual(before);
+    settleStatements(d, M);
     expect(closeMonth(d, M)).toBe(true);
     expect(uncheckLine(d, M, 'sal')).toBe(false);
     expect(checkLine(d, M, 'liv', '2027-01-06')).toBe(false);
@@ -551,13 +554,11 @@ describe('relevé, écart et régularisation', () => {
     expect(d.adjustments).toHaveLength(1);
   });
 
-  it('CA59: pas de régularisation sur un compte d’épargne; le rapprochement de l’épargne est inchangé', () => {
+  it('CA59 (amendé, spec 0041, RG9) : une régularisation est possible sur un compte d’épargne', () => {
     const d = started([ln('liv', 'epa', 100)]);
-    expect(createAdjustment(d, M, 'x', 'liv', '2027-01-21', 5, TODAY)).toBe('none');
-    expect(d.adjustments).toBeUndefined();
-    expect(setStatement(d, M, 'liv', 250)).toBe(true);
-    expect(d.statements[M]).toEqual({ liv: 250 });
-    expect(new Ledger(d, M).accMonth('liv', M)!.balance).toBe(250);
+    addBankAccount(d, 'liv', 'Livret', 'epargne');
+    expect(createAdjustment(d, M, 'x', 'liv', '2027-01-21', 5, TODAY)).toBe('ok');
+    expect(d.adjustments).toHaveLength(1);
   });
 
   it('CA60: une régularisation active change le solde de l’écran Comptes, pas le budget; annulée, plus d’effet', () => {
@@ -674,6 +675,7 @@ describe('le réel prend le pas sur le budget (amendement 5)', () => {
   it('CA77: mois clôturé: ni réel ni pointage modifiables, Solde estimé inchangé', () => {
     const d = started([ln('sal', 'rev', 100, { actual: 100 }), ln('liv', 'epa', 100, { actual: 100 })]);
     checkLine(d, M, 'liv', '2027-01-05');
+    settleStatements(d, M);
     expect(closeMonth(d, M)).toBe(true);
     const est = p(d).estimated;
     expect(updateLine(d, M, 'liv', { budget: 5 })).toBe(false);
