@@ -157,7 +157,7 @@ describe('page Relevé : statut d’un compte (spec 0041)', () => {
 });
 
 describe('régularisation et compte hors budget (spec 0041, RG9)', () => {
-  it('CA27: un écart se régularise sur un compte du budget, pas sur un compte hors budget, dont la clôture reste bloquée', () => {
+  it('CA27: un écart se régularise sur un compte du budget comme sur un compte hors budget', () => {
     const d = started();
     addBankAccount(d, 'hb', 'Joint');
     Object.assign(d.accounts.find(a => a.id === 'hb')!, { openingBalance: 200, openingMonth: M, inBudget: false });
@@ -165,23 +165,22 @@ describe('régularisation et compte hors budget (spec 0041, RG9)', () => {
     statement(d, 'hb', 205);
     statement(d, LIVRET, 5001);
     expect(canRegularise(rowOf(d, LIVRET)!)).toBe(true);
-    expect(canRegularise(rowOf(d, 'hb')!)).toBe(false);
+    expect(canRegularise(rowOf(d, 'hb')!)).toBe(true);
     createAdjustment(d, M, 'adj', LIVRET, '2027-01-31', 1, TODAY);
     expect(closeBlockers(d, M, TODAY)).toEqual([{ kind: 'statements', accounts: [expect.objectContaining({ accountId: 'hb', reason: 'gap', gap: 5 })] }]);
+    createAdjustment(d, M, 'adj2', 'hb', '2027-01-31', 5, TODAY);
+    expect(closeBlockers(d, M, TODAY)).toEqual([]);
     expect(canRegularise(rowOf(d, MAIN_ACCOUNT_ID)!)).toBe(false); // already in order
   });
 
-  it('CA27bis: createAdjustment refuse un compte hors budget en écart : adjustments inchangé, clôture toujours bloquée', () => {
+  it('CA27bis: createAdjustment accepte un compte hors budget en écart : l’écart passe à 0 et la clôture est possible', () => {
     const d = started();
     addBankAccount(d, 'hb', 'Joint');
     Object.assign(d.accounts.find(a => a.id === 'hb')!, { openingBalance: 200, openingMonth: M, inBudget: false });
     settleStatements(d, M);
     statement(d, 'hb', 205);
-    const before = structuredClone(d.adjustments);
-    expect(createAdjustment(d, M, 'adj', 'hb', '2027-01-31', 5, TODAY)).toBe('off-budget');
-    expect(d.adjustments).toEqual(before);
-    expect(rowOf(d, 'hb')).toMatchObject({ gap: 5, status: 'gap' });
-    expect(closeMonth(d, M)).toBe(false);
+    expect(createAdjustment(d, M, 'adj', 'hb', '2027-01-31', 5, TODAY)).toBe('ok');
+    expect(rowOf(d, 'hb')).toMatchObject({ gap: 0, status: 'regularised' });
   });
 });
 

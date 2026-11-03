@@ -1,4 +1,3 @@
-import { isAccountInBudget } from '../domain/bank';
 import { envelopeCheckKey } from '../domain/bankMovements';
 import { envelopeCheck, isEnvelopePointable, isoDate, isIsoDate, isPointable, isValidDueDay, lineCheck, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
 import { round2 } from '../domain/format';
@@ -125,18 +124,16 @@ export function setAccountStatement(d: BudgetData, m: MonthKey, accountId: strin
 
 export const ADJUSTMENT_LABEL = 'écart constaté';
 
-export type AdjustmentResult = 'ok' | 'locked' | 'none' | 'zero' | 'off-budget' | BalanceDateError;
+export type AdjustmentResult = 'ok' | 'locked' | 'none' | 'zero' | BalanceDateError;
 
 /**
  * Records an « écart constaté » on a bank account, dated in month `m` and not in the future (RG65). Signed,
- * never 0. Refused on a locked or not initialized month, on an unknown account, on an account out of the budget
- * ('off-budget': its gap is fixed by fixing its entries, spec 0041, RG9) and on an invalid date. Every kind of account counted in
- * the budget accepts one, savings included (spec 0009 RG68 is lifted by spec 0041). It counts in the REAL balance only (spec 0019, RG3).
+ * never 0. Refused on a locked or not initialized month, on an unknown account and on an invalid date. Every kind of account accepts one,
+ * savings and accounts out of the budget included (spec 0009 RG68 is lifted by spec 0041, its RG9 exception for off-budget accounts by a later amendment). It counts in the REAL balance only (spec 0019, RG3).
  */
 export function createAdjustment(d: BudgetData, m: MonthKey, id: string, accountId: string, date: string, amount: number, today = isoDate()): AdjustmentResult {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return 'locked';
   if (!d.accounts.some(a => a.id === accountId) || d.adjustments?.some(a => a.id === id)) return 'none';
-  if (!isAccountInBudget(d, accountId)) return 'off-budget';
   const error = validateBalanceDate(d, m, date, today);
   if (error) return error;
   if (!Number.isFinite(amount) || round2(amount) === 0) return 'zero';

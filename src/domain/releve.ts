@@ -75,8 +75,8 @@ export function releveRows(d: BudgetData, m: MonthKey, today: string): ReleveRow
   return rows.sort((a, b) => Number(!a.concerned) - Number(!b.concerned));
 }
 
-/** Whether the gap of a row can be regularised: a gap to fill, on an account counted in the budget. An account out of the budget is corrected by correcting its entries (spec 0041, RG9). */
-export const canRegularise = (r: ReleveRow): boolean => r.status === 'gap' && r.inBudget;
+/** Whether the gap of a row can be regularised: a gap to fill, on any account, out of the budget included (an adjustment only moves the real balance of the account). */
+export const canRegularise = (r: ReleveRow): boolean => r.status === 'gap';
 
 /** Whether a row is « en règle » (RG10). */
 export const isInOrder = (r: ReleveRow): boolean => r.status === 'validated' || r.status === 'regularised';
