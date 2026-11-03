@@ -69,6 +69,32 @@ export function envelopeAccountAt(d: BudgetData, e: Pick<Envelope, 'accountId'>,
   return a && isEnvelopeAccount(a) && compareMonths(m, a.openingMonth) >= 0 ? a : undefined;
 }
 
+/**
+ * The account an entry of money on envelope `envelopeId` is credited to (spec 0036, RG2, RG3, RG5): the account of the envelope, when the envelope exists
+ * and that account is an active envelope account. Undefined = no entry possible (unknown envelope, no account, archived account).
+ */
+export function envelopeEntryAccount(d: BudgetData, envelopeId: string): BankAccount | undefined {
+  const e = d.envelopes.find(x => x.id === envelopeId);
+  const a = e && d.accounts.find(x => x.id === e.accountId);
+  return a && isEnvelopeAccount(a) && !a.archived ? a : undefined;
+}
+
+/**
+ * True when an entry of money can be credited to this account (spec 0042, H1): an active current account that is out of the budget, neither the main
+ * account, the hidden « Espèces », nor an envelope's account. Savings, investment and in-budget accounts are never concerned.
+ */
+export const isOffBudgetEntryAccount = (d: BudgetData, a?: BankAccount): a is BankAccount =>
+  !!a && !a.archived && !a.inBudget && kindOf(a) === 'courant' && !isEnvelopeAccount(a) && a.id !== CASH_ACCOUNT_ID && a.id !== mainAccount(d).id;
+
+/** The account an entry of money `accin` is credited to (spec 0042, RG3): undefined = no entry possible (unknown, archived or not eligible account). */
+export const offBudgetEntryAccount = (d: BudgetData, accountId: string): BankAccount | undefined => {
+  const a = d.accounts.find(x => x.id === accountId);
+  return isOffBudgetEntryAccount(d, a) ? a : undefined;
+};
+
+/** Accounts offered as target of an entry of money « hors budget » (spec 0042, RG1). */
+export const offBudgetEntryAccounts = (d: BudgetData): BankAccount[] => d.accounts.filter(a => isOffBudgetEntryAccount(d, a));
+
 /** Operations of an unknown account count in the budget (nothing to exclude them with). */
 export const isAccountInBudget = (d: BudgetData, accountId?: string): boolean => bankAccount(d, accountId)?.inBudget ?? true;
 
@@ -130,10 +156,11 @@ export function fixedTransactionAccountId(d: BudgetData, t: Pick<Transaction, 't
     const l = d.months[t.month]?.lines.find(x => x.key === t.target);
     return l ? accountIdOf(d, l.accountId) : undefined;
   }
-  if (t.type === 'env') {
+  if (t.type === 'env' || t.type === 'envin') {
     const e = d.envelopes.find(x => x.id === t.target);
     return e ? envelopeAccountAt(d, e, t.month)?.id : undefined;
   }
+  if (t.type === 'accin') return offBudgetEntryAccount(d, t.target)?.id;
   const box = transactionBox(d, t);
   if (!box?.accountId || box.payMode === 'especes') return undefined;
   const resolved = resolveBoxAccountId(d, box);
@@ -153,7 +180,8 @@ export function transactionBox(d: BudgetData, t: Pick<Transaction, 'type' | 'mon
  */
 export function defaultTransactionAccountId(d: BudgetData, t: Pick<Transaction, 'type' | 'month' | 'target'>): string {
   if (t.type === 'fix' || t.type === 'rev') return fixedTransactionAccountId(d, t) ?? mainAccount(d).id;
-  if (t.type === 'env') return d.envelopes.find(e => e.id === t.target)?.accountId ?? mainAccount(d).id;
+  if (t.type === 'env' || t.type === 'envin') return d.envelopes.find(e => e.id === t.target)?.accountId ?? mainAccount(d).id;
+  if (t.type === 'accin') return offBudgetEntryAccount(d, t.target)?.id ?? mainAccount(d).id;
   const box = transactionBox(d, t);
   return box ? resolveBoxAccountId(d, box) : mainAccount(d).id;
 }

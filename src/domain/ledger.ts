@@ -85,6 +85,9 @@ const sumTx = (d: BudgetData, m: MonthKey, type: string, target: string, keep = 
 
 const isCashPaid = (t: Transaction) => t.payMode === 'especes';
 
+/** Money that came back to an envelope in a month (spec 0036, RG6): the entries `envin` that `keep` retains. */
+export const envelopeEntries = (d: BudgetData, m: MonthKey, envelopeId: string, keep = (_t: Transaction) => true): number => sumTx(d, m, 'envin', envelopeId, keep);
+
 /**
  * Month-by-month balances of envelopes and savings/investment accounts, from
  * the imported history through the app months. From the month its own account exists
@@ -146,20 +149,24 @@ export class Ledger {
           const account = d.accounts.find(x => x.id === e.accountId)!;
           const fromAccount = compareMonths(m, account.openingMonth) === 0 || prevClose?.overrides[closeKey('bank', e.accountId)] !== undefined;
           const start = fromAccount ? b.start : envBal[e.id] ?? b.start;
-          const spent = sumTx(d, m, 'env', e.id);
+          // Net spending: the expenses minus the money that came back (spec 0036, RG6), without floor.
+          const entries = envelopeEntries(d, m, e.id);
+          const spent = round2(sumTx(d, m, 'env', e.id) - entries);
           // An expense paid in cash counts in `spent` but never touches the balance (the virtual one, spec 0026, RG6).
           // The cash part of the allocation leaves the virtual balance too (spec 0037, RG12).
-          const r = { start, alloc: a, spent, balance: round2(start + a - (md?.cashPart?.[e.id] ?? 0) - sumTx(d, m, 'env', e.id, t => !isCashPaid(t))) };
+          const r = { start, alloc: a, spent, balance: round2(start + a - (md?.cashPart?.[e.id] ?? 0) - sumTx(d, m, 'env', e.id, t => !isCashPaid(t)) + entries) };
           this.env.set(`${m}|${e.id}`, r);
           envBal[e.id] = Math.max(0, r.balance); // an overspent envelope does not carry a debt into the next month
           continue;
         }
         const start = prevClose?.overrides[closeKey('env', e.id)] ?? envBal[e.id] ?? 0;
         // Spending paid from an account that is out of the budget does not touch the envelope.
-        const spent = sumTx(d, m, 'env', e.id, t => isTransactionInBudget(d, t));
+        const inBudget = (t: Transaction) => isTransactionInBudget(d, t);
+        const entries = envelopeEntries(d, m, e.id, inBudget);
+        const spent = round2(sumTx(d, m, 'env', e.id, inBudget) - entries);
         // An envelope opening balance set by the assistant for a later month acts like an account statement.
         const opening = d.envHistory[m]?.[e.id];
-        const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - sumTx(d, m, 'env', e.id, t => !isCashPaid(t) && isTransactionInBudget(d, t))) };
+        const r = { start, alloc: a, spent, balance: opening ? opening.balance : round2(start + a - sumTx(d, m, 'env', e.id, t => !isCashPaid(t) && isTransactionInBudget(d, t)) + entries) };
         this.env.set(`${m}|${e.id}`, r);
         envBal[e.id] = Math.max(0, r.balance);
       }

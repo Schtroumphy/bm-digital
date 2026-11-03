@@ -1,8 +1,8 @@
 import { AccountDot } from '../components/AccountPicker';
 import { OFF_BUDGET_CHOICE } from '../components/AssignPicker';
-import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
+import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, chooseEnvelope, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
-import { assignableAccounts, bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
+import { assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
 import { CASH_LABEL, ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget, MovementTarget } from '../../domain/types';
@@ -79,6 +79,8 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
         .filter(([, group]) => group.length > 0);
   // Revenue lines of the month on the account of the imported entry (spec 0015, RG8); none for an envelope's account.
   const revenueLines = fromEnvelope || !l.accountId ? [] : (data.months[l.month]?.lines ?? []).filter(x => x.block === 'rev' && expenseLineAccountId(data, x) === l.accountId);
+  const entryEnvelopes = data.envelopes.filter(e => envelopeEntryAccount(data, e.id));
+  const entryAccounts = offBudgetEntryAccounts(data);
   const envelopes = fromEnvelope ? data.envelopes.filter(e => e.accountId === l.accountId) : data.envelopes;
   const destinations = destinationAccounts(data, l.nature, l.accountId);
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
@@ -154,6 +156,34 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
                 {pool && (
                   <optgroup label="Enveloppes">
                     <option value={`account:${ENVELOPES_ID}`}>{ENVELOPES_LABEL}</option>
+                  </optgroup>
+                )}
+              </select>
+            ) : credit && l.nature === 'envin' ? (
+              // Entry of money on an envelope, from the file of any account (spec 0036, RG4): the envelope is chosen here; an envelope without an active account is not offered (RG5).
+              <select className="su-select" value={targetValue(l.target)} aria-label="Rattacher à" onChange={e => onChange(x => chooseEnvelope(data, x, targetFrom(e.target.value)))}>
+                <option value="">Choisir…</option>
+                {entryEnvelopes.length > 0 && (
+                  <optgroup label="Enveloppes">
+                    {entryEnvelopes.map(e => (
+                      <option key={e.id} value={`env:${e.id}`}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            ) : credit && l.nature === 'accin' ? (
+              // Entry of money on a current account out of the budget, e.g. Swile (spec 0042, RG4): the account is chosen here, no revenue line is asked.
+              <select className="su-select" value={targetValue(l.target)} aria-label="Rattacher à" onChange={e => onChange(x => chooseEnvelope(data, x, targetFrom(e.target.value)))}>
+                <option value="">Choisir…</option>
+                {entryAccounts.length > 0 && (
+                  <optgroup label="Comptes hors budget">
+                    {entryAccounts.map(a => (
+                      <option key={a.id} value={`account:${a.id}`}>
+                        {a.name}
+                      </option>
+                    ))}
                   </optgroup>
                 )}
               </select>
@@ -260,10 +290,10 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
           <input className="text-input" value={l.newLineName} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, newLineName: e.target.value }))} aria-label="Nom de la nouvelle ligne de revenu" />
         </div>
       )}
-      {l.nature === 'revenu' && l.target && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE) && (
+      {(l.nature === 'revenu' || l.nature === 'envin' || l.nature === 'accin') && l.target && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE) && (
         <div className="import-remember">
           <label htmlFor={`source:${l.id}`}>Source</label>
-          <input id={`source:${l.id}`} className="text-input" value={l.source ?? ''} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, source: e.target.value }))} aria-label="Source du revenu" />
+          <input id={`source:${l.id}`} className="text-input" value={l.source ?? ''} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, source: e.target.value }))} aria-label={l.nature === 'envin' || l.nature === 'accin' ? 'Source de l’entrée' : 'Source du revenu'} />
         </div>
       )}
       {assignable && (
@@ -301,7 +331,7 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
           </select>
         </div>
       )}
-      {l.target && l.nature !== 'a_qualifier' && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE) && (
+      {l.target && l.nature !== 'a_qualifier' && l.nature !== 'envin' && l.nature !== 'accin' && !(l.target.kind === 'line' && l.target.key === NEW_REVENUE_LINE) && (
         <div className="import-remember">
           {l.remember === null ? (
             <button type="button" className="link-btn" onClick={() => onChange(x => ({ ...x, remember: x.suggestedPattern }))}>

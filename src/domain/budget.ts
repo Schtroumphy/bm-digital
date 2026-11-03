@@ -184,7 +184,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const savings = round2(b('epa') + b('inv'));
   const paidIn = round2(blockTotals(lines, 'epa').actual + blockTotals(lines, 'inv').actual);
   const txs = d.transactions.filter(t => t.month === m && isTransactionInBudget(d, t));
-  const envelopeSpent = sum(txs.filter(t => t.type === 'env').map(t => t.amount));
+  // Net spending of the envelopes: expenses minus the money that came back to them (spec 0036, RG6).
+  const envelopeSpent = round2(sum(txs.filter(t => t.type === 'env').map(t => t.amount)) - sum(txs.filter(t => t.type === 'envin').map(t => t.amount)));
   const savingsOut = sum(txs.filter(t => t.type === 'epa').map(t => t.amount));
   const rate = (v: number) => (income ? (v / income) * 100 : 0);
   const grossSavings = round2(savings + allocSum);

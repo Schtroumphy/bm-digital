@@ -1,7 +1,7 @@
 import { cashHistory } from './envelopeHistory';
 import { envelopeAccountAt } from './bank';
 import { addMonths, round2 } from './format';
-import type { Ledger } from './ledger';
+import { envelopeEntries, type Ledger } from './ledger';
 import type { BudgetData, MonthKey } from './types';
 
 /*
@@ -43,10 +43,11 @@ export function envelopeConsumption(d: BudgetData, ledger: Ledger, envelopeId: s
   // From the month its account exists, the money really in is read on that account (transfers, entries): start of the month + money in.
   // Before that, only the budget figures exist: carried balance + allocation.
   const bank = e && envelopeAccountAt(d, e, m) ? ledger.bankMonth(e.accountId, m) : null;
-  const virtualStart = bank ? bank.start + bank.in : em.start + em.alloc;
+  // The money that came back to the envelope is already in `bank.in` and in the net `spent`: counted once, in `spent` (spec 0036, RG6).
+  const virtualStart = bank ? bank.start + bank.in - envelopeEntries(d, m, envelopeId) : em.start + em.alloc;
   const start = round2(virtualStart + envelopeCash(d, envelopeId, addMonths(m, -1)) + (d.months[m]?.cashPart?.[envelopeId] ?? 0));
   const spent = em.spent;
-  return { start, spent, remaining: round2(start - spent), consumed: start > 0 ? Math.min(100, (spent / start) * 100) : spent > 0 ? 100 : 0 };
+  return { start, spent, remaining: round2(start - spent), consumed: start > 0 ? Math.max(0, Math.min(100, (spent / start) * 100)) : spent > 0 ? 100 : 0 };
 }
 
 /**

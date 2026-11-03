@@ -15,6 +15,7 @@ export function completeData(): BudgetData {
     ...d.accounts,
     { id: 'acc-sav', name: 'Livret A', hue: 142.5, isDefault: false, openingBalance: 1200.5, openingMonth: '2026-10', inBudget: true, archived: false, kind: 'epargne', openingConfirmed: true },
     { id: 'acc-inv', name: 'PEA', hue: 30, isDefault: false, openingBalance: 0, openingMonth: '2026-10', inBudget: false, archived: true, kind: 'invest' },
+    { id: 'acc-swile', name: 'Swile', hue: 200, isDefault: false, openingBalance: 20, openingMonth: '2026-10', inBudget: false, archived: false },
     { id: 'acc-old', name: 'Ancien compte', hue: 10, isDefault: false, openingBalance: 5, openingMonth: '2026-10', inBudget: true, archived: false },
   ];
   d.months['2026-11'].closed = true;
@@ -62,6 +63,10 @@ export function completeData(): BudgetData {
   // Spec 0015 : entrée sur une ligne de revenu, avec une date bancaire différente du mois de rattachement.
   const revLine = dec.lines.find(l => l.block === 'rev')!;
   d.transactions.push({ id: 't-rev', month: '2026-12', day: 1, label: 'Salaire', amount: 2480, type: 'rev', target: revLine.key, accountId: revLine.accountId ?? 'acc-main', bankDate: '2026-11-28' });
+  // Entrée d'argent sur une enveloppe (spec 0036, CA13): sauvegardée puis rechargée à l'identique.
+  d.transactions.push({ id: 't-envin', month: '2026-12', day: 9, label: 'Remboursement', amount: 40, type: 'envin', target: d.envelopes[0].id, accountId: d.envelopes[0].accountId, source: 'Garage', bankDate: '2026-12-09' });
+  // Entrée d'argent sur un compte hors budget (spec 0042, CA12): sauvegardée puis rechargée à l'identique.
+  d.transactions.push({ id: 't-accin', month: '2026-12', day: 10, label: 'Titres-restaurant', amount: 150, type: 'accin', target: 'acc-swile', accountId: 'acc-swile', source: 'Employeur', bankDate: '2026-12-10' });
   d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08', target: { kind: 'env', id: 'e-vc' } }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },

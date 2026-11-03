@@ -1,4 +1,4 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, transactionBox, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, envelopeEntryAccount, fixedTransactionAccountId, offBudgetEntryAccount, freeEnvelopeAccountId, transactionBox, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { syncLineActual } from '../domain/lineActuals';
@@ -276,13 +276,15 @@ const withoutAccount = ({ accountId: _accountId, ...rest }: Transaction): Transa
  * it has no account at all and counts in the actual of its line. The mode is dropped on the other types, and `virtuel` is written as no mode at all.
  * An operation may be assigned to a savings account (`assignedAccountId`, spec 0028): only `var`, `fix` and `rev`, an active savings account other than the
  * operation's own (RG1, RG2, RG20). It may instead be marked « hors budget » (`offBudget`, spec 0031): same types, no account, and never together with an assignment
- * (RG3); `env` and `epa` are refused. `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
+ * (RG3); `env` and `epa` are refused. An entry of money on an envelope (`envin`, spec 0036) is credited to the account of the envelope; see `addEnvelopeInflow`. `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
  */
 export function addTransaction(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
   if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
   if (input.offBudget !== undefined && (!isAssignableType(input.type) || input.assignedAccountId !== undefined)) return false;
   if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input, keepAssignment);
+  if (input.type === 'envin') return addEnvelopeInflow(d, input);
+  if (input.type === 'accin') return addAccountInflow(d, input);
   const given = d.accounts.find(a => a.id === input.accountId);
   if (input.type !== 'env' && given && isEnvelopeAccount(given)) return false;
   // A variable expense on a line with an assigned account stays on it: another account is refused (spec 0006 amended, 0011 RG10).
@@ -305,6 +307,35 @@ export function addTransaction(d: BudgetData, input: Transaction, keepAssignment
   d.transactions.push(detail === undefined ? rest : { ...rest, detail });
   // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).
   if (t.type === 'var') syncLineActual(d, t.month, t.target);
+  return true;
+}
+
+/**
+ * Entry of money on an envelope (spec 0036, RG1 to RG3): a refund, a sale. It is credited to the account of the envelope, whatever account is given, and
+ * lowers the spending of the envelope. Refused (false) on a month not initialized (a locked one is refused by the caller), an envelope without an active
+ * account, an amount that is not positive, a day that is not in 1..31, an assignment or a « hors budget » marking. It touches no revenue line and no cash.
+ */
+function addEnvelopeInflow(d: BudgetData, input: Transaction): boolean {
+  const account = envelopeEntryAccount(d, input.target);
+  if (!account || !d.months[input.month]?.initialized || !(input.amount > 0) || !Number.isInteger(input.day) || input.day < 1 || input.day > 31) return false;
+  const detail = normalizeDetail(input.detail);
+  const { detail: _raw, payMode: _mode, ...rest } = input;
+  d.transactions.push(detail === undefined ? { ...rest, accountId: account.id } : { ...rest, accountId: account.id, detail });
+  return true;
+}
+
+/**
+ * Entry of money on a current account out of the budget, e.g. Swile (spec 0042, RG1 to RG3, RG5, RG6): `target` is the account, which is also the account of the
+ * entry. Refused (false) on a month not initialized (a locked one is refused by the caller), an account that is unknown, archived, the main one, an envelope's, in
+ * the budget, savings or investment, an amount that is not positive, a day not in 1..31, an assignment or a « hors budget » marking. It needs no revenue line and
+ * touches none, no envelope and no cash: it only credits the account.
+ */
+function addAccountInflow(d: BudgetData, input: Transaction): boolean {
+  const account = offBudgetEntryAccount(d, input.target);
+  if (!account || !d.months[input.month]?.initialized || !(input.amount > 0) || !Number.isInteger(input.day) || input.day < 1 || input.day > 31) return false;
+  const detail = normalizeDetail(input.detail);
+  const { detail: _raw, payMode: _mode, ...rest } = input;
+  d.transactions.push(detail === undefined ? { ...rest, accountId: account.id } : { ...rest, accountId: account.id, detail });
   return true;
 }
 
@@ -367,7 +398,8 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   const old = d.transactions.find(x => x.id === id);
   const label = patch.label.trim();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(patch.date) && new Date(`${patch.date}T00:00:00Z`).toISOString().startsWith(patch.date);
-  if (!old || isMonthLocked(d, old.month) || !label || !(patch.amount > 0) || !valid) return false;
+  // An entry on an envelope or on an account out of the budget (spec 0042) cannot be edited, nor can a transaction become one: delete it and add it again (spec 0036, RG11).
+  if (!old || old.type === 'envin' || patch.type === 'envin' || old.type === 'accin' || patch.type === 'accin' || isMonthLocked(d, old.month) || !label || !(patch.amount > 0) || !valid) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
   const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, offBudget: _o, ...kept } = old;

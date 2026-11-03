@@ -14,7 +14,7 @@ import { defaultTransferTarget, similarPointedItem, transferItems } from '../../
 import { deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, assignableAccounts, bankAccount, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget, transactionBox } from '../../domain/bank';
+import { activeBankAccounts, assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget, transactionBox } from '../../domain/bank';
 import { isoDate, lineCheck } from '../../domain/checkoff';
 import { defaultEntryDate, isRealDate } from '../../domain/periods';
 import { matchesEntrySearch } from '../../domain/detail';
@@ -25,13 +25,18 @@ import { isMonthLocked, monthLines } from '../../domain/ledger';
 import type { AccountMovement, MonthKey, MovementTarget, PayMode, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 
+/** Prefix of the choice of an envelope among the targets of an entry of money (spec 0036): a line key never contains a colon. */
+const ENVELOPE_PREFIX = 'env:';
+/** Same for an account out of the budget (spec 0042): its choice is written `acc:<id>` and makes the entry an `accin`. */
+const ACCOUNT_PREFIX = 'acc:';
+
 /** Sum of the expenses of a list: an entry of money (`rev`) is never an expense (spec 0015). */
-const spentOf = (xs: { type: TxType; amount: number }[]) => round2(xs.filter(t => t.type !== 'rev').reduce((a, t) => a + t.amount, 0));
+const spentOf = (xs: { type: TxType; amount: number }[]) => round2(xs.filter(t => t.type !== 'rev' && t.type !== 'envin' && t.type !== 'accin').reduce((a, t) => a + t.amount, 0));
 
 /** Signed amount seen from the account: an entry of money and a withdrawal from savings are credits (+), the others debits (−). */
-const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' || t.type === 'epa' ? t.amount : -t.amount);
+const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' || t.type === 'epa' || t.type === 'envin' || t.type === 'accin' ? t.amount : -t.amount);
 
-const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
+const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent', envin: 'Entrée sur enveloppe', accin: 'Entrée sur compte hors budget' };
 
 export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
   const [importing, setImporting] = useState(false);
@@ -81,7 +86,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '' });
+  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '' });
   const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
@@ -97,14 +102,24 @@ function EntryTab({ month }: { month: MonthKey }) {
     setEditingDetail(null);
   };
 
+  const revenueTargets: [string, string][] = lines.filter(l => l.block === 'rev').map(l => [l.key, `${l.name} (${bankAccount(data, l.accountId)?.name ?? ''})`]);
+  // Envelopes without an active account cannot take an entry (spec 0036, RG3).
+  const envelopeTargets: [string, string][] = data.envelopes.filter(e => envelopeEntryAccount(data, e.id)).map(e => [`${ENVELOPE_PREFIX}${e.id}`, e.name]);
+  // Current accounts out of the budget (e.g. Swile) take an entry too, with no revenue line at all (spec 0042, RG1).
+  const accountTargets: [string, string][] = offBudgetEntryAccounts(data).map(a => [`${ACCOUNT_PREFIX}${a.id}`, a.name]);
   const targets: [string, string][] =
-    form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : form.type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, `${l.name} (${l.block === 'cre' ? 'Crédit' : 'Fixe'}, ${bankAccount(data, l.accountId)?.name ?? ''})`]) : form.type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, `${l.name} (${bankAccount(data, l.accountId)?.name ?? ''})`]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
+    form.type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : form.type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : form.type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, `${l.name} (${l.block === 'cre' ? 'Crédit' : 'Fixe'}, ${bankAccount(data, l.accountId)?.name ?? ''})`]) : form.type === 'rev' ? [...revenueTargets, ...envelopeTargets, ...accountTargets] : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
   const target = targets.some(t => t[0] === form.target) ? form.target : targets[0]?.[0] ?? '';
+  // An entry of money can target an envelope (spec 0036, RG1): its choice is written `env:<id>` and makes the entry a `envin`. Same form, same type chip.
+  const entryEnvelopeId = form.type === 'rev' && target.startsWith(ENVELOPE_PREFIX) ? target.slice(ENVELOPE_PREFIX.length) : undefined;
+  const entryAccountId = form.type === 'rev' && target.startsWith(ACCOUNT_PREFIX) ? target.slice(ACCOUNT_PREFIX.length) : undefined;
+  const txType: TxType = entryEnvelopeId ? 'envin' : entryAccountId ? 'accin' : form.type;
+  const txTarget = entryEnvelopeId ?? entryAccountId ?? target;
   // « Payé avec » is frozen on the account of the envelope (spec 0011, RG10) or on the account assigned to the variable line (spec 0006 amended).
   // Otherwise, until the user picks an account (form.accountId empty), it follows the payment mode of the chosen box (spec 0006, RG5).
-  const fixedId = form.type === 'epa' ? undefined : fixedTransactionAccountId(data, { type: form.type, month, target });
+  const fixedId = form.type === 'epa' ? undefined : fixedTransactionAccountId(data, { type: txType, month, target: txTarget });
   const envelopeAccount = form.type === 'env' ? data.accounts.find(a => a.id === data.envelopes.find(e => e.id === target)?.accountId) : data.accounts.find(a => a.id === fixedId);
-  const accountId = envelopeAccount ? envelopeAccount.id : data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: form.type, month, target });
+  const accountId = envelopeAccount ? envelopeAccount.id : data.accounts.some(a => a.id === form.accountId && !a.archived) ? form.accountId : defaultTransactionAccountId(data, { type: txType, month, target: txTarget });
   // A withdrawal cannot be credited to the dedicated account of its savings line (spec 0007, RG7).
   const refusedAccountId = form.type === 'epa' ? lines.find(l => l.key === target)?.linkedAccountId : undefined;
   const accountRefused = accountId === refusedAccountId;
@@ -113,8 +128,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   // A fixed/credit line whose account is archived takes no expense (spec 0014).
   const lineBlocker = form.type === 'fix' && target ? expenseLineBlocker(data, month, target) : null;
   // Savings accounts the operation can be assigned to (spec 0028, RG2, RG16): none for an envelope expense or a savings withdrawal.
-  const assignOptions = isAssignableType(form.type) ? assignableAccounts(data, accountId) : [];
-  const assignedId = form.assignedAccountId === OFF_BUDGET_CHOICE && isAssignableType(form.type) ? OFF_BUDGET_CHOICE : assignOptions.some(a => a.id === form.assignedAccountId) ? form.assignedAccountId : '';
+  const assignOptions = isAssignableType(txType) ? assignableAccounts(data, accountId) : [];
+  const assignedId = form.assignedAccountId === OFF_BUDGET_CHOICE && isAssignableType(txType) ? OFF_BUDGET_CHOICE : assignOptions.some(a => a.id === form.assignedAccountId) ? form.assignedAccountId : '';
   const amount = parseAmount(form.amount) ?? 0;
   // The real date of the new entry is always explicit (spec 0039, RG11): today when it is in the period of the month, else the nearest end of the period.
   const entryDate = form.date || defaultEntryDate(data, month, isoDate());
@@ -126,7 +141,7 @@ function EntryTab({ month }: { month: MonthKey }) {
 
   const s = monthSummary(data, ledger, month);
   // An entry is « rattachée à un pointage » when its line is checked off this month (envelopes have no pointage).
-  const isPointed = (t: { type: TxType; target: string }) => t.type !== 'env' && !!lineCheck(data, month, t.target);
+  const isPointed = (t: { type: TxType; target: string }) => t.type !== 'env' && t.type !== 'envin' && t.type !== 'accin' && !!lineCheck(data, month, t.target);
   const minAmount = parseAmount(filter.min) ?? null;
   const maxAmount = parseAmount(filter.max) ?? null;
   const txs = data.transactions.filter(t => t.month === month);
@@ -141,6 +156,8 @@ function EntryTab({ month }: { month: MonthKey }) {
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
     .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
   const isFiltered = !!(filter.q || filter.type !== 'all' || filter.accountId !== 'all' || filter.pointedOnly || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
+  const envelopeEntriesTotal = round2(txs.filter(t => t.type === 'envin').reduce((a, t) => a + t.amount, 0));
+  const accountEntriesTotal = round2(txs.filter(t => t.type === 'accin').reduce((a, t) => a + t.amount, 0));
   const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
   // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
   const picked = shown.filter(t => selected.has(t.id));
@@ -189,8 +206,8 @@ function EntryTab({ month }: { month: MonthKey }) {
     a.click();
     URL.revokeObjectURL(a.href);
   };
-  const targetName = (type: TxType, id: string) => (type === 'env' ? data.envelopes.find(e => e.id === id)?.name : lines.find(l => l.key === id)?.name) ?? 'Supprimé';
-  const targetHue = (type: TxType, id: string) => (type === 'var' || type === 'fix' ? HUE.dep : type === 'env' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
+  const targetName = (type: TxType, id: string) => (type === 'accin' ? data.accounts.find(a => a.id === id)?.name : type === 'env' || type === 'envin' ? data.envelopes.find(e => e.id === id)?.name : lines.find(l => l.key === id)?.name) ?? 'Supprimé';
+  const targetHue = (type: TxType, id: string) => (type === 'var' || type === 'fix' ? HUE.dep : type === 'env' || type === 'envin' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
 
   let impact: [string, string][] = [];
   if (target && form.type === 'var') {
@@ -209,6 +226,24 @@ function EntryTab({ month }: { month: MonthKey }) {
     impact = [
       [`${e.name} · dépensé`, `${money(spent)} → ${money(spent + budgetAmount)}`],
       ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings - budgetAmount)}`],
+    ];
+  } else if (entryAccountId) {
+    // Money on an account out of the budget: only its balance moves, no revenue, no envelope, no budget figure (spec 0042, RG5, RG6).
+    const acc = data.accounts.find(x => x.id === entryAccountId)!;
+    const balance = ledger.bankMonth(acc.id, month)?.balance ?? 0;
+    impact = [
+      [`${acc.name} · solde réel`, `${money(balance)} → ${money(balance + amount)}`],
+      ['Revenus', 'inchangés'],
+      ['Épargne réelle', 'inchangée'],
+    ];
+  } else if (entryEnvelopeId) {
+    // Money back on an envelope: its spending goes down, its balance up, and no revenue moves (spec 0036, RG6, RG7).
+    const e = data.envelopes.find(x => x.id === entryEnvelopeId)!;
+    const spent = ledger.envMonth(e.id, month)?.spent ?? 0;
+    impact = [
+      [`${e.name} · dépensé`, `${money(spent)} → ${money(spent - budgetAmount)}`],
+      ['Épargne réelle', `${money(s.realSavings)} → ${money(s.realSavings + budgetAmount)}`],
+      ['Revenus', 'inchangés'],
     ];
   } else if (target && form.type === 'rev') {
     const l = lines.find(x => x.key === target)!;
@@ -232,10 +267,10 @@ function EntryTab({ month }: { month: MonthKey }) {
   const add = () => {
     if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused || !isRealDate(entryDate)) return;
     update(d =>
-      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, ...(cashLine ? {} : { accountId }), detail: form.detail, ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
+      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(txType, txTarget), amount, type: txType, target: txTarget, ...(cashLine ? {} : { accountId }), detail: form.detail, ...((entryEnvelopeId || entryAccountId) && form.source.trim() ? { source: form.source.trim() } : {}), ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '' }));
+    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -268,6 +303,12 @@ function EntryTab({ month }: { month: MonthKey }) {
           <span className="field-label">Détail <span className="field-optional">facultatif</span></span>
           <DetailInput value={form.detail} onChange={detail => setForm(f => ({ ...f, detail }))} onEnter={add} />
         </label>
+        {(entryEnvelopeId || entryAccountId) && (
+          <label className="field-w">
+            <span className="field-label">Source <span className="field-optional">facultatif</span></span>
+            <input className="text-input" value={form.source} placeholder="Ex. Garage" onChange={e => setForm(f => ({ ...f, source: e.target.value }))} onKeyDown={e => e.key === 'Enter' && add()} />
+          </label>
+        )}
         <div>
           <div className="field-label is-gap">Type</div>
           <div className="chips is-wrap">
@@ -286,14 +327,30 @@ function EntryTab({ month }: { month: MonthKey }) {
         ) : (
           <>
         <div>
-          <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : form.type === 'fix' ? 'Ligne fixe ou crédit' : form.type === 'rev' ? 'Ligne de revenu' : 'Compte d’épargne débité'}</div>
-          <div className="chips is-wrap">
-            {targets.map(([id, name]) => (
-              <Chip key={id} on={target === id} onClick={() => setForm(f => ({ ...f, target: id }))}>
-                {name}
-              </Chip>
-            ))}
-          </div>
+          <div className="field-label is-gap">{form.type === 'var' ? 'Ligne de dépense variable' : form.type === 'env' ? 'Enveloppe' : form.type === 'fix' ? 'Ligne fixe ou crédit' : form.type === 'rev' ? (accountTargets.length > 0 ? 'Revenu, enveloppe ou compte' : 'Revenu ou enveloppe') : 'Compte d’épargne débité'}</div>
+          {form.type === 'rev' && envelopeTargets.length + accountTargets.length > 0 ? (
+            // Groups, as in a select with optgroups: the revenue lines, the envelopes (spec 0036, RG1), the accounts out of the budget (spec 0042, RG1); an empty group is absent.
+            ([['Lignes de revenu', revenueTargets], ['Enveloppes', envelopeTargets], ['Comptes hors budget', accountTargets]] as [string, [string, string][]][]).filter(([, group]) => group.length > 0).map(([title, group]) => (
+              <Fragment key={title}>
+                <div className="muted is-small">{title}</div>
+                <div className="chips is-wrap">
+                  {group.map(([id, name]) => (
+                    <Chip key={id} on={target === id} onClick={() => setForm(f => ({ ...f, target: id }))}>
+                      {name}
+                    </Chip>
+                  ))}
+                </div>
+              </Fragment>
+            ))
+          ) : (
+            <div className="chips is-wrap">
+              {targets.map(([id, name]) => (
+                <Chip key={id} on={target === id} onClick={() => setForm(f => ({ ...f, target: id }))}>
+                  {name}
+                </Chip>
+              ))}
+            </div>
+          )}
         </div>
         <div>
           <div className="field-label is-gap">{form.type === 'epa' || form.type === 'rev' ? 'Reçu sur' : 'Payé avec'}</div>
@@ -321,7 +378,7 @@ function EntryTab({ month }: { month: MonthKey }) {
           </div>
           )}
         </div>
-        {isAssignableType(form.type) && <AssignPicker accounts={assignOptions} value={assignedId} disabled={locked} onChange={assignedAccountId => setForm(f => ({ ...f, assignedAccountId }))} />}
+        {isAssignableType(txType) && <AssignPicker accounts={assignOptions} value={assignedId} disabled={locked} onChange={assignedAccountId => setForm(f => ({ ...f, assignedAccountId }))} />}
         {cashRefused && <div className="alert-box">Espèces insuffisantes sur cette enveloppe.</div>}
         {lineBlocker && <div className="alert-box">{lineBlocker}</div>}
         {accountRefused && <div className="alert-box">Choisis un compte différent du compte débité (le compte dédié de la ligne).</div>}
@@ -354,7 +411,7 @@ function EntryTab({ month }: { month: MonthKey }) {
         <div className="panel-lg">
           <div className="tx-head">
             <div className="tx-title">Opérations de {monthLabel(month)}</div>
-            <b title={`Total des dépenses (les entrées d’argent ne comptent pas)${assignedSpent > 0 ? `\ndont ${money(assignedSpent)} hors budget / affectés` : ''}`}>{money(spentOf(txs))}</b>
+            <b title={`Total des dépenses (les entrées d’argent ne comptent pas)${assignedSpent > 0 ? `\ndont ${money(assignedSpent)} hors budget / affectés` : ''}${envelopeEntriesTotal > 0 ? `\nEntrées sur enveloppe du mois : ${money(envelopeEntriesTotal)} (non déduites)` : ''}${accountEntriesTotal > 0 ? `\nEntrées sur compte hors budget du mois : ${money(accountEntriesTotal)} (non déduites)` : ''}`}>{money(spentOf(txs))}</b>
           </div>
           <div className="tx-filters">
             <div className="tx-f">
@@ -489,9 +546,9 @@ function EntryTab({ month }: { month: MonthKey }) {
                     <Icon name="flag" size={13} stroke={2} />
                   </span>
                   {!locked && (<>
-                    <span className="icon-btn" title="Modifier" onClick={() => (editingTx?.id === t.id ? setEditingTx(null) : startEdit(t))}>
+                    {t.type !== 'envin' && t.type !== 'accin' && <span className="icon-btn" title="Modifier" onClick={() => (editingTx?.id === t.id ? setEditingTx(null) : startEdit(t))}>
                       <Icon name="pencil" size={13} stroke={2} />
-                    </span>
+                    </span>}
                     <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
                       <Icon name="close" size={14} />
                     </span>

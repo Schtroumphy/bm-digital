@@ -1,6 +1,6 @@
-import { accountIdOf, canAssignTo, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
+import { accountIdOf, canAssignTo, envelopeEntryAccount, fixedTransactionAccountId, isEnvelopeAccount, offBudgetEntryAccount } from '../domain/bank';
 import { CASH_ID, ENVELOPES_ID, canLinkFaces, findCompletable, isEnvelopesPool, pairFaces, tracesOf, type Face } from '../domain/internalTransfers';
-import { compareMonths } from '../domain/format';
+import { compareMonths, round2 } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
 import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, ImportTrace, MonthKey, MovementTarget, Transaction } from '../domain/types';
@@ -23,8 +23,11 @@ import { findImportAccountLink, isLinkableAccount, linkedAccountOf, setImportAcc
  * `a_qualifier` only exists in the preview: a transfer the user has not yet decided to be internal or external (RG35), never stored.
  * `recu` (in `ImportNature`) is the credit face of an internal transfer, shown « Virement interne »: an entry of money that comes from
  * another of the user's accounts, or from « Enveloppes (global) » (spec 0016, RG1, RG12, RG27). Importable like any other line.
+ * `envin` only exists in the preview too: an entry of money on an envelope (refund, sale; spec 0036), written as a `Transaction` of type `envin`.
+ * It is never remembered in a rule (spec 0036, exclusions), so it is not an `ImportNature`.
+ * `accin` too: an entry of money on a current account out of the budget (e.g. Swile; spec 0042), written as a `Transaction` of type `accin` whose target is the account.
  */
-export type LineNature = ImportNature | 'a_qualifier';
+export type LineNature = ImportNature | 'a_qualifier' | 'envin' | 'accin';
 
 /** Target « Nouvelle ligne de revenu »: a revenue line at budget 0 created in the month of attachment when the entry is written (spec 0015, RG9). Never stored in a rule. */
 export const NEW_REVENUE_LINE = '+new';
@@ -82,7 +85,7 @@ export interface PreviewLine {
   link?: string | null;
   /** Several faces could be its other half: nothing is paired automatically, the user links by hand (RG6). */
   ambiguous?: boolean;
-  /** `revenu` only: who paid, free text (RG3). Empty = the label of the line. */
+  /** `revenu` and `envin` only: who paid, free text (RG3; spec 0036, RG4). Empty = the label of the line. */
   source?: string;
   /**
    * Dépense (variable or fixed) or revenu only: the savings account the operation is assigned to, outside the budget (spec 0028, RG17). Absent = counted.
@@ -144,8 +147,11 @@ export const isLocked = (l: PreviewLine): boolean => l.duplicate;
 /** An entry of money (credit of the file): a « Revenu » on a revenue line (spec 0015) or a « Virement interne » received from another account (spec 0016). */
 export const isIncome = (l: Pick<PreviewLine, 'row'>): boolean => l.row.direction === 'credit';
 
-const NATURE_LABEL: Record<LineNature, string> = { depense: 'Dépense', retrait: 'Retrait', interne: 'Transfert interne', externe: 'Transfert externe', revenu: 'Revenu', a_qualifier: 'À qualifier', recu: 'Virement interne' };
+const NATURE_LABEL: Record<LineNature, string> = { depense: 'Dépense', retrait: 'Retrait', interne: 'Transfert interne', externe: 'Transfert externe', revenu: 'Revenu', a_qualifier: 'À qualifier', recu: 'Virement interne', envin: 'Entrée sur enveloppe', accin: 'Entrée sur compte hors budget' };
 export const natureLabel = (n: LineNature) => NATURE_LABEL[n];
+
+/** Types of transaction written as an entry of money, so a credit of a file (spec 0036, 0042). */
+const isCreditType = (type: Transaction['type']): boolean => type === 'rev' || type === 'envin' || type === 'accin';
 
 const importKey = (accountId: string, fingerprint: string, rank: number) => `${accountId}\u0001${fingerprint}\u0001${rank}`;
 /** Key of « same account, day, amount and sense »: a credit and a debit of the same amount the same day are not alike (spec 0015). */
@@ -207,6 +213,10 @@ export function targetIsValid(d: BudgetData, sourceId: string | null, nature: Li
     }
     return target.kind === 'env' && d.envelopes.some(e => e.id === target.id);
   }
+  // An entry on an envelope: any envelope that has an active account, whatever the account of the file (spec 0036, RG4, RG5).
+  if (nature === 'envin') return target.kind === 'env' && envelopeEntryAccount(d, target.id) !== undefined;
+  // An entry on a current account out of the budget: any such active account, whatever the account of the file; no revenue line needed (spec 0042, RG4).
+  if (nature === 'accin') return target.kind === 'account' && offBudgetEntryAccount(d, target.id) !== undefined;
   if (nature === 'retrait') {
     // A withdrawal always goes to « Espèces », from any account but an envelope's (spec 0037, RG1, RG4).
     return target.kind === 'account' && target.id === CASH_ID && !d.accounts.some(a => a.id === sourceId && isEnvelopeAccount(a));
@@ -260,7 +270,7 @@ export function lineProblem(d: BudgetData, l: PreviewLine): string | null {
   const completes = completionOf(d, l);
   if (completes) return isMonthLocked(d, completes.month) ? 'Virement d’un mois clos' : null;
   if (!isImportMonth(d, l.month)) return 'Choisir un mois ouvert';
-  if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) || l.nature === 'revenu' ? 'À rattacher' : l.nature === 'recu' ? 'Choisir le compte source' : 'Choisir une destination';
+  if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) || l.nature === 'revenu' || l.nature === 'envin' || l.nature === 'accin' ? 'À rattacher' : l.nature === 'recu' ? 'Choisir le compte source' : 'Choisir une destination';
   // The assignment to a savings account (spec 0028): only on a `var`, `fix` or revenue line, to an account that can take it.
   if (l.assignedAccountId && (isExpenseNature(l.nature) || l.nature === 'revenu') && l.target?.kind !== 'env' && !canAssignTo(d, l.nature === 'revenu' ? 'rev' : 'var', balanceAccounts(d, l)[0], l.assignedAccountId)) return 'Compte d’affectation invalide';
   return null;
@@ -318,7 +328,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
   const byDay = new Map<string, { fingerprint: string; category?: string }[]>();
   // Every import trace already stored is a key that can serve once: a transaction has one, a transfer up to two (debit face, credit face; spec 0016, RG16).
   const stored: { trace: ImportTrace; amount: number; credit: boolean; category?: string }[] = [
-    ...d.transactions.filter(t => t.importAccountId && t.fingerprint).map(t => ({ trace: { importAccountId: t.importAccountId!, fingerprint: t.fingerprint!, rank: t.rank ?? 0, bankDate: bankDateOf(t, d) }, amount: t.amount, credit: t.type === 'rev', category: t.category })),
+    ...d.transactions.filter(t => t.importAccountId && t.fingerprint).map(t => ({ trace: { importAccountId: t.importAccountId!, fingerprint: t.fingerprint!, rank: t.rank ?? 0, bankDate: bankDateOf(t, d) }, amount: t.amount, credit: isCreditType(t.type), category: t.category })),
     ...(d.accountMovements ?? []).flatMap(mv => tracesOf(mv, d).map(trace => ({ trace, amount: mv.amount, credit: trace === mv.creditTrace, category: mv.category }))),
   ];
   for (const x of stored) {
@@ -326,7 +336,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     const k = dayKey(x.trace.importAccountId, x.trace.bankDate, x.amount, x.credit);
     byDay.set(k, [...(byDay.get(k) ?? []), { fingerprint: x.trace.fingerprint, category: x.category }]);
   }
-  const manual = new Set(d.transactions.filter(t => !t.fingerprint).map(t => dayKey(accountIdOf(d, t.accountId), bankDateOf(t, d), t.amount, t.type === 'rev')));
+  const manual = new Set(d.transactions.filter(t => !t.fingerprint).map(t => dayKey(accountIdOf(d, t.accountId), bankDateOf(t, d), t.amount, isCreditType(t.type))));
   const before = new Map(previous.map(l => [l.id, l]));
   // Lines carried over from the previous preview with their corrections: the automatic pairing leaves them as they are (a unlinked or requalified line stays so).
   const carried = new Set<string>();
@@ -502,22 +512,39 @@ export function choosePairAccount(d: BudgetData, reading: StatementReading, prev
   return prepareImport(d, reading, { ...preview.choices, [pairKey]: accountId }, preview.lines);
 }
 
-/** Natures offered in the selector of a line: « Revenu » / « Virement interne » for an entry of money, the debit natures otherwise (« À qualifier » only while the line is in that state). Always the same set, whatever the current nature, so a choice can be undone (spec 0015, RG19; spec 0016, RG1). */
+/** Natures offered in the selector of a line: « Revenu » / « Entrée sur enveloppe » / « Virement interne » for an entry of money, the debit natures otherwise (« À qualifier » only while the line is in that state). Always the same set, whatever the current nature, so a choice can be undone (spec 0015, RG19; spec 0016, RG1). */
 export function natureOptions(l: Pick<PreviewLine, 'row' | 'nature'>): LineNature[] {
-  if (isIncome(l)) return ['revenu', 'recu'];
+  if (isIncome(l)) return ['revenu', 'envin', 'accin', 'recu'];
   return (['depense', 'retrait', 'interne', 'externe', 'a_qualifier'] as const).filter(n => n !== 'a_qualifier' || l.nature === 'a_qualifier');
 }
 
 /** The line with another nature: the target is kept only if it still fits, a withdrawal goes to cash by default (RG35), an expense of an envelope's account goes to that envelope. */
 export function changeNature(d: BudgetData, l: PreviewLine, nature: LineNature): PreviewLine {
-  // An entry of money is a revenue or a received transfer, a debit never is (spec 0015, RG17).
-  if (isIncome(l) ? nature !== 'revenu' && nature !== 'recu' : nature === 'revenu' || nature === 'recu') return l;
+  // An entry of money is a revenue, an entry on an envelope or a received transfer, a debit never is (spec 0015, RG17; spec 0036, RG4).
+  if (isIncome(l) ? nature !== 'revenu' && nature !== 'recu' && nature !== 'envin' && nature !== 'accin' : nature === 'revenu' || nature === 'recu' || nature === 'envin' || nature === 'accin') return l;
   let target = targetIsValid(d, l.accountId, nature, l.target, l.month) ? l.target : null;
   // A credit on an envelope's account comes from « Enveloppes (global) » by default (spec 0016, RG27).
   if (nature === 'recu' && !target && canUseEnvelopesPool(d, 'recu', l.accountId)) target = { kind: 'account', id: ENVELOPES_ID };
-  if (!target && (nature === 'depense' || nature === 'externe')) target = ownEnvelopeTarget(d, l.accountId);
+  if (!target && (nature === 'depense' || nature === 'externe' || nature === 'envin')) target = ownEnvelopeTarget(d, l.accountId);
   if (nature === 'retrait' && !target && l.accountId !== null && targetIsValid(d, l.accountId, 'retrait', { kind: 'account', id: CASH_ID }, l.month)) target = { kind: 'account', id: CASH_ID };
-  return { ...l, nature, target, remember: target ? l.remember : null, checked: nature === 'recu' && !target ? false : l.checked };
+  // An entry on a current account out of the budget: the account of the file is proposed when it is one (spec 0042, RG4).
+  if (nature === 'accin' && !target && l.accountId !== null && targetIsValid(d, l.accountId, 'accin', { kind: 'account', id: l.accountId }, l.month)) target = { kind: 'account', id: l.accountId };
+  // An entry on an envelope or on an account out of the budget is never remembered as a rule (spec 0036, 0042).
+  const entry = nature === 'envin' || nature === 'accin';
+  const next = { ...l, nature, target, remember: target && !entry ? l.remember : null, checked: nature === 'recu' && !target ? false : l.checked };
+  return entry ? checkWhenComplete(d, next) : next;
+}
+
+/** The line checked as soon as it has no other problem (spec 0036, RG4); left as it is while something is missing. */
+const checkWhenComplete = (d: BudgetData, l: PreviewLine): PreviewLine => (!l.duplicate && lineProblem(d, l) === null ? { ...l, checked: true } : l);
+
+/**
+ * The line with the envelope (or the account out of the budget, spec 0042) an entry of money goes to (spec 0036, RG4): an entry with a target and no other problem is checked at once,
+ * with none it stays « À rattacher ». Another nature only changes the target.
+ */
+export function chooseEnvelope(d: BudgetData, l: PreviewLine, target: ImportTarget | null): PreviewLine {
+  const next = { ...l, target };
+  return (l.nature === 'envin' || l.nature === 'accin') && target ? checkWhenComplete(d, next) : next;
 }
 
 /** The line attached to another month: a `var` line is kept if the month has it too (RG11). */
@@ -601,6 +628,12 @@ export interface ImportBatch {
   expenses: number;
   /** Entries of money written as revenues (spec 0015). */
   revenues: number;
+  /** Entries of money written on an envelope (spec 0036), and their total. */
+  envelopeEntries: number;
+  envelopeEntriesTotal: number;
+  /** Entries of money written on an account out of the budget (spec 0042), and their total. */
+  accountEntries: number;
+  accountEntriesTotal: number;
   withdrawals: number;
   /** Internal transfers written (one per pair, whatever its faces), « Enveloppes (global) » debits left out (spec 0016, RG21). */
   internalTransfers: number;
@@ -619,6 +652,10 @@ export interface ImportSummary {
   outsideBalances: number;
   expenses: number;
   revenues: number;
+  envelopeEntries: number;
+  envelopeEntriesTotal: number;
+  accountEntries: number;
+  accountEntriesTotal: number;
   withdrawals: number;
   internalTransfers: number;
   linkedTransfers: number;
@@ -639,6 +676,10 @@ export interface SessionTotals {
   outsideBalances?: number;
   expenses: number;
   revenues: number;
+  envelopeEntries?: number;
+  envelopeEntriesTotal?: number;
+  accountEntries?: number;
+  accountEntriesTotal?: number;
   withdrawals: number;
   internalTransfers: number;
   linkedTransfers?: number;
@@ -656,6 +697,10 @@ export function sessionSummary(preview: ImportPreview, totals: SessionTotals, do
     outsideBalances: totals.outsideBalances ?? 0,
     expenses: totals.expenses,
     revenues: totals.revenues,
+    envelopeEntries: totals.envelopeEntries ?? 0,
+    envelopeEntriesTotal: totals.envelopeEntriesTotal ?? 0,
+    accountEntries: totals.accountEntries ?? 0,
+    accountEntriesTotal: totals.accountEntriesTotal ?? 0,
     withdrawals: totals.withdrawals,
     internalTransfers: totals.internalTransfers,
     linkedTransfers: totals.linkedTransfers ?? 0,
@@ -701,7 +746,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
       !used.has(usedKey(l.accountId!, l.fingerprint, l.rank)),
   );
   const chosenIds = new Set(chosen.map(l => l.id));
-  const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, importedIds: [], failedIds: [] };
+  const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, envelopeEntries: 0, envelopeEntriesTotal: 0, accountEntries: 0, accountEntriesTotal: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, importedIds: [], failedIds: [] };
   const assignment = (l: PreviewLine) => (l.assignedAccountId ? { assignedAccountId: l.assignedAccountId } : l.offBudget ? { offBudget: true as const } : {});
   const traceOf = (l: PreviewLine): ImportTrace => ({ importAccountId: l.accountId!, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date });
 
@@ -742,6 +787,24 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
         if (created) d.months[l.month].lines = d.months[l.month].lines.filter(x => x.key !== key);
         batch.failedIds.push(l.id);
       }
+    } else if (l.nature === 'envin') {
+      // Money back on an envelope (spec 0036, RG4): credited to the account of the envelope only, whatever the account of the file (decision B1).
+      const source = (l.source ?? '').trim() || l.row.label;
+      const tx: Transaction = { id: newId('t'), ...base, type: 'envin', target: targetId, source };
+      if (addTransaction(d, tx)) {
+        batch.envelopeEntries++;
+        batch.envelopeEntriesTotal = round2(batch.envelopeEntriesTotal + l.row.amount);
+        imported.push(l);
+      } else batch.failedIds.push(l.id);
+    } else if (l.nature === 'accin') {
+      // Money on a current account out of the budget (spec 0042, RG4, RG5): credited to the chosen account only, whatever the account of the file; no revenue line.
+      const source = (l.source ?? '').trim() || l.row.label;
+      const tx: Transaction = { id: newId('t'), ...base, type: 'accin', target: targetId, source };
+      if (addTransaction(d, tx)) {
+        batch.accountEntries++;
+        batch.accountEntriesTotal = round2(batch.accountEntriesTotal + l.row.amount);
+        imported.push(l);
+      } else batch.failedIds.push(l.id);
     } else if (isExpenseNature(l.nature)) {
       const tx: Transaction =
         t.kind === 'var'
@@ -810,7 +873,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
   batch.importedIds = imported.map(l => l.id);
   batch.outsideBalances = imported.filter(l => lineBalanceWarning(d, l) !== null).length;
 
-  for (const l of imported) if (l.remember !== null && !(l.target?.kind === 'line' && l.target.key === NEW_REVENUE_LINE)) rememberRule(d, l.remember, l.nature as ImportNature, l.target ?? undefined, newId);
+  for (const l of imported) if (l.remember !== null && l.nature !== 'envin' && l.nature !== 'accin' && !(l.target?.kind === 'line' && l.target.key === NEW_REVENUE_LINE)) rememberRule(d, l.remember, l.nature as ImportNature, l.target ?? undefined, newId);
   // A match with an account, chosen in the banner, is written only if a line of that pair was written (RG74).
   const importedPairs = new Set(imported.map(l => l.pairKey));
   for (const p of preview.pairs) {

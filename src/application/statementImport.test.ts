@@ -131,10 +131,10 @@ describe('aperçu de l’import', () => {
   it('RG19 : un « Virement reçu » se requalifie « Revenu », et la liste de natures ne change pas', () => {
     const d = budget();
     const l = { ...byLabel(prepare(d), 'SALAIRE'), checked: true };
-    expect(natureOptions(l)).toEqual(['revenu', 'recu']);
+    expect(natureOptions(l)).toEqual(['revenu', 'envin', 'accin', 'recu']);
     const recu = changeNature(d, l, 'recu');
     expect(recu).toMatchObject({ nature: 'recu', checked: false });
-    expect(natureOptions(recu)).toEqual(['revenu', 'recu']);
+    expect(natureOptions(recu)).toEqual(['revenu', 'envin', 'accin', 'recu']);
     expect(changeNature(d, recu, 'revenu')).toMatchObject({ nature: 'revenu', checked: false });
     // Un débit ne propose jamais « Revenu » ni « Virement reçu ».
     expect(natureOptions(byLabel(prepare(d), 'CARREFOUR'))).toEqual(['depense', 'retrait', 'interne', 'externe']);
@@ -383,7 +383,7 @@ describe('validation de l’import', () => {
   it('crée une dépense var et un retrait, ignore le virement à qualifier', () => {
     const d = budget();
     const { summary } = importAll(d);
-    expect(summary).toEqual({ outsideBalances: 0, expenses: 1, revenues: 0, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, accountsSkipped: 0, leftOut: 3, errors: 0 });
+    expect(summary).toEqual({ outsideBalances: 0, expenses: 1, revenues: 0, envelopeEntries: 0, envelopeEntriesTotal: 0, accountEntries: 0, accountEntriesTotal: 0, withdrawals: 1, internalTransfers: 0, duplicatesSkipped: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, accountsSkipped: 0, leftOut: 3, errors: 0 });
     expect(d.transactions[0]).toMatchObject({ month: M, day: 3, label: 'CARREFOUR MARKET', amount: 54.2, type: 'var', target: 'courses', accountId: MAIN_ACCOUNT_ID, importAccountId: MAIN_ACCOUNT_ID, rank: 1, category: 'Alimentation' });
     expect(d.transactions[0].fingerprint).toContain('2026-10-03|54.20|carrefour market paiement par carte');
     expect(d.accountMovements).toHaveLength(1);

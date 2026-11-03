@@ -13,7 +13,7 @@ import {
 import { linkableAccounts } from '../../application/accountLinks';
 import type { StatementSource } from '../../application/ports';
 import { bankAccount, isEnvelopeAccount } from '../../domain/bank';
-import { money, monthLabel } from '../../domain/format';
+import { money, monthLabel, round2 } from '../../domain/format';
 import type { StatementReading } from '../../domain/statement';
 import { isExpenseLineBlock } from '../../domain/lineExpenses';
 import { newId, useStore } from '../state/store';
@@ -28,12 +28,12 @@ import { ImportRow, targetFrom } from './ImportRow';
 
 const ABANDON = 'Abandonner l’import en cours ? Les corrections seront perdues.';
 const ABANDON_KEEP = `${ABANDON} Les lignes déjà importées sont conservées.`;
-const NO_TOTALS: SessionTotals = { expenses: 0, revenues: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0 };
+const NO_TOTALS: SessionTotals = { expenses: 0, revenues: 0, envelopeEntries: 0, envelopeEntriesTotal: 0, accountEntries: 0, accountEntriesTotal: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0 };
 
 /** « 2 dépenses, 1 retrait » : what a batch wrote, for the session banner. */
 function describeBatch(b: ImportBatch): string {
   const part = (n: number, one: string, many: string) => (n > 0 ? [`${n} ${n > 1 ? many : one}`] : []);
-  return [...part(b.expenses, 'dépense', 'dépenses'), ...part(b.revenues, 'entrée', 'entrées'), ...part(b.withdrawals, 'retrait', 'retraits'), ...part(b.internalTransfers, 'transfert interne', 'transferts internes'), ...part(b.envelopeTransfers, 'virement vers enveloppes', 'virements vers enveloppes'), ...part(b.completedFaces, 'ligne liée à un virement existant', 'lignes liées à un virement existant')].join(', ');
+  return [...part(b.expenses, 'dépense', 'dépenses'), ...part(b.revenues, 'entrée', 'entrées'), ...part(b.envelopeEntries, 'entrée sur enveloppe', 'entrées sur enveloppe'), ...part(b.accountEntries, 'entrée sur compte hors budget', 'entrées sur compte hors budget'), ...part(b.withdrawals, 'retrait', 'retraits'), ...part(b.internalTransfers, 'transfert interne', 'transferts internes'), ...part(b.envelopeTransfers, 'virement vers enveloppes', 'virements vers enveloppes'), ...part(b.completedFaces, 'ligne liée à un virement existant', 'lignes liées à un virement existant')].join(', ');
 }
 const NATURE_CHOICES: LineNature[] = ['depense', 'retrait', 'interne', 'externe', 'revenu'];
 
@@ -193,7 +193,7 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
     setDone(new Set([...done, ...batch.importedIds]));
     setFailed(f => new Set([...[...f].filter(id => !batch.importedIds.includes(id)), ...batch.failedIds]));
     setTotals(t => ({
-      outsideBalances: (t.outsideBalances ?? 0) + batch.outsideBalances, expenses: t.expenses + batch.expenses, revenues: t.revenues + batch.revenues, withdrawals: t.withdrawals + batch.withdrawals, internalTransfers: t.internalTransfers + batch.internalTransfers,
+      outsideBalances: (t.outsideBalances ?? 0) + batch.outsideBalances, expenses: t.expenses + batch.expenses, revenues: t.revenues + batch.revenues, envelopeEntries: (t.envelopeEntries ?? 0) + batch.envelopeEntries, envelopeEntriesTotal: round2((t.envelopeEntriesTotal ?? 0) + batch.envelopeEntriesTotal), accountEntries: (t.accountEntries ?? 0) + batch.accountEntries, accountEntriesTotal: round2((t.accountEntriesTotal ?? 0) + batch.accountEntriesTotal), withdrawals: t.withdrawals + batch.withdrawals, internalTransfers: t.internalTransfers + batch.internalTransfers,
       linkedTransfers: (t.linkedTransfers ?? 0) + batch.linkedTransfers, envelopeTransfers: (t.envelopeTransfers ?? 0) + batch.envelopeTransfers, completedFaces: (t.completedFaces ?? 0) + batch.completedFaces,
     }));
     // Never a silent click: say what happened when nothing was written, and how many lines the budget refused.
@@ -264,12 +264,12 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
 
   if (summary) {
     const groups: [string, [string, number][]][] = [
-      ['Importées', [['Dépenses', summary.expenses], ['Entrées d’argent (revenus)', summary.revenues], ['Retraits', summary.withdrawals], ['Virements internes', summary.internalTransfers], ['dont liés (deux lignes)', summary.linkedTransfers], ['Virements vers enveloppes', summary.envelopeTransfers]]],
+      ['Importées', [['Dépenses', summary.expenses], ['Entrées d’argent (revenus)', summary.revenues], [summary.envelopeEntries > 0 ? `Entrées sur enveloppe (${money(summary.envelopeEntriesTotal, true)})` : 'Entrées sur enveloppe', summary.envelopeEntries], [summary.accountEntries > 0 ? `Entrées sur compte hors budget (${money(summary.accountEntriesTotal, true)})` : 'Entrées sur compte hors budget', summary.accountEntries], ['Retraits', summary.withdrawals], ['Virements internes', summary.internalTransfers], ['dont liés (deux lignes)', summary.linkedTransfers], ['Virements vers enveloppes', summary.envelopeTransfers]]],
       ['Liées à un virement existant', [['Lignes qui complètent un virement déjà importé (aucune écriture ajoutée)', summary.completedFaces]]],
       ['Ignorées', [['Déjà importées (non réimportées)', summary.duplicatesSkipped], ['Comptes « Ne pas importer »', summary.accountsSkipped], ['Décochées ou incomplètes', summary.leftOut]]],
       ['À vérifier', [['Lignes en erreur', summary.errors], ['Importées avec une date hors soldes', summary.outsideBalances]]],
     ];
-    const total = summary.expenses + summary.revenues + summary.withdrawals + summary.internalTransfers;
+    const total = summary.expenses + summary.revenues + summary.envelopeEntries + summary.accountEntries + summary.withdrawals + summary.internalTransfers;
     return (
       <div className="panel-lg import-wizard">
         {header}

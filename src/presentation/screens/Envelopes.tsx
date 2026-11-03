@@ -231,7 +231,7 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
     .map(m => ({ m, r: ledger.envMonth(env.id, m) }))
     .filter(x => x.r);
   const txs = data.transactions
-    .filter(t => t.type === 'env' && t.target === env.id && compareMonths(t.month, month) <= 0)
+    .filter(t => (t.type === 'env' || t.type === 'envin') && t.target === env.id && compareMonths(t.month, month) <= 0)
     .sort((a, b) => compareMonths(b.month, a.month) || b.day - a.day);
 
   return (
@@ -345,7 +345,7 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
             <div key={t.id} className="drawer-tx">
               <span className="muted is-small">{dayLabel(t.month, t.day)}</span>
               <span style={{ fontWeight: 500 }}>{t.label}</span>
-              <b className="num">{money(-t.amount)}</b>
+              <b className="num">{money(t.type === 'envin' ? t.amount : -t.amount, t.type === 'envin')}</b>
             </div>
           ))}
           {txs.length === 0 && <div className="empty">Aucune transaction.</div>}

@@ -127,7 +127,9 @@ export interface EnvHistory {
  * - `fix`: expense on a fixed or credit line (target = line key, spec 0014); on the account of the line
  * - `rev`: money coming in on a revenue line (target = line key, spec 0015); an ENTRY, never to be added up as an expense
  */
-export type TxType = 'var' | 'env' | 'epa' | 'fix' | 'rev';
+/** `envin` = money coming back to an envelope (refund, sale; spec 0036): an entry on the account of the envelope that lowers its spending and is never a revenue. */
+/** `accin` = money entering a current account that is out of the budget (e.g. Swile, spec 0042): target = id of the account, never a revenue, in no budget figure. */
+export type TxType = 'var' | 'env' | 'epa' | 'fix' | 'rev' | 'envin' | 'accin';
 
 export interface Transaction {
   id: string;
@@ -164,7 +166,7 @@ export interface Transaction {
   offBudget?: true;
   /** Flagged by the user to find it again through the filter of the Saisie screen. Information only: touches no figure. Only ever `true`; absent = not flagged. */
   flagged?: true;
-  /** `rev` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
+  /** `rev` and `envin` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
   source?: string;
 }
 

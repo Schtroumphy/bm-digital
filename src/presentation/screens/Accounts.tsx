@@ -87,7 +87,7 @@ const GROUPS: { id: Group; title: string; sub: string }[] = [
 ];
 const MOVE_KIND: Record<string, string> = { expense: 'Écriture', transfer: 'Transfert', adjustment: 'Régularisation' };
 /** Nature of an expense or an entry, read from the budget item it is attached to. */
-const IMPUTATION_KIND: Record<TxType, string> = { var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie d’épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
+const IMPUTATION_KIND: Record<TxType, string> = { var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie d’épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent', envin: 'Entrée sur enveloppe', accin: 'Entrée sur compte hors budget' };
 
 /** Emoji marks of the labels (legend of the account detail): left out of the export. */
 const MARKS = new RegExp(`(${MOVE_LEGEND.map(l => l.mark).join('|')})\\s*`, 'gu');
@@ -187,7 +187,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         )}
         {em && em.alloc > 0 && (
           <div>
-            <div className="split-bar"><div style={{ width: `${Math.min(100, Math.round((em.spent / em.alloc) * 100))}%`, background: 'var(--t-base)' }} /></div>
+            <div className="split-bar"><div style={{ width: `${Math.max(0, Math.min(100, Math.round((em.spent / em.alloc) * 100)))}%`, background: 'var(--t-base)' }} /></div>
             <div className="muted is-small">{money(em.spent)} sur {money(em.alloc)} alloués</div>
           </div>
         )}
