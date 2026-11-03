@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
@@ -32,6 +32,14 @@ import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
 /** Kinds the user can choose (spec 0010, RG3). « enveloppe » is never chosen: the account of an envelope is made with its envelope (spec 0011, RG3). */
+/** Libellé d'un mouvement où chaque émoji de la légende porte sa description en infobulle. */
+function markedLabel(label: string): ReactNode {
+  return Array.from(label).map((ch, i) => {
+    const l = MOVE_LEGEND.find(x => x.mark === ch);
+    return l ? <span key={i} title={l.meaning}>{ch}</span> : ch;
+  });
+}
+
 const KIND_CHOICES: { value: AccountKind; label: string }[] = [
   { value: 'courant', label: 'Courant' },
   { value: 'epargne', label: 'Épargne' },
@@ -560,11 +568,6 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
               Affecté ce mois-ci : dépenses {money(assignedSum.expenses)} · entrées {money(assignedSum.entries)} · net {money(assignedSum.net, true)}
             </div>
           )}
-          <p className="muted is-small cpt-legend" aria-label="Légende des émojis">
-            {MOVE_LEGEND.map(l => (
-              <span key={l.mark} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>{l.mark} {l.meaning}</span>
-            ))}
-          </p>
           <ul className="cpt-list">
             {listed.map((item, i) => {
               if (item.assigned) {
@@ -573,7 +576,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
                   <li key={`assigned:${op.id}`} className="cpt-move assigned-row" title="Opération affectée à ce compte : hors solde, hors entrées et sorties">
                     <span className="cpt-move-date">{dayOf(op.date)}</span>
                     <span className="cpt-move-label">
-                      <span className="ellipsis" title={op.label}>{op.label}</span>
+                      <span className="ellipsis" title={op.label}>{markedLabel(op.label)}</span>
                       <span className="muted is-small ellipsis">{op.type === 'rev' ? 'Entrée' : 'Dépense'} · {op.imputation} · {op.type === 'rev' ? 'reçue sur' : 'payée avec'} {op.ownAccountName}</span>
                       {op.detail && <span className="muted is-small ellipsis" title={op.detail}>{op.detail}</span>}
                     </span>
@@ -589,7 +592,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
                 <li key={i} className="cpt-move" style={mv.outOfMonth ? { opacity: 0.65 } : undefined} title={mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${mv.date.slice(8, 10)}/${mv.date.slice(5, 7)}/${mv.date.slice(0, 4)} : comptée dans le solde de ${monthLabel(mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
                   <span className="cpt-move-date">{dayOf(mv.date)}</span>
                   <span className="cpt-move-label">
-                    <span className="ellipsis" title={mv.label}>{mv.label}</span>
+                    <span className="ellipsis" title={mv.label}>{markedLabel(mv.label)}</span>
                     <span className="muted is-small ellipsis">{mv.imputation ? `${IMPUTATION_KIND[mv.imputation.type]} · ${mv.imputation.name}` : MOVE_KIND[mv.kind] ?? 'Écriture'}</span>
                   </span>
                   <b className="num" style={mv.amount > 0 ? { color: GOOD } : undefined}>{money(mv.amount, true)}</b>

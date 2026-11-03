@@ -1160,4 +1160,3 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cash-dialog-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .cash-dialog-row span:first-of-type { flex: 1; font-weight: 600; }
 .cash-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.cpt-legend { margin: 0 0 8px; line-height: 1.6; }
