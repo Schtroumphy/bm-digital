@@ -155,6 +155,7 @@ function VariablesCard({ v, month, canAdd, onOpen }: { v: DashboardView; month: 
             <b style={{ color: x.remaining < 0 ? BAD : GOOD }}>{money(x.remaining)}</b>
             <span>restant sur {money(x.budget)}</span>
           </div>
+          {x.offBudget !== null && <div className="dash-caption">dont hors budget (non compté) : {money(x.offBudget)}</div>}
           {x.rows.length === 0 && <div className="dash-empty">Aucune dépense variable</div>}
           {x.rows.map(r => (
             <div key={r.key} className="dash-row has-tip" data-tip={`Budget ${money(r.budget)} · dépensé ${money(r.actual ?? 0)} (${percent(r.consumed)}) · restant ${money(r.remaining)}`}>

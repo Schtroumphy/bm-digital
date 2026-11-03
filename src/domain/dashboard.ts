@@ -65,6 +65,8 @@ export interface VariableRow {
 export interface DashboardVariables {
   remaining: number;
   budget: number;
+  /** Variable expenses of the month marked « hors budget » (spec 0031): listed for information, counted neither in `remaining` nor in the rows. Null when there are none. */
+  offBudget: number | null;
   rows: VariableRow[];
 }
 
@@ -300,9 +302,11 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
   };
 
   const vars = lines.filter(l => l.block === 'var');
+  const offBudgetVars = d.transactions.filter(t => t.month === month && t.type === 'var' && t.offBudget === true);
   const variables: DashboardVariables = {
     remaining: kpis.variableRemaining,
     budget: round2(vars.reduce((a, l) => a + l.budget, 0)),
+    offBudget: offBudgetVars.length > 0 ? round2(offBudgetVars.reduce((a, t) => a + t.amount, 0)) : null,
     rows: vars.map(l => ({
       key: l.key,
       name: l.name,
