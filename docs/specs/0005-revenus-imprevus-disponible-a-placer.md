@@ -212,3 +212,9 @@ Aucune question bloquante. Décisions du développeur intégrées : « Rouvrir l
 À confirmer (non bloquant) :
 1. RG34 : seul le dernier mois clôturé peut être rouvert ; rouvrir ne demande pas disponible = 0.
 2. RG35 : le « mois précédent » est le mois initialisé le plus proche avant (les mois non initialisés sont ignorés) ; un précédent dans une année clôturée compte comme clôturé ; le tout premier mois n'a pas de précédent.
+
+## Amendement du 2026-11-03 — Clôture déplacée sur la page « Relevé » (spec 0041)
+
+- RG26 est remplacée : « Clôturer le mois » et « Rouvrir le mois » ne sont plus dans l'en-tête de l'écran Budget mais sur la page « Relevé », pour le seul mois affiché. L'écran Budget n'affiche plus que la pastille « Mois clôturé ».
+- RG27 et RG35 sont complétées : un troisième motif de refus s'ajoute, évalué avec les deux autres et affiché avec eux : au moins un compte concerné sans relevé en règle (relevé saisi, écart nul ou comblé par une régularisation).
+- RG28 : le bandeau « Impossible de clôturer » s'affiche sur la page « Relevé », avec les mêmes textes pour « mois précédent » et « disponible », et le nouveau motif listant les comptes en cause (cliquables). RG29 (confirmation, bandeau de verrouillage) et RG34 (réouverture) sont inchangées, déplacées avec le bouton.

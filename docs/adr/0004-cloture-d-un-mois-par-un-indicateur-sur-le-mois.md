@@ -23,3 +23,6 @@ Le verrouillage n'existait que par année (`closes[année].closed`). La spec 000
 - Schéma Supabase : une information de clôture par mois sera nécessaire (colonne sur `months`), repoussée à la spec Supabase.
 - Les actions listées renvoient maintenant un booléen (les appelants existants l'ignorent).
 - La clôture d'année n'est pas modifiée ; l'interaction avec des mois clôturés dans l'année est à surveiller (le réglage des soldes de l'année reste possible).
+
+## Amendement du 2026-11-03 (spec 0041)
+L'indicateur `MonthData.closed` et `isMonthLocked` sont inchangés. Deux évolutions : l'action de clôture et de réouverture quitte l'écran Budget pour la page « Relevé », et `closeBlockers` gagne un troisième motif (`statements` : comptes concernés sans relevé en règle). Le déplacement de l'action est décidé dans l'[ADR 0033](0033-cloture-du-mois-sur-la-page-releve.md), le stockage unique des relevés dans l'[ADR 0034](0034-releve-unique-par-compte-et-abandon-des-releves-de-ligne.md).

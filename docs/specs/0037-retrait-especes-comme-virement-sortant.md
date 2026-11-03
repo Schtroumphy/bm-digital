@@ -177,3 +177,7 @@ Formulaire de transfert / import : « Retrait » avec destination fixe « Espèc
 ## Questions ouvertes
 
 Aucune. Décisions du développeur : virement d'allocation = allocation − part en espèces ; anciens transferts Espèces → enveloppe convertis en part du mois ; compte Espèces gardé en base, masqué ; réconciliation par dépense « Reste non saisi » proposée à la clôture, sur chaque ligne en espèces avec restant ; dépassement avertit sans bloquer ; libellé par défaut = nom de la ligne ; part > allocation refusée, y compris par baisse de l'allocation ; bloc « à retirer / retiré » en tête du Budget.
+
+## Amendement du 2026-11-03 — Dialogue de clôture déplacé (spec 0041)
+
+RG19 : le dialogue de régularisation des lignes en espèces (`CashReconcileDialog`) s'ouvre toujours au clic sur « Clôturer le mois », mais ce bouton est maintenant sur la page « Relevé ». La logique (`closeMonthReconciling`, tout ou rien) est inchangée : elle appelle `closeBlockers`, donc un relevé manquant ou en écart refuse aussi la clôture avec régularisation, sans rien créer.

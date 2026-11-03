@@ -844,3 +844,9 @@ Numérotation : RG120 à RG125, CA119 à CA125. La spec 0007 (compte dédié d'u
 - « Reste à sortir » et « Revenus attendus » pèsent le budget des lignes.
 
 Amendement (spec 0028, [ADR 0024](../adr/0024-une-operation-sort-du-budget-par-son-affectation.md)) : RG92 et RG110 (opérations hors budget par leur compte) sont complétées par l'affectation d'une opération à un compte d'épargne, qui la sort du budget sans changer les soldes. Une ligne pointée dont toutes les écritures sont affectées ne compte rien dans le solde estimé.
+
+## Amendement du 2026-11-03 — Relevé et régularisation (spec 0041)
+
+- RG62 : le solde relevé n'est plus saisi dans la carte « Pointage par compte » de l'écran Budget, mais sur la page « Relevé ». La carte l'affiche, avec son écart, en lecture seule et renvoie vers la page.
+- RG65 : la régularisation de l'écart se fait aussi depuis la page « Relevé » (la carte ne la propose plus).
+- RG68 : la restriction « pas de régularisation pour les comptes d'épargne » est levée ; la régularisation est proposée pour tous les types de compte.
