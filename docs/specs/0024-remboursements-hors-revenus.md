@@ -1,6 +1,6 @@
 # 0024 — Entrée d'argent sur une enveloppe (hors revenus)
 
-- Statut : brouillon (amendée le 2026-10-25, périmètre restreint au cas enveloppe ; à valider)
+- Statut : remplacée par 0036 (saisie et import d'une entrée sur enveloppe ; import étendu à tout compte, enveloppe seule créditée)
 - Date : 2026-10-23, amendée 2026-10-25
 - Branche prévue : feat/entree_sur_enveloppe
 - Dépend de : 0011, 0013, 0015, 0016 et 0019 (implémentées sur `feat/virements_internes_lies`). Ne touche pas aux specs 0017, 0021, 0022, 0023.
