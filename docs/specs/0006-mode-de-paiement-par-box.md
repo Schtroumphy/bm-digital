@@ -121,3 +121,7 @@ Ajouts de l'analyste à valider ou écarter : RG4 (compte attribué archivé →
 ## Amendement (spec 0011, 2026-10-22)
 
 Une dépense variable dont la ligne a un compte attribué est figée sur ce compte : « Payé avec » n'est plus modifiable, `addTransaction` et `setTransactionAccount` refusent un autre compte. Les enveloppes n'ont plus ni mode de paiement ni compte attribué : leur compte est celui de l'enveloppe (spec 0011).
+
+## Amendement — spec 0037 (2026-11-03)
+
+RG3 amendée : le mode Espèces ne débite aucun compte (au lieu du compte « Espèces »), la dépense porte `payMode: 'especes'` sans compte ; RG13 sans objet ; RG1, RG8, RG9 inchangées. ADR : [0029](../adr/0029-compte-especes-masque-et-depenses-sans-compte.md).

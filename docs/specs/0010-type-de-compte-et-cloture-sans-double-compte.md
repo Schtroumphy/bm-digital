@@ -191,3 +191,7 @@ Q8. Sur un budget démarré, l'assistant ignore les soldes des comptes existants
 ## Amendement — spec 0019 (implémentée)
 
 Les soldes de la clôture (`bank:<id>`) viennent du **solde réel** (écritures), plus du réel des lignes ; une ligne `epa`/`inv` liée n'a toujours pas de ligne propre.
+
+## Amendement — spec 0037 (2026-11-03)
+
+Le compte « Espèces » quitte la clôture (annuelle) : il n'y figure plus. ADR : [0029](../adr/0029-compte-especes-masque-et-depenses-sans-compte.md).

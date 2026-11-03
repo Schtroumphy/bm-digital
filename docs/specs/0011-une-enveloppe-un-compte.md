@@ -191,3 +191,7 @@ Q11. Quand un compte d'enveloppe est le compte de départ d'une ligne `fix` / `c
 - L'allocation d'une enveloppe est un débit **fictif** (pointage) : elle ne bouge plus le solde réel des comptes. L'alimentation réelle est un **transfert** du principal vers le compte de l'enveloppe, avec la cible facultative « enveloppe ». Le transfert rattaché remplace la contrepartie fictive de l'allocation pointée dans le solde estimé.
 - Le solde propre de l'enveloppe du Ledger (`envMonth`) reste budgétaire (début + allocation − dépensé) ; le solde réel de son compte est `bankMonth`.
 - La case de pointage de l'allocation n'a plus de condition de mois « au pointage ».
+
+## Amendement — spec 0037 (2026-11-03)
+
+Q3 reste rouverte (0026). RG5 et RG6 (allocation vers le compte de l'enveloppe) sont amendées : le virement d'allocation ne porte que allocation − part en espèces du mois (0037 RG12). ADR : [0030](../adr/0030-part-en-especes-dans-la-ligne-d-allocation.md).

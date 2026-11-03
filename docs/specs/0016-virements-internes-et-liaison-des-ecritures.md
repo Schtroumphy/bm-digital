@@ -223,3 +223,7 @@ Bloc « Mouvements entre comptes de <mois> » : une ligne par mouvement, avec «
 - R11 (tranché). « Réparti X sur 300 » : information calculée, somme des crédits individuels importés du mois, aucun compte ni solde créé (RG29).
 - R12 (tranché, recommandations validées). « Enveloppes (global) » seul représente les enveloppes dans le sélecteur « Vers », sans ligne dans la clôture (RG24, RG26) ; mémorisable comme règle (RG31) ; un seul choix global, aucun réglage.
 - R7. Virement interne vers un compte dédié à une ligne d'épargne `epa` (spec 0007). Une ligne `epa` pointée déplace déjà de l'argent du compte principal vers son compte dédié ; un virement importé vers ce même compte compterait le déplacement deux fois dans les soldes. Hors périmètre ici ; à traiter par une règle « ligne portée par ses écritures » comme pour `fix`/`cre` (0014) et `rev` (0015), dans une spec ultérieure. Option 1 (recommandée) : spec ultérieure, risque accepté d'ici là. Option 2 : l'inclure ici en retirant le mouvement propre de la ligne `epa` dès qu'un virement interne alimente son compte.
+
+## Amendement — spec 0037 (2026-11-03)
+
+RG12 (le compte Espèces accepté comme autre compte) est remplacée : un retrait a pour destination la valeur réservée « Espèces » (`'especes'`), sans compte crédité, comme « Enveloppes (global) ». ADR : [0028](../adr/0028-retrait-d-especes-valeur-reservee.md).

@@ -1,6 +1,6 @@
 # 0022 — Solde espèces d'une enveloppe : un solde à part, dérivé de l'ouverture, des transferts depuis « Espèces » et des dépenses en espèces
 
-- Statut : acceptée (décisions D1 à D9 de la spec validée par le développeur)
+- Statut : acceptée (décisions D1 à D9 de la spec validée par le développeur) ; remplacée en partie par [0028](0028-retrait-d-especes-valeur-reservee.md) et [0030](0030-part-en-especes-dans-la-ligne-d-allocation.md) (le solde espèces n'est plus alimenté par un transfert `Espèces → enveloppe` mais par la part du mois)
 - Date : 2026-10-25
 - Spec liée : [0026-solde-especes-des-enveloppes](../specs/0026-solde-especes-des-enveloppes.md)
 

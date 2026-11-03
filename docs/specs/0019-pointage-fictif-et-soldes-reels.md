@@ -189,3 +189,7 @@ Deux chaînes indépendantes ; solde réel seule référence, relevé compris ; 
 Aucune.
 
 Amendement (spec 0028, [ADR 0024](../adr/0024-une-operation-sort-du-budget-par-son-affectation.md)) : RG19 et RG20, le réel d'une ligne est la somme de ses écritures NON affectées à un compte d'épargne.
+
+## Amendement — spec 0037 (2026-11-03)
+
+RG4 et RG15 (retrait vers Espèces, cible) sont reformulées : un retrait est une sortie sans compte de destination et sans cible. ADR : [0028](../adr/0028-retrait-d-especes-valeur-reservee.md).

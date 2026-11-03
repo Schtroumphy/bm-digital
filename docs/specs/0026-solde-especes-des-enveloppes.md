@@ -264,3 +264,6 @@ D39 (ex-Q39). La ligne est masquée quand les espèces valent 0.
 D40 (ex-Q40). L'écran Enveloppes (carte avec total en titre et sous-titre des deux soldes, RG12) reste inchangé.
 D41 (ex-Q41). Le virtuel de la tuile reste le solde budgétaire `envMonth.balance` (début + allocation − dépensé). Le « Solde virtuel » de l'écran Comptes (RG25) est, lui, le solde réel du compte ; les deux chiffres peuvent donc différer d'un écran à l'autre.
 
+## Amendement — spec 0037 (2026-11-03)
+
+RG4, D1 et D10 (transfert `Espèces → enveloppe`, bouton « Alimenter ») sont remplacés par la part en espèces du mois (0037 RG11, RG15) ; le virtuel baisse de la part (0037 RG12) ; CA2 est sans objet. Restent en vigueur : solde espèces cumulatif, ouverture, dépenses en espèces, historique à deux onglets, RG7. ADR : [0028](../adr/0028-retrait-d-especes-valeur-reservee.md), [0030](../adr/0030-part-en-especes-dans-la-ligne-d-allocation.md).
