@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, updateAccountMovement } from './accountMovements';
 import { findImportAccountLink, linkableAccounts, linkedAccountOf, removeImportAccountLink, setImportAccountLink } from './accountLinks';
-import { changeMonth, changeNature, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, lineProblem, prepareImport, previewCounts, transferAttachment, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
+import { changeMonth, changeNature, destinationAccounts, natureOptions, choosePairAccount, importMonths, importableIds, isLocked, isIncome, lineProblem, prepareImport, previewCounts, transferAttachment, refreshPreview, sessionSummary, validateImport, type ImportPreview, type PairChoices, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { monthBalance } from '../domain/checkoff';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
 import { lineStates } from './importFilters';
+import { CASH_ID } from '../domain/internalTransfers';
 import { accountPairKey, isTransferReceived, suggestedPattern, type StatementReading, type StatementRow } from '../domain/statement';
 import type { BudgetData, Line } from '../domain/types';
 
@@ -114,12 +115,12 @@ describe('aperçu de l’import', () => {
     expect(again.lines.map(l => [l.row.label, l.duplicate])).toEqual([['SALAIRE', false], ['ACHAT', true]]);
   });
 
-  it('CA32: sans mot-clé reconnu, un débit est une dépense à rattacher ; « retrait » donne Retrait vers Espèces ; « virement emis » À qualifier', () => {
+  it('CA32: sans mot-clé reconnu, un débit est une dépense à rattacher ; « retrait » donne Retrait vers Espèces (destination fixe, spec 0037) ; « virement emis » À qualifier', () => {
     const d = budget();
     const p = prepare(d);
     expect(byLabel(p, 'CARREFOUR')).toMatchObject({ nature: 'depense', target: null, checked: true });
     expect(lineProblem(d, byLabel(p, 'CARREFOUR'))).toBe('À rattacher');
-    expect(byLabel(p, 'RETRAIT')).toMatchObject({ nature: 'retrait', target: { kind: 'account', id: CASH_ACCOUNT_ID }, checked: true });
+    expect(byLabel(p, 'RETRAIT')).toMatchObject({ nature: 'retrait', target: { kind: 'account', id: CASH_ID }, checked: true });
     expect(lineProblem(d, byLabel(p, 'RETRAIT'))).toBeNull();
     expect(byLabel(p, 'VIREMENT')).toMatchObject({ nature: 'a_qualifier', checked: false, transferHint: true });
     // Mots entiers seulement.
@@ -151,10 +152,11 @@ describe('aperçu de l’import', () => {
     expect(lineProblem(d, toCourses(externe))).toBeNull();
   });
 
-  it('un retrait est modifiable vers une enveloppe, un autre compte (interne) ou une dépense', () => {
+  it('un retrait a une destination fixe (Espèces, spec 0037, RG4) ; vers un autre compte il devient un transfert interne, ou une dépense', () => {
     const d = budget();
     const l = byLabel(prepare(d), 'RETRAIT');
-    expect(lineProblem(d, { ...l, target: { kind: 'account', id: 'acc-env-vac' } })).toBeNull();
+    expect(destinationAccounts(d, 'retrait', MAIN_ACCOUNT_ID)).toEqual([]);
+    expect(lineProblem(d, { ...l, target: { kind: 'account', id: 'acc-env-vac' } })).toBe('Choisir une destination');
     expect(lineProblem(d, { ...l, target: { kind: 'account', id: SWILE } })).toBe('Choisir une destination');
     expect(changeNature(d, { ...l, target: { kind: 'account', id: SWILE } }, 'interne').target).toEqual({ kind: 'account', id: SWILE });
     expect(changeNature(d, l, 'depense').target).toBeNull();
@@ -353,17 +355,20 @@ describe('compte d’une enveloppe rattaché à un compte du fichier', () => {
     expect(changeNature(d, { ...l, nature: 'externe', target: null }, 'depense').target).toEqual({ kind: 'env', id: 'vac' });
   });
 
-  it('un retrait ou un transfert interne depuis le compte d’une enveloppe : jamais source = destination', () => {
+  it('un retrait n’est pas possible depuis le compte d’une enveloppe (spec 0037, RG1) ; un transfert interne ne va jamais vers lui-même', () => {
     const d = withEnvelopeLink();
     const l = prepare(d, [row('2026-10-12', 'RETRAIT DAB', 20, { pair: ENV_PAIR })]).lines[0];
-    expect(l).toMatchObject({ nature: 'retrait', target: { kind: 'account', id: CASH_ACCOUNT_ID } });
-    expect(lineProblem(d, { ...l, target: { kind: 'account', id: 'acc-env-vac' } })).toBe('Choisir une destination');
+    expect(l).toMatchObject({ nature: 'retrait', target: null });
+    expect(lineProblem(d, { ...l, target: { kind: 'account', id: CASH_ID } })).toBe('Choisir une destination');
     const interne = changeNature(d, l, 'interne');
     expect(lineProblem(d, { ...interne, target: { kind: 'account', id: 'acc-env-vac' } })).toBe('Choisir une destination');
-    validateImport(d, prepare(d, [row('2026-10-12', 'RETRAIT DAB', 20, { pair: ENV_PAIR })]), newId);
+    const toMain = { ...interne, target: { kind: 'account' as const, id: MAIN_ACCOUNT_ID } };
+    expect(lineProblem(d, toMain)).toBeNull();
+    const p = prepare(d, [row('2026-10-12', 'RETRAIT DAB', 20, { pair: ENV_PAIR })]);
+    validateImport(d, { ...p, lines: p.lines.map(x => ({ ...x, ...toMain })) }, newId);
     const ledger = new Ledger(d, M);
     expect(ledger.bankMonth('acc-env-vac', M)!.balance).toBe(-20);
-    expect(ledger.bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(20);
+    expect(ledger.bankMonth(MAIN_ACCOUNT_ID, M)!.balance).toBe(20);
   });
 });
 
@@ -393,25 +398,28 @@ describe('validation de l’import', () => {
     expect(d).toEqual(before);
   });
 
-  it('CA7b: un retrait baisse le principal et monte Espèces au jour de la ligne, dans les deux soldes, sans toucher au réel des lignes', () => {
+  it('CA7b / CA2 (0037): un retrait baisse le principal au jour de la ligne, dans les deux soldes, ne crédite aucun compte et ne touche pas au réel des lignes', () => {
     const d = budget();
     importAll(d);
+    expect(d.accountMovements![0]).toMatchObject({ fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ID, amount: 40 });
+    expect(d.accountMovements![0]).not.toHaveProperty('target');
     const main = realMovements(d, MAIN_ACCOUNT_ID, M).filter(x => x.counterpart);
-    const cash = realMovements(d, CASH_ACCOUNT_ID, M);
-    expect(main).toEqual([expect.objectContaining({ amount: -40, date: '2026-10-08' })]);
-    expect(cash).toEqual([expect.objectContaining({ amount: 40, date: '2026-10-08' })]);
-    expect(estimatedMovements(d, CASH_ACCOUNT_ID, M)).toEqual([expect.objectContaining({ amount: 40, date: '2026-10-08' })]);
-    expect(monthBalance(d, M, CASH_ACCOUNT_ID)!.end).toBe(40);
+    expect(main).toEqual([expect.objectContaining({ amount: -40, date: '2026-10-08', label: expect.stringContaining('Espèces') })]);
+    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).filter(x => x.counterpart)).toEqual([expect.objectContaining({ amount: -40, date: '2026-10-08' })]);
+    // Nothing is credited: the reserved « Espèces » account is never moved.
+    expect(realMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
+    expect(estimatedMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
     const ledger = new Ledger(d, M);
-    expect(ledger.bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(40);
+    expect(ledger.bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(0);
     expect(ledger.bankMonth(MAIN_ACCOUNT_ID, M)!.balance).toBe(-94.2);
+    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(-94.2);
     expect(d.months[M].lines.map(l => l.actual)).toEqual([54.2, null]);
   });
 
-  it('retrait vers une enveloppe (P7, 0019) : la cible par défaut est l’enveloppe ; son compte monte, le solde propre de l’enveloppe reste budgétaire', () => {
+  it('virement vers une enveloppe (P7, 0019) : la cible par défaut est l’enveloppe ; son compte monte, le solde propre de l’enveloppe reste budgétaire', () => {
     const d = budget();
     let p = prepare(d);
-    p = edit(p, byLabel(p, 'RETRAIT').id, l => ({ ...l, target: { kind: 'account', id: 'acc-env-vac' } }));
+    p = edit(p, byLabel(p, 'RETRAIT').id, l => ({ ...changeNature(d, l, 'interne'), target: { kind: 'account', id: 'acc-env-vac' } }));
     const line = byLabel(p, 'RETRAIT');
     expect(transferAttachment(d, line)).toEqual({ kind: 'env', id: 'vac' });
     validateImport(d, p, newId);
@@ -425,7 +433,7 @@ describe('validation de l’import', () => {
   it('CA23 (0019) : la cible du transfert est facultative ; « aucune » choisie, le transfert est libre', () => {
     const d = budget();
     let p = prepare(d);
-    p = edit(p, byLabel(p, 'RETRAIT').id, l => ({ ...l, target: { kind: 'account', id: 'acc-env-vac' }, attach: null }));
+    p = edit(p, byLabel(p, 'RETRAIT').id, l => ({ ...changeNature(d, l, 'interne'), target: { kind: 'account', id: 'acc-env-vac' }, attach: null }));
     expect(transferAttachment(d, byLabel(p, 'RETRAIT'))).toBeNull();
     validateImport(d, p, newId);
     expect(d.accountMovements!.find(m => m.toAccountId === 'acc-env-vac')).not.toHaveProperty('target');
@@ -600,11 +608,11 @@ describe('règles mémorisées', () => {
     const d = budget();
     d.importRules = [
       { id: 'a', pattern: 'mr dupont', nature: 'interne', target: { kind: 'account', id: SWILE } },
-      { id: 'b', pattern: 'retrait au distributeur', nature: 'retrait', target: { kind: 'account', id: 'acc-env-vac' } },
+      { id: 'b', pattern: 'retrait au distributeur', nature: 'interne', target: { kind: 'account', id: 'acc-env-vac' } },
     ];
     const p = prepare(d);
     expect(byLabel(p, 'VIREMENT')).toMatchObject({ nature: 'interne', target: { kind: 'account', id: SWILE }, checked: true });
-    expect(byLabel(p, 'RETRAIT').target).toEqual({ kind: 'account', id: 'acc-env-vac' });
+    expect(byLabel(p, 'RETRAIT')).toMatchObject({ nature: 'interne', target: { kind: 'account', id: 'acc-env-vac' } });
   });
 
   it('CA18: une règle dont la cible a disparu n’est pas appliquée et ne provoque pas d’erreur', () => {
@@ -618,14 +626,14 @@ describe('règles mémorisées', () => {
     const p = prepare(d);
     expect(byLabel(p, 'CARREFOUR')).toMatchObject({ nature: 'depense', target: null });
     expect(byLabel(p, 'VIREMENT').nature).toBe('a_qualifier');
-    expect(byLabel(p, 'RETRAIT').target).toEqual({ kind: 'account', id: CASH_ACCOUNT_ID });
+    expect(byLabel(p, 'RETRAIT').target).toEqual({ kind: 'account', id: CASH_ID });
   });
 });
 
 describe('mouvements entre comptes après import', () => {
   function withMovement() {
     const d = budget();
-    d.accountMovements = [{ id: 'm1', month: M, day: 8, label: 'Retrait', amount: 40, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ACCOUNT_ID }];
+    d.accountMovements = [{ id: 'm1', month: M, day: 8, label: 'Retrait', amount: 40, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ID }];
     return d;
   }
 

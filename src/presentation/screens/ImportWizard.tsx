@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CASH_ID, CASH_LABEL } from '../../domain/internalTransfers';
 import { AccountDot } from '../components/AccountPicker';
 import {
   accountProgress, choosePairAccount, destinationAccounts, hasPendingCorrections, importableIds, importMonths, isIncome, linkLines, natureLabel, prepareImport,
@@ -800,7 +801,9 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
               {name}
             </option>
           ))
-        ) : natureNow === 'retrait' || natureNow === 'interne' ? (
+        ) : natureNow === 'retrait' ? (
+          <option value={`account:${CASH_ID}`}>{CASH_LABEL}</option>
+        ) : natureNow === 'interne' ? (
           destinationAccounts(data, natureNow, null).map(a => (
             <option key={a.id} value={`account:${a.id}`}>
               {a.name}

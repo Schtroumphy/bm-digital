@@ -1,5 +1,5 @@
-import { CASH_ACCOUNT_ID, accountIdOf, canAssignTo, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
-import { ENVELOPES_ID, canLinkFaces, findCompletable, isEnvelopesPool, pairFaces, tracesOf, type Face } from '../domain/internalTransfers';
+import { accountIdOf, canAssignTo, fixedTransactionAccountId, isEnvelopeAccount } from '../domain/bank';
+import { CASH_ID, ENVELOPES_ID, canLinkFaces, findCompletable, isEnvelopesPool, pairFaces, tracesOf, type Face } from '../domain/internalTransfers';
 import { compareMonths } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
@@ -106,8 +106,8 @@ export function transferEnds(l: Pick<PreviewLine, 'nature' | 'target' | 'account
  */
 export function transferAttachment(d: BudgetData, l: Pick<PreviewLine, 'nature' | 'target' | 'month' | 'accountId' | 'attach'>): MovementTarget | null {
   const ends = transferEnds(l);
-  // « Enveloppes (global) » has no budget item: the global debit replaces the allocations of the month by itself (spec 0016, RG28).
-  if (!ends || isEnvelopesPool(ends.from) || isEnvelopesPool(ends.to)) return null;
+  // « Enveloppes (global) » has no budget item: the global debit replaces the allocations of the month by itself (spec 0016, RG28). Nor has a withdrawal (spec 0037, RG2).
+  if (!ends || isEnvelopesPool(ends.from) || isEnvelopesPool(ends.to) || ends.to === CASH_ID) return null;
   const wanted = l.attach === undefined ? defaultTransferTarget(d, l.month, ends.to, ends.from) : l.attach;
   return wanted && isValidTransferTarget(d, l.month, ends.to, wanted) ? wanted : null;
 }
@@ -157,12 +157,12 @@ export const isImportMonth = (d: BudgetData, m: MonthKey): boolean =>
 export const importMonths = (d: BudgetData): MonthKey[] => Object.keys(d.months).filter(m => isImportMonth(d, m)).sort();
 
 /**
- * Accounts offered as the destination of a withdrawal (cash, an envelope's account), of an internal transfer (any other active account, an
+ * Accounts offered as the destination of an internal transfer (any other active account, an
  * envelope's included: a transfer paired with the credit of an envelope's account ends there, spec 0016) or as the source of a received transfer
- * (any other active account). « Enveloppes (global) » is not an account: see `canUseEnvelopesPool`.
+ * (any other active account). « Enveloppes (global) » is not an account (see `canUseEnvelopesPool`), nor is « Espèces », the fixed destination of a
+ * withdrawal (spec 0037, RG4): none is offered for a withdrawal.
  */
 export function destinationAccounts(d: BudgetData, nature: LineNature, sourceId: string | null): BankAccount[] {
-  if (nature === 'retrait') return d.accounts.filter(a => !a.archived && a.id !== sourceId && (a.id === CASH_ACCOUNT_ID || isEnvelopeAccount(a)));
   if (nature === 'interne' || nature === 'recu') return d.accounts.filter(a => !a.archived && a.id !== sourceId);
   return [];
 }
@@ -206,7 +206,11 @@ export function targetIsValid(d: BudgetData, sourceId: string | null, nature: Li
     }
     return target.kind === 'env' && d.envelopes.some(e => e.id === target.id);
   }
-  if (nature === 'retrait' || nature === 'interne' || nature === 'recu') {
+  if (nature === 'retrait') {
+    // A withdrawal always goes to « Espèces », from any account but an envelope's (spec 0037, RG1, RG4).
+    return target.kind === 'account' && target.id === CASH_ID && !d.accounts.some(a => a.id === sourceId && isEnvelopeAccount(a));
+  }
+  if (nature === 'interne' || nature === 'recu') {
     if (target.kind !== 'account') return false;
     if (isEnvelopesPool(target.id)) return canUseEnvelopesPool(d, nature, sourceId);
     return destinationAccounts(d, nature, sourceId).some(a => a.id === target.id);
@@ -223,7 +227,7 @@ function balanceAccounts(d: BudgetData, l: PreviewLine): string[] {
   const t = l.target;
   if (t.kind === 'env') return [d.envelopes.find(e => e.id === t.id)?.accountId ?? l.accountId];
   if (t.kind === 'var') return [fixedTransactionAccountId(d, { type: 'var', month: l.month, target: t.key }) ?? l.accountId];
-  if (t.kind === 'account') return isEnvelopesPool(t.id) ? [l.accountId] : [l.accountId, t.id];
+  if (t.kind === 'account') return isEnvelopesPool(t.id) || t.id === CASH_ID ? [l.accountId] : [l.accountId, t.id];
   return [l.accountId];
 }
 
@@ -290,10 +294,7 @@ function proposal(d: BudgetData, sourceId: string, row: StatementRow, month: Mon
     return canUseEnvelopesPool(d, 'recu', sourceId) ? { nature: 'recu', target: { kind: 'account', id: ENVELOPES_ID } } : { nature: 'revenu', target: null };
   }
   const nature = natureByKeyword(row) ?? 'depense';
-  if (nature === 'retrait') {
-    const cash = destinationAccounts(d, 'retrait', sourceId).find(a => a.id === CASH_ACCOUNT_ID);
-    return { nature, target: cash ? { kind: 'account', id: cash.id } : null };
-  }
+  if (nature === 'retrait') return { nature, target: targetIsValid(d, sourceId, 'retrait', { kind: 'account', id: CASH_ID }, month) ? { kind: 'account', id: CASH_ID } : null };
   return { nature, target: nature === 'depense' ? ownEnvelopeTarget(d, sourceId) : null };
 }
 
@@ -513,10 +514,7 @@ export function changeNature(d: BudgetData, l: PreviewLine, nature: LineNature):
   // A credit on an envelope's account comes from « Enveloppes (global) » by default (spec 0016, RG27).
   if (nature === 'recu' && !target && canUseEnvelopesPool(d, 'recu', l.accountId)) target = { kind: 'account', id: ENVELOPES_ID };
   if (!target && (nature === 'depense' || nature === 'externe')) target = ownEnvelopeTarget(d, l.accountId);
-  if (nature === 'retrait' && !target && l.accountId !== null) {
-    const cash = destinationAccounts(d, nature, l.accountId).find(a => a.id === CASH_ACCOUNT_ID);
-    target = cash ? { kind: 'account', id: cash.id } : null;
-  }
+  if (nature === 'retrait' && !target && l.accountId !== null && targetIsValid(d, l.accountId, 'retrait', { kind: 'account', id: CASH_ID }, l.month)) target = { kind: 'account', id: CASH_ID };
   return { ...l, nature, target, remember: target ? l.remember : null, checked: nature === 'recu' && !target ? false : l.checked };
 }
 

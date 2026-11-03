@@ -12,12 +12,17 @@ export const ENVELOPES_ID = 'enveloppes';
 export const ENVELOPES_LABEL = 'Enveloppes (global)';
 export const isEnvelopesPool = (accountId: string): boolean => accountId === ENVELOPES_ID;
 
+/** « Espèces » (spec 0037, RG1): the destination of a cash withdrawal. Not an account either, a stand-in in `toAccountId`; no account is credited. */
+export const CASH_ID = 'especes';
+export const CASH_LABEL = 'Espèces';
+export const isCashWithdrawal = (mv: Pick<AccountMovement, 'toAccountId'>): boolean => mv.toAccountId === CASH_ID;
+
 /** Days allowed between the two faces of the same transfer (spec 0016, R1). */
 export const FACE_TOLERANCE_DAYS = 3;
 
 /** Name of an account of a movement, « Enveloppes (global) » included. */
 export const movementAccountName = (d: BudgetData, accountId: string): string =>
-  isEnvelopesPool(accountId) ? ENVELOPES_LABEL : d.accounts.find(a => a.id === accountId)?.name ?? 'Supprimé';
+  isEnvelopesPool(accountId) ? ENVELOPES_LABEL : accountId === CASH_ID ? CASH_LABEL : d.accounts.find(a => a.id === accountId)?.name ?? 'Supprimé';
 
 /** Date at which the sending account is debited: the debit face's date (or the only face's date, RG14). */
 export const debitDateOf = (mv: AccountMovement): string => bankDateOf(mv);

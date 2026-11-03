@@ -113,7 +113,8 @@ export function envelopeTooltip(d: BudgetData, m: MonthKey, e: { id: string; nam
   const check = envelopeCheck(d, m, e.id);
   if (!check && !isEnvelopePointable(d, m, e)) return '';
   const account = d.accounts.find(a => a.id === e.accountId);
-  const alloc = d.months[m]?.alloc[e.id] ?? 0;
+  // Only the virtual share of the allocation goes to the envelope's account (spec 0037, RG12).
+  const alloc = (d.months[m]?.alloc[e.id] ?? 0) - (d.months[m]?.cashPart?.[e.id] ?? 0);
   const parts = [
     check ? `Allocation pointée le ${shortDate(check.doneOn)} vers ${account?.name ?? 'ce compte'}` : `Pointer l’allocation (${money(alloc)}) vers ${account?.name ?? 'ce compte'}`,
     check ? `Montant : ${money(alloc)}` : null,
@@ -331,7 +332,7 @@ export function ignoredMovements(d: BudgetData, accountId: string, m: MonthKey):
   }
   for (const e of d.envelopes) {
     const c = md.checks?.[envelopeCheckKey(e.id)];
-    const amount = md.alloc[e.id] ?? 0;
+    const amount = (md.alloc[e.id] ?? 0) - (md.cashPart?.[e.id] ?? 0);
     // From the month its own account exists, an envelope never leaves the budget (spec 0011, RG4): only older checks are concerned.
     if (!envelopeAccountAt(d, e, m) && c?.accountId && outOfBudget(c.accountId) && amount !== 0 && !isItemTransferred(d, m, { kind: 'env', id: e.id })) out.push({ date: c.doneOn, label: `${MOVE_MARK.checked} Allocation ${e.name} → ${nameOf(c.accountId)}`, amount: -amount, reason: IGNORED_REASON });
   }

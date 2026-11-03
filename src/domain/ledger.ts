@@ -148,7 +148,8 @@ export class Ledger {
           const start = fromAccount ? b.start : envBal[e.id] ?? b.start;
           const spent = sumTx(d, m, 'env', e.id);
           // An expense paid in cash counts in `spent` but never touches the balance (the virtual one, spec 0026, RG6).
-          const r = { start, alloc: a, spent, balance: round2(start + a - sumTx(d, m, 'env', e.id, t => !isCashPaid(t))) };
+          // The cash part of the allocation leaves the virtual balance too (spec 0037, RG12).
+          const r = { start, alloc: a, spent, balance: round2(start + a - (md?.cashPart?.[e.id] ?? 0) - sumTx(d, m, 'env', e.id, t => !isCashPaid(t))) };
           this.env.set(`${m}|${e.id}`, r);
           envBal[e.id] = Math.max(0, r.balance); // an overspent envelope does not carry a debt into the next month
           continue;

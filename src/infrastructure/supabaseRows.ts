@@ -127,8 +127,9 @@ export function toRows(d: BudgetData): TableRows {
     for (const [account_id, b] of Object.entries(md.accountBalances ?? {})) {
       rows.account_balances.push({ month, account_id, amount: b.amount, entered_on: b.on });
     }
-    for (const [envelope_id, amount] of Object.entries(md.alloc)) {
-      rows.envelope_allocations.push({ month, envelope_id, amount });
+    // The cash part of the month (spec 0037) lives in the allocation row of its envelope; a part with no allocation (a converted old transfer) gets a row of 0.
+    for (const envelope_id of new Set([...Object.keys(md.alloc), ...Object.keys(md.cashPart ?? {})])) {
+      rows.envelope_allocations.push({ month, envelope_id, amount: md.alloc[envelope_id] ?? 0, cash_part: orNull(md.cashPart?.[envelope_id]) });
     }
     for (const [transfer_id, done] of Object.entries(md.transfersDone)) {
       rows.transfers_done.push({ month, transfer_id, done });
@@ -299,7 +300,9 @@ export function fromRows(rows: ReadRows): BudgetData | null {
   }
   for (const r of byPosition(rows.budget_lines)) months[r.month]?.lines.push(lineOf(r));
   for (const r of rows.envelope_allocations) {
-    if (months[r.month]) months[r.month].alloc[r.envelope_id] = r.amount;
+    if (!months[r.month]) continue;
+    months[r.month].alloc[r.envelope_id] = r.amount;
+    if (r.cash_part) (months[r.month].cashPart ??= {})[r.envelope_id] = r.cash_part;
   }
   for (const r of rows.transfers_done) {
     if (months[r.month]) months[r.month].transfersDone[r.transfer_id] = r.done;

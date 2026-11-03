@@ -1,4 +1,4 @@
-import { kindOf } from './bank';
+import { CASH_ACCOUNT_ID, kindOf } from './bank';
 import { isLineLinked, savingsLines } from './accountKind';
 import { monthKey, round2 } from './format';
 import { closeKey, Ledger } from './ledger';
@@ -62,6 +62,7 @@ export function closingView(d: BudgetData, ledger: Ledger, year: number): Closin
 
   // Bank accounts, the accounts of the envelopes included (one row per envelope, spec 0011, RG14): archived ones stay while they have a balance to carry over (RG12).
   for (const a of d.accounts) {
+    if (a.id === CASH_ACCOUNT_ID) continue; // reserved and hidden: it holds no money (spec 0037, RG21)
     const r = ledger.bankMonth(a.id, dec);
     if (!r || (a.archived && r.balance === 0)) continue;
     raw[kindOf(a)].push({ id: closeKey('bank', a.id), name: a.name, calc: r.balance, account: a });

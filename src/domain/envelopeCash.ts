@@ -6,8 +6,8 @@ import type { BudgetData, MonthKey } from './types';
 
 /*
  * Cash balance of an envelope (spec 0026): a balance APART from the envelope's account (its virtual balance), never a part of it.
- * Always derived: opening cash, plus the transfers from the « Espèces » account to the envelope's account (RG4), minus the envelope's
- * expenses paid in cash (RG6). It is not a bank account and touches the virtual balance in no way (RG3).
+ * Always derived: opening cash, plus the cash part of each month (spec 0037, RG11, RG13: the share of the allocation held in cash, which leaves the
+ * virtual balance), minus the envelope's expenses paid in cash (RG6). It is not a bank account; it is carried over from month to month.
  */
 
 /** Cash balance of an envelope at the end of a month, never below 0 (RG7). 0 for an unknown envelope or before its account opens. */
@@ -44,7 +44,7 @@ export function envelopeConsumption(d: BudgetData, ledger: Ledger, envelopeId: s
   // Before that, only the budget figures exist: carried balance + allocation.
   const bank = e && envelopeAccountAt(d, e, m) ? ledger.bankMonth(e.accountId, m) : null;
   const virtualStart = bank ? bank.start + bank.in : em.start + em.alloc;
-  const start = round2(virtualStart + envelopeCash(d, envelopeId, addMonths(m, -1)));
+  const start = round2(virtualStart + envelopeCash(d, envelopeId, addMonths(m, -1)) + (d.months[m]?.cashPart?.[envelopeId] ?? 0));
   const spent = em.spent;
   return { start, spent, remaining: round2(start - spent), consumed: start > 0 ? Math.min(100, (spent / start) * 100) : spent > 0 ? 100 : 0 };
 }

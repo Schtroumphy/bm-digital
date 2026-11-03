@@ -3,7 +3,8 @@ import { round2 } from '../domain/format';
 import { daysInMonth } from '../domain/checkoff';
 import { isMonthLocked } from '../domain/ledger';
 import { syncLineActual } from '../domain/lineActuals';
-import { linkStateOf } from '../domain/internalTransfers';
+import { CASH_ID, linkStateOf } from '../domain/internalTransfers';
+import { isEnvelopeAccount } from '../domain/bank';
 import { isValidTransferTarget } from '../domain/transfers';
 import type { AccountMovement, BudgetData, MonthKey, MovementTarget } from '../domain/types';
 
@@ -34,14 +35,16 @@ export interface NewTransfer {
 /**
  * Records a transfer typed by hand (RG14). Refused (false) on a locked or not created month, an empty label, an amount that is not positive,
  * a day outside the month, two identical or unknown or archived accounts, and a target that does not exist in the month or does not
- * receive the money on the destination account.
+ * receive the money on the destination account. The destination can be `CASH_ID` (a cash withdrawal, spec 0037, RG1): the source is then any active
+ * account that is not an envelope's, and the withdrawal stands for no budget item (RG2).
  */
 export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
   const label = input.label.trim();
   const active = (id: string) => d.accounts.some(a => a.id === id && !a.archived);
   if (!d.months[input.month]?.initialized || isMonthLocked(d, input.month) || !label || !(input.amount > 0)) return false;
   if (!Number.isInteger(input.day) || input.day < 1 || input.day > daysInMonth(input.month)) return false;
-  if (input.fromAccountId === input.toAccountId || !active(input.fromAccountId) || !active(input.toAccountId)) return false;
+  const withdrawal = input.toAccountId === CASH_ID;
+  if (withdrawal ? !active(input.fromAccountId) || input.target !== undefined || isEnvelopeAccount(d.accounts.find(a => a.id === input.fromAccountId)) : input.fromAccountId === input.toAccountId || !active(input.fromAccountId) || !active(input.toAccountId)) return false;
   if (input.target && !isValidTransferTarget(d, input.month, input.toAccountId, input.target)) return false;
   const detail = normalizeDetail(input.detail);
   const mv: AccountMovement = {

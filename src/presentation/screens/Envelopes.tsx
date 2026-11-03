@@ -6,6 +6,9 @@ import { Icon } from '../components/Icon';
 import { deleteEnvelope, envelopeBalance, openingBalanceRefusal, openingCashRefusal, renameEnvelope, setEnvelopeOpeningBalance, setEnvelopeOpeningCash } from '../../application/envelopes';
 import { toneVars } from '../components/tone';
 import { envelopeAlerts } from '../../domain/budget';
+import { cashPartRefusal, setEnvelopeCashPart } from '../../application/cash';
+import { setEnvelopeAllocation } from '../../application/actions';
+import { cashPartAbove, envelopeCashPart } from '../../domain/cash';
 import { envelopeCash, envelopeTotal } from '../../domain/envelopeCash';
 import { cashHistory, virtualHistory } from '../../domain/envelopeHistory';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
@@ -42,7 +45,7 @@ export function EnvelopesBalanceTotal({ month }: { month: MonthKey }) {
   );
 }
 
-export function EnvelopesScreen({ month, onFundCash }: { month: MonthKey; onFundCash: (envelopeId: string) => void }) {
+export function EnvelopesScreen({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const { openMenu, setEditing } = useUi();
   const [open, setOpen] = useState<string | null>(null);
@@ -124,12 +127,44 @@ export function EnvelopesScreen({ month, onFundCash }: { month: MonthKey; onFund
                     id={`al:${e.id}`}
                     value={alloc[e.id] ?? 0}
                     disabled={!editable}
-                    onCommit={v => update(d => void (d.months[month].alloc[e.id] = v ?? 0))}
+                    onCommit={v => {
+                      const part = cashPartAbove(data, month, e.id, v ?? 0);
+                      if (part !== null) return void window.alert(`L’allocation ne peut pas passer sous la part en espèces du mois (${money(part)}). Réduis d’abord la part en espèces.`);
+                      update(d => void setEnvelopeAllocation(d, month, e.id, v ?? 0));
+                    }}
                     className="stat-value is-editable"
                     inputClassName="cell-input is-alloc"
                     hint="left"
                   >
                     {money(alloc[e.id] ?? 0)}
+                  </EditableAmount>
+                </div>
+                <div
+                  className="stat"
+                  style={{ cursor: editable ? 'text' : undefined }}
+                  title="Part de l’allocation gardée en espèces ce mois-ci (au plus l’allocation). Elle quitte le solde virtuel et s’ajoute aux espèces."
+                  onClick={ev => {
+                    if (!editable) return;
+                    ev.stopPropagation();
+                    setEditing(`cp:${e.id}`);
+                  }}
+                >
+                  <div className="stat-label">Part en espèces</div>
+                  <EditableAmount
+                    id={`cp:${e.id}`}
+                    value={envelopeCashPart(data, month, e.id)}
+                    disabled={!editable}
+                    onCommit={v => {
+                      const refused = cashPartRefusal(data, month, e.id, v ?? 0);
+                      if (refused === 'above-allocation') return void window.alert(`La part en espèces ne peut pas dépasser l’allocation du mois (${money(alloc[e.id] ?? 0)}).`);
+                      if (refused) return;
+                      update(d => void setEnvelopeCashPart(d, month, e.id, v ?? 0));
+                    }}
+                    className="stat-value is-editable"
+                    inputClassName="cell-input is-alloc"
+                    hint="left"
+                  >
+                    {money(envelopeCashPart(data, month, e.id))}
                   </EditableAmount>
                 </div>
                 <div className="stat">
@@ -145,7 +180,7 @@ export function EnvelopesScreen({ month, onFundCash }: { month: MonthKey; onFund
           );
         })}
       </div>
-      {drawerEnv && <EnvelopeDrawer env={drawerEnv} month={month} onClose={() => setOpen(null)} onFundCash={onFundCash} />}
+      {drawerEnv && <EnvelopeDrawer env={drawerEnv} month={month} onClose={() => setOpen(null)} />}
     </>
   );
 }
@@ -170,11 +205,12 @@ function AreaSpark({ values }: { values: (number | undefined)[] }) {
   );
 }
 
-function EnvelopeDrawer({ env, month, onClose, onFundCash }: { env: Envelope; month: MonthKey; onClose: () => void; onFundCash: (envelopeId: string) => void }) {
+function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKey; onClose: () => void }) {
   const { data, ledger, update } = useStore();
   const balance = ledger.envMonth(env.id, month)?.balance ?? 0;
   const cash = envelopeCash(data, env.id, month);
   const alloc = ledger.envMonth(env.id, month)?.alloc ?? 0;
+  const part = envelopeCashPart(data, month, env.id);
   // The opening cash is typed only here and in the assistant, and only while the envelope's opening month is open (spec 0026, RG8).
   const account = data.accounts.find(a => a.id === env.accountId);
   const openingLocked = !account || isMonthLocked(data, account.openingMonth);
@@ -228,7 +264,7 @@ function EnvelopeDrawer({ env, month, onClose, onFundCash }: { env: Envelope; mo
               </div>
               <div className="split-card-value">{money(balance)}</div>
               <div className="split-card-note">
-                alloué {money(alloc)} · départ{' '}
+                alloué {money(alloc)}{part > 0 ? ` (dont ${money(part)} en espèces)` : ''} · départ{' '}
                 <EditableAmount id={`open:${env.id}`} value={account?.openingBalance ?? 0} disabled={openingLocked} title={openingLocked ? LOCKED_HINT : 'Cliquer pour modifier le départ virtuel'} onCommit={setOpeningBalance} className="is-editable" inputClassName="cell-input is-alloc">
                   {money(account?.openingBalance ?? 0)}
                 </EditableAmount>
@@ -241,7 +277,7 @@ function EnvelopeDrawer({ env, month, onClose, onFundCash }: { env: Envelope; mo
               </div>
               <div className="split-card-value">{money(cash)}</div>
               <div className="split-card-note">
-                départ{' '}
+                part du mois {money(part)} · départ{' '}
                 <EditableAmount
                   id={`cash:${env.id}`}
                   value={env.openingCash}
@@ -254,9 +290,6 @@ function EnvelopeDrawer({ env, month, onClose, onFundCash }: { env: Envelope; mo
                   {money(env.openingCash)}
                 </EditableAmount>
               </div>
-              <button type="button" className="btn-outline" disabled={isMonthLocked(data, month)} onClick={() => onFundCash(env.id)}>
-                + Alimenter
-              </button>
             </div>
           </div>
         </div>

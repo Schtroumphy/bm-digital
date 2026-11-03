@@ -274,10 +274,12 @@ describe('gestion des comptes', () => {
   it('RG29: le rappel des soldes de départ disparaît une fois saisis ou confirmés', () => {
     const d = migrateBankAccounts(seedData() as never);
     expect(needsOpeningBalances(d)).toBe(true);
+    // Spec 0037, RG21: the hidden « Espèces » account never keeps the reminder alive, only the main account counts.
     setBankAccountOpening(d, MAIN_ACCOUNT_ID, { balance: 500 });
-    expect(needsOpeningBalances(d)).toBe(true);
-    confirmOpeningBalances(d);
     expect(needsOpeningBalances(d)).toBe(false);
+    const e = migrateBankAccounts(seedData() as never);
+    confirmOpeningBalances(e);
+    expect(needsOpeningBalances(e)).toBe(false);
   });
 });
 

@@ -1,8 +1,9 @@
 import { defaultBankAccounts, MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID } from './bank';
+import { CASH_ID } from './internalTransfers';
 import { accounts } from './ledger';
 import { currentMonthKey, parseMonth, round2 } from './format';
 import { hasStaleActuals, manualActualCount, syncLineActuals } from './lineActuals';
-import type { BudgetData, Goal, MonthKey, TemplateLine, Transaction, Transfer } from './types';
+import type { AccountMovement, BudgetData, Goal, MonthKey, TemplateLine, Transaction, Transfer } from './types';
 
 /** Shapes of the data saved before bank accounts existed. */
 type LegacyTransaction = Omit<Transaction, 'accountId'> & { source?: 'vir' | 'esp' };
@@ -81,6 +82,51 @@ export function migrateEnvelopeOpeningCash(d: BudgetData): BudgetData {
     const { cash, ...rest } = e as typeof e & { cash?: number };
     return { ...rest, openingCash: Math.max(0, round2(e.openingCash ?? cash ?? 0)) };
   }) };
+}
+
+/**
+ * Spec 0037, « Sort des données existantes »: the « Espèces » account no longer holds money, so what went through it is rewritten.
+ * - A transfer to « Espèces » becomes a withdrawal (destination `CASH_ID`, no account credited); the debit and the month are kept.
+ * - A transfer « Espèces » → envelope's account is removed and becomes the cash part of the envelope for the month of the transfer (the cash
+ *   balance of the envelope is unchanged). The part is kept whole and the allocation of that month is raised to it when it is smaller (or missing).
+ * - A variable expense on the « Espèces » account is paid in cash (`payMode: 'especes'`), on no account.
+ * - A remembered import rule « Retrait → Espèces » points to `CASH_ID`.
+ * The account itself stays in the data, hidden and never moved again. Pure and idempotent: the data given is returned untouched when nothing has
+ * to change, and it is never mutated.
+ */
+export function migrateCashWithdrawals(d: BudgetData): BudgetData {
+  const isFunding = (mv: AccountMovement) => mv.fromAccountId === CASH_ACCOUNT_ID && d.envelopes.some(e => e.accountId === mv.toAccountId);
+  const legacy =
+    (d.accountMovements ?? []).some(mv => mv.toAccountId === CASH_ACCOUNT_ID || isFunding(mv)) ||
+    d.transactions.some(t => t.type === 'var' && t.accountId === CASH_ACCOUNT_ID) ||
+    (d.importRules ?? []).some(r => r.target?.kind === 'account' && r.target.id === CASH_ACCOUNT_ID);
+  if (!legacy) return d;
+  const out = structuredClone(d);
+  const movements: AccountMovement[] = [];
+  for (const mv of out.accountMovements ?? []) {
+    if (isFunding(mv)) {
+      const envelope = out.envelopes.find(e => e.accountId === mv.toAccountId)!;
+      const md = (out.months[mv.month] ??= { initialized: false, lines: [], alloc: {}, transfersDone: {} });
+      const parts = (md.cashPart ??= {});
+      parts[envelope.id] = round2((parts[envelope.id] ?? 0) + mv.amount);
+      // The part is stored in the allocation row of its envelope and never exceeds it (spec 0037, RG11): a month with no allocation, or a smaller
+      // one, has its allocation RAISED to the part, so the allocation transfer is 0 and the virtual balance never goes negative because of it.
+      md.alloc[envelope.id] = Math.max(md.alloc[envelope.id] ?? 0, parts[envelope.id]);
+      continue;
+    }
+    if (mv.toAccountId === CASH_ACCOUNT_ID) {
+      const { target: _target, ...rest } = mv;
+      movements.push({ ...rest, toAccountId: CASH_ID });
+    } else movements.push(mv);
+  }
+  if (out.accountMovements) out.accountMovements = movements;
+  out.transactions = out.transactions.map((t): Transaction => {
+    if (t.type !== 'var' || t.accountId !== CASH_ACCOUNT_ID) return t;
+    const { accountId: _accountId, ...rest } = t;
+    return { ...rest, payMode: 'especes' };
+  });
+  for (const r of out.importRules ?? []) if (r.target?.kind === 'account' && r.target.id === CASH_ACCOUNT_ID) r.target = { kind: 'account', id: CASH_ID };
+  return out;
 }
 
 /** Ids of the goals created from the three old settings (spec 0032, RG15): fixed, so that migrating twice can never duplicate them. */

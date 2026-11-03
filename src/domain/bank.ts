@@ -43,8 +43,8 @@ export const isOnMainAccount = (d: BudgetData, accountId?: string): boolean => a
 /** True for the account of an envelope (spec 0011): it belongs to one envelope and is never a choice for anything else (RG2). */
 export const isEnvelopeAccount = (a?: Pick<BankAccount, 'kind'>): boolean => a?.kind === 'enveloppe';
 
-/** Accounts offered in the lists of choice (« Payé avec », account of a line…): active, and not an envelope's account (spec 0011, RG2, RG23). */
-export const activeBankAccounts = (d: BudgetData) => d.accounts.filter(a => !a.archived && !isEnvelopeAccount(a));
+/** Accounts offered in the lists of choice (« Payé avec », account of a line…): active, and neither an envelope's account (spec 0011, RG2, RG23) nor the reserved, hidden « Espèces » (spec 0037, RG21). */
+export const activeBankAccounts = (d: BudgetData) => d.accounts.filter(a => !a.archived && !isEnvelopeAccount(a) && a.id !== CASH_ACCOUNT_ID);
 
 /** Id given to the account of an envelope: stable and readable, with a number if it is already taken (here or in `taken`). */
 export function freeEnvelopeAccountId(d: BudgetData, envelopeId: string, taken: Iterable<string> = []): string {
@@ -109,12 +109,12 @@ export const isLineInBudget = (d: BudgetData, l: Line): boolean =>
   l.block === 'var' ? isAccountInBudget(d, resolveBoxAccountId(d, l)) : !ACCOUNT_BLOCKS.includes(l.block) || isAccountInBudget(d, l.accountId);
 
 /**
- * The account an expense on a box is paid from (spec 0006, RG3, RG4):
- * « Espèces » mode → the cash account; « Virtuel » → the account assigned to the box,
- * or the main account when there is none, or when it is archived or unknown.
+ * The account an expense on a box is paid from (spec 0006, RG3, RG4): « Virtuel » → the account assigned to the box,
+ * or the main account when there is none, or when it is archived or unknown. « Espèces » mode → no account is debited (spec 0037, RG7):
+ * the fallback is returned, which is only the account the line counts in (the budget figures), never debited.
  */
 export function resolveBoxAccountId(d: BudgetData, box: PaymentSetting, fallbackId: string = mainAccount(d).id): string {
-  if (box.payMode === 'especes') return CASH_ACCOUNT_ID;
+  if (box.payMode === 'especes') return fallbackId;
   const assigned = box.accountId ? d.accounts.find(a => a.id === box.accountId) : undefined;
   return assigned && !assigned.archived && !isEnvelopeAccount(assigned) ? assigned.id : fallbackId;
 }

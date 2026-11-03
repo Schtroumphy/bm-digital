@@ -92,9 +92,6 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   // « Clôturer le mois » was clicked and refused: the Budget screen explains why until the user dismisses it.
   const [closeAttempt, setCloseAttempt] = useState(false);
 
-  // « Alimenter en espèces » (spec 0026): the envelope whose transfer form the Saisie screen opens prefilled, until it has used it.
-  const [fundEnvelope, setFundEnvelope] = useState<string | null>(null);
-
   const idx = months.indexOf(month);
   // Tab of Opérations opened by the dashboard's « soldes à saisir » (spec 0027, RG10); the sidebar always opens « Saisie ».
   const [expensesTab, setExpensesTab] = useState<'saisie' | 'soldes'>('saisie');
@@ -227,8 +224,8 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
           />
         )}
         {screen === 'budget' && <BudgetScreen month={month} closeAttempt={closeAttempt} onDismissClose={() => setCloseAttempt(false)} onOpenGoals={() => go('goals')} />}
-        {screen === 'dep' && <ExpensesScreen initialTab={expensesTab} month={month} statementSource={statementSource} fundEnvelope={fundEnvelope} onFundUsed={() => setFundEnvelope(null)} />}
-        {screen === 'env' && <EnvelopesScreen month={month} onFundCash={id => { setFundEnvelope(id); go('dep'); }} />}
+        {screen === 'dep' && <ExpensesScreen initialTab={expensesTab} month={month} statementSource={statementSource} />}
+        {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
         {screen === 'template' && <TemplateScreen month={month} />}

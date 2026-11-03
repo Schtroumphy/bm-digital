@@ -2,7 +2,7 @@ import { accountIdOf, envelopeAccountAt, isAccountInBudget, isSavingsBlock, isTr
 import { compareMonths, round2 } from './format';
 import { bankDateOf } from './lineExpenses';
 import { creditDateOf, debitDateOf, hasEnvelopesDebit, isEnvelopesPool, movementAccountName } from './internalTransfers';
-import { isCashFunding, isItemTransferred } from './movementTargets';
+import { isItemTransferred } from './movementTargets';
 import type { BudgetData, MonthKey, Transaction } from './types';
 
 /** Émoji de fin de libellé d'un mouvement (légende affichée dans le détail du compte : `MOVE_LEGEND`). */
@@ -61,8 +61,8 @@ export function countedAmount(l: { actual: number | null; budget: number }): { a
 /** Key of an envelope's allocation check in `MonthData.checks` (a line key never contains a colon). */
 export const envelopeCheckKey = (envelopeId: string) => `env:${envelopeId}`;
 
-/** An envelope expense paid in cash (spec 0026): it moves no bank account. */
-const isCashExpense = (t: Transaction) => t.type === 'env' && t.payMode === 'especes';
+/** An expense paid in cash, envelope (spec 0026) or variable line (spec 0037, RG7): it moves no bank account. */
+const isCashExpense = (t: Transaction) => (t.type === 'env' || t.type === 'var') && t.payMode === 'especes';
 
 /** Debit of a transaction side: a withdrawal from savings and an entry of money are money in, the others money out. */
 const isMoneyIn = (type: string) => type === 'epa' || type === 'rev';
@@ -84,8 +84,8 @@ function transferMovements(d: BudgetData, id: string, m: MonthKey): BankMovement
   for (const mv of d.accountMovements ?? []) {
     if (mv.amount === 0) continue;
     if (mv.fromAccountId === id && !isEnvelopesPool(id) && debitDateOf(mv).startsWith(m)) out.push({ date: debitDateOf(mv), label: `${MOVE_MARK.transfer} ${mv.label} → ${nameOf(mv.toAccountId)}`, amount: -mv.amount, kind: 'transfer', counterpart: true });
-    // The cash funding of an envelope credits its cash balance, not its account (spec 0026, RG4).
-    if (mv.toAccountId === id && !isEnvelopesPool(id) && !isCashFunding(d, mv) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${nameOf(mv.fromAccountId)}`, amount: mv.amount, kind: 'transfer', counterpart: true });
+    // A cash withdrawal (`CASH_ID`) credits no account: only its source is debited (spec 0037, RG1).
+    if (mv.toAccountId === id && !isEnvelopesPool(id) && creditDateOf(mv).startsWith(m)) out.push({ date: creditDateOf(mv), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${nameOf(mv.fromAccountId)}`, amount: mv.amount, kind: 'transfer', counterpart: true });
   }
   return out;
 }
@@ -179,7 +179,8 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
   if (md?.initialized) {
     for (const account of d.accounts) {
       if (!account.envelopeId || account.kind !== 'enveloppe' || compareMonths(m, account.openingMonth) < 0 || account.id === main) continue;
-      const amount = md.alloc[account.envelopeId] ?? 0;
+      // The cash part of the allocation does not go through the envelope's account: the main account is debited once, by the withdrawal (spec 0037, RG12).
+      const amount = (md.alloc[account.envelopeId] ?? 0) - (md.cashPart?.[account.envelopeId] ?? 0);
       const key = envelopeCheckKey(account.envelopeId);
       const c = md.checks?.[key];
       if (amount === 0 || !c || pooled || isItemTransferred(d, m, { kind: 'env', id: account.envelopeId })) continue;
@@ -189,7 +190,7 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
     // Before its account exists, a checked allocation keeps the account recorded when it was checked (spec 0009, RG88, RG90, RG91; spec 0011, RG18).
     for (const e of d.envelopes) {
       const c = md.checks?.[envelopeCheckKey(e.id)];
-      if (!pooled && !envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, md.alloc[e.id] ?? 0, c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), MOVE_MARK.checked);
+      if (!pooled && !envelopeAccountAt(d, e, m) && c?.accountId) counterpart(c.accountId, (md.alloc[e.id] ?? 0) - (md.cashPart?.[e.id] ?? 0), c.doneOn, `Allocation ${e.name}`, envelopeCheckKey(e.id), nameOf(c.accountId), MOVE_MARK.checked);
     }
   }
 

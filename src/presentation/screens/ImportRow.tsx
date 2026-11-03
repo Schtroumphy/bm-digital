@@ -3,7 +3,7 @@ import { OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
 import { assignableAccounts, bankAccount, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
-import { ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
+import { CASH_LABEL, ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget, MovementTarget } from '../../domain/types';
 import { expenseLineAccountId } from '../../domain/lineExpenses';
@@ -171,6 +171,9 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
                 )}
                 {!fromEnvelope && <option value={`line:${NEW_REVENUE_LINE}`}>+ Nouvelle ligne de revenu</option>}
               </select>
+            ) : l.nature === 'retrait' ? (
+              // A withdrawal always goes to « Espèces »: the destination is fixed, nothing to choose (spec 0037, RG4).
+              <span className="muted">{CASH_LABEL}</span>
             ) : (
               <select className="su-select" value={targetValue(l.target)} onChange={e => onChange(x => ({ ...x, target: targetFrom(e.target.value) }))}>
                 <option value="">Choisir…</option>

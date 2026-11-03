@@ -68,7 +68,7 @@ type PanelTab = 'moves' | 'hist';
 
 const GROUPS: { id: Group; title: string; sub: string }[] = [
   { id: 'main', title: 'Compte principal', sub: 'Là où tombent les revenus et partent les prélèvements' },
-  { id: 'other', title: 'Autres comptes', sub: 'Espèces, titres-restaurant…' },
+  { id: 'other', title: 'Autres comptes', sub: 'Titres-restaurant, cartes prépayées…' },
   { id: 'env', title: 'Enveloppes', sub: 'Budgets mis de côté, dépensés au fil du mois' },
   { id: 'sav', title: 'Épargne', sub: 'Comptes et livrets' },
   { id: 'inv', title: 'Investissements', sub: 'Bourse et placements long terme' },
@@ -98,11 +98,13 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const candidates = kindCandidates(data);
   const mismatches = kindMismatches(data);
   const locked = isMonthLocked(data, month);
-  const active = data.accounts.filter(a => !a.archived);
-  const archived = data.accounts.filter(a => a.archived);
+  // The reserved « Espèces » account is hidden: it holds no money any more (spec 0037, RG21).
+  const listed = data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID);
+  const active = listed.filter(a => !a.archived);
+  const archived = listed.filter(a => a.archived);
   const lastMonth = ledger.months[ledger.months.length - 1];
   const savingsLines = monthLines(data, month).filter(l => (l.block === 'epa' || l.block === 'inv') && l.linkedAccountId);
-  const unconfirmed = data.accounts.filter(a => (a.isDefault || a.id === CASH_ACCOUNT_ID) && a.openingBalance === 0 && !a.openingConfirmed).length;
+  const unconfirmed = data.accounts.filter(a => a.isDefault && a.openingBalance === 0 && !a.openingConfirmed).length;
 
   // Only the REAL balance is shown here (spec 0019, RG5): the end-of-month balance of each account.
   const balanceOf = (id: string) => ledger.bankMonth(id, month)?.balance ?? 0;
@@ -230,7 +232,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     // The opening cash of the envelope (spec 0026, RG20): same data as in the Enveloppes screen and the assistant. An archived account has no card here (D21).
     const env = fromEnvelope ? data.envelopes.find(e => e.accountId === a.id) : undefined;
     const cashLocked = isMonthLocked(data, a.openingMonth);
-    const confirmed = !!a.openingConfirmed || !(a.isDefault || a.id === CASH_ACCOUNT_ID) || a.openingBalance !== 0;
+    const confirmed = !!a.openingConfirmed || !a.isDefault || a.openingBalance !== 0;
     return (
       <article key={a.id} className={`cpt-card${a.isDefault ? ' is-on' : ''}`} style={toneVars(a.hue)}>
         <div className="cpt-card-head">
@@ -356,7 +358,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </div>
           <div style={{ flex: 1 }}>
             <div className="banner-title">Saisis les soldes de départ</div>
-            <div className="banner-text">Indique le solde de ton compte principal et d’Espèces au 1er jour de leur mois de départ : sans lui, les soldes calculés sont faux.</div>
+            <div className="banner-text">Indique le solde de ton compte principal au 1er jour de son mois de départ : sans lui, les soldes calculés sont faux.</div>
           </div>
           <div className="btn-quiet" onClick={() => update(d => confirmOpeningBalances(d))}>
             C’est bon, 0 € partout

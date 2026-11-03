@@ -56,7 +56,7 @@ const LINKED: Column = { label: 'Compte dédié', field: 'linked' };
 const LISTS: Record<SetupListId, ListConfig> = {
   acc: {
     label: 'Comptes', hue: 200, icon: 'card', help: 'Tes comptes bancaires avec leur solde au premier jour. Choisis le compte principal, et sors du budget ceux qui n’y comptent pas (Swile).',
-    emptyTitle: 'Aucun compte', emptyText: 'Le compte principal et Espèces existent toujours.',
+    emptyTitle: 'Aucun compte', emptyText: 'Le compte principal existe toujours.',
     add: 'Ajouter un compte',
     cols: [
       NAME,
@@ -288,7 +288,8 @@ function StartStep({ draft, setDraft }: { draft: SetupDraft; setDraft: SetDraft 
 
 function ListStep({ list, draft, setDraft }: { list: SetupListId; draft: SetupDraft; setDraft: SetDraft }) {
   const cfg = LISTS[list];
-  const rows = draft.rows[list];
+  // The reserved « Espèces » account stays in the draft (it is the cash mode of the variable lines) but is not listed as an account (spec 0037, RG21).
+  const rows = draft.rows[list].filter(r => !(list === 'acc' && r.id === CASH_ACCOUNT_ID));
   const grid: CSSProperties = {
     gridTemplateColumns: `${cfg.cols.map(c => COL_WIDTH[c.field] ?? '150px').join(' ')} 30px`,
   };
@@ -432,7 +433,7 @@ function RecapStep({ draft, created, onOpenBudget }: { draft: SetupDraft; create
       title: `Soldes au 1er ${first}`,
       hue: 300,
       items: [
-        { label: `Comptes bancaires (${draft.rows.acc.length})`, value: money(s.bankBalance) },
+        { label: `Comptes bancaires (${draft.rows.acc.filter(a => a.id !== CASH_ACCOUNT_ID).length})`, value: money(s.bankBalance) },
         { label: `Épargnes (${draft.rows.epa.length})`, value: money(s.savingsBalance) },
         { label: `Enveloppes (${draft.rows.env.length})`, value: money(s.envelopesBalance) },
         { label: `Investissements (${draft.rows.inv.length})`, value: money(s.investBalance) },

@@ -1,14 +1,12 @@
-import { CASH_ACCOUNT_ID } from './bank';
 import { realMovements } from './bankMovements';
 import { addMonths, compareMonths, round2 } from './format';
-import { creditDateOf } from './internalTransfers';
 import { bankDateOf } from './lineExpenses';
 import type { BudgetData, Envelope, MonthKey } from './types';
 
 /*
  * History of an envelope's two balances (spec 0026, RG16 to RG19): derived, read-only lists, from the opening to the end of a month.
  * « Virtuel » reads the REAL movements of the envelope's account (so a pointed allocation, which is fictive, is not in it, D16);
- * « Espèces » reads the transfers from « Espèces » and the expenses paid in cash. Each row carries the balance after it.
+ * « Espèces » reads the cash parts of the months (spec 0037, RG11, RG13) and the expenses paid in cash. Each row carries the balance after it.
  */
 
 export interface HistoryRow {
@@ -52,8 +50,16 @@ export function virtualHistory(d: BudgetData, envelopeId: string, m: MonthKey): 
   return withBalances(`${account.openingMonth}-01`, account.openingBalance, moves);
 }
 
+/** The cash part of each recorded month from `start` to `m` as « Part du mois » rows (in), dated the 1st of the month. */
+function cashParts(d: BudgetData, envelopeId: string, start: MonthKey, m: MonthKey): Omit<HistoryRow, 'balance'>[] {
+  return Object.keys(d.months)
+    .filter(k => compareMonths(k, start) >= 0 && compareMonths(k, m) <= 0 && (d.months[k].cashPart?.[envelopeId] ?? 0) > 0)
+    .sort(compareMonths)
+    .map((k): Omit<HistoryRow, 'balance'> => ({ date: `${k}-01`, label: 'Part du mois', amount: d.months[k].cashPart![envelopeId], kind: 'movement' }));
+}
+
 /**
- * « Espèces » list: the opening cash, then the transfers from « Espèces » to the envelope's account (in) and the expenses paid in cash (out)
+ * « Espèces » list: the opening cash, then the cash part of each month from the opening month (in, dated the 1st) and the expenses paid in cash (out)
  * up to the end of `m`. `opening` replaces the envelope's opening cash (to test a new one). Empty before the account opens.
  */
 export function cashHistory(d: BudgetData, envelopeId: string, m: MonthKey, opening?: number): HistoryRow[] {
@@ -61,9 +67,7 @@ export function cashHistory(d: BudgetData, envelopeId: string, m: MonthKey, open
   const start = e && openingMonthOf(d, e);
   if (!e || !start || compareMonths(m, start) < 0) return [];
   const moves: Omit<HistoryRow, 'balance'>[] = [
-    ...(d.accountMovements ?? [])
-      .filter(mv => mv.fromAccountId === CASH_ACCOUNT_ID && mv.toAccountId === e.accountId && upTo(creditDateOf(mv), m))
-      .map((mv): Omit<HistoryRow, 'balance'> => ({ date: creditDateOf(mv), label: mv.label, amount: mv.amount, kind: 'movement' })),
+    ...cashParts(d, e.id, start, m),
     ...d.transactions
       .filter(t => t.type === 'env' && t.target === e.id && t.payMode === 'especes' && upTo(bankDateOf(t), m))
       .map((t): Omit<HistoryRow, 'balance'> => ({ date: bankDateOf(t), label: t.label, amount: -t.amount, kind: 'expense' })),

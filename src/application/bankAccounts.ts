@@ -110,14 +110,14 @@ export function unarchiveBankAccount(d: BudgetData, id: string) {
   if (a && !isEnvelopeAccount(a)) a.archived = false;
 }
 
-/** Marks the opening balances of the main account and « Espèces » as seen, which hides the reminder banner. */
+/** Marks the opening balance of the main account as seen, which hides the reminder banner. The reserved, hidden « Espèces » account has none (spec 0037, RG21). */
 export function confirmOpeningBalances(d: BudgetData) {
-  for (const a of d.accounts) if (a.isDefault || a.id === CASH_ACCOUNT_ID) a.openingConfirmed = true;
+  for (const a of d.accounts) if (a.isDefault) a.openingConfirmed = true;
 }
 
-/** True while the reminder banner is due: main account or Espèces at 0 and never confirmed (RG29). */
+/** True while the reminder banner is due: main account at 0 and never confirmed (RG29). */
 export const needsOpeningBalances = (d: BudgetData): boolean =>
-  d.accounts.some(a => (a.isDefault || a.id === CASH_ACCOUNT_ID) && a.openingBalance === 0 && !a.openingConfirmed);
+  d.accounts.some(a => a.isDefault && a.openingBalance === 0 && !a.openingConfirmed);
 
 /**
  * Moves a budget line to another account. The line keeps it in the months created from it later.

@@ -6,6 +6,7 @@ import { closeMonth } from './monthClosing';
 import { addBankAccount, setBankAccountInBudget } from './bankAccounts';
 import { addEnvelope } from './envelopes';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, isLineInBudget, defaultBankAccounts } from '../domain/bank';
+import { CASH_ID } from '../domain/internalTransfers';
 import { availableReal, blockTotals, budgetLines, lineHistory, monthSummary, variableRemaining } from '../domain/budget';
 import { FICTIVE_CREDIT, FICTIVE_DEBIT, IGNORED_REASON, hasNoAmount, accountPointage, balanceDateBounds, envelopeTooltip, ignoredMovements, lineTooltip, lineCounted, effectiveDueDay, isLate, isPointable, lateCount, monthBalance, pointageAccounts, realMonthBalance } from '../domain/checkoff';
 import { countedAmount, estimatedMovements, flowOf, realMovements } from '../domain/bankMovements';
@@ -746,22 +747,22 @@ describe('mouvements ignorés en gris (amendement 7, limités aux contreparties 
   const T = '2027-01-25';
   /** Opening 1 000 €. A variable line checked on the 8th, and a real transfer of 50 €, both sent to `target`. */
   function sendTo(target: 'cash' | 'swile', inBudget: boolean) {
-    const id = target === 'cash' ? CASH_ACCOUNT_ID : SWILE;
+    // Spec 0037: « Espèces » is no account any more; a line managed in cash has no counterpart and a withdrawal credits nothing.
+    const id = target === 'cash' ? CASH_ID : SWILE;
     const d = started([ln('cantine', 'var', 120, target === 'cash' ? { payMode: 'especes' } : { accountId: SWILE })]);
     d.accountMovements = [{ id: 'v1', month: M, day: 1, label: 'Virement', amount: 50, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: id }];
-    setBankAccountInBudget(d, id, inBudget);
+    setBankAccountInBudget(d, target === 'cash' ? CASH_ACCOUNT_ID : id, inBudget);
     checkLine(d, M, 'cantine', '2027-01-08');
     return { d, id };
   }
   const main = (d: BudgetData) => accountPointage(d, M, MAIN_ACCOUNT_ID, T)!;
 
-  it('CA96: vers Espèces « oui »: le virement fictif et le transfert réel comptent dans l’estimé (principal −170, Espèces +170), aucune ligne grise; le réel ne porte que le transfert', () => {
+  it('CA96 (0037): une ligne Espèces et un retrait de 50 €: seul le retrait débite le principal (estimé et réel), aucune ligne grise, aucun compte crédité', () => {
     const { d } = sendTo('cash', true);
     expect(main(d).ignored).toEqual([]);
-    expect(main(d).estimated).toBe(1000 - 120 - 50);
-    expect(accountPointage(d, M, CASH_ACCOUNT_ID, T)!.estimated).toBe(170);
+    expect(main(d).estimated).toBe(1000 - 50);
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
-    expect(bank(d, CASH_ACCOUNT_ID)).toBe(50);
+    expect(bank(d, CASH_ACCOUNT_ID)).toBe(0);
   });
 
   it('CA97: vers Swile « non »: la contrepartie fictive n’atteint pas le principal (liste grise), le transfert réel compte ses deux faces', () => {
@@ -791,18 +792,15 @@ describe('mouvements ignorés en gris (amendement 7, limités aux contreparties 
     expect(p.real!.end).toBe(bank(d, MAIN_ACCOUNT_ID));
   });
 
-  it('CA99: Espèces « non » → « oui » → « non »: la contrepartie fictive est grise, puis comptée, puis grise; le transfert réel compte toujours', () => {
+  it('CA99 (0037): le statut « hors budget » du compte Espèces réservé ne change rien: pas de ligne grise, estimé et réel identiques', () => {
     const { d } = sendTo('cash', false);
-    expect(main(d).ignored).toHaveLength(1);
+    expect(main(d).ignored).toEqual([]);
     expect(main(d).estimated).toBe(950);
     expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
     setBankAccountInBudget(d, CASH_ACCOUNT_ID, true);
     expect(main(d).ignored).toEqual([]);
-    expect(main(d).estimated).toBe(830);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
-    setBankAccountInBudget(d, CASH_ACCOUNT_ID, false);
-    expect(main(d).ignored).toHaveLength(1);
     expect(main(d).estimated).toBe(950);
+    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
   });
 
   it('CA100: la liste existe sur un mois clôturé, une année clôturée; pas de ligne grise sur le compte hors budget', () => {
@@ -895,17 +893,15 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
     expect(figures(withLine)).toEqual(figures(without));
   });
 
-  it('CA106: vers Espèces « oui » la ligne compte et pèse 100 €; cochée elle sort du Reste à sortir mais reste dans les totaux; Espèces « non »: elle sort de tout', () => {
+  it('CA106 (0037): une ligne gérée en espèces reste dans le budget (aucun compte propre), quel que soit le statut du compte Espèces réservé', () => {
     const d = started([...other(), ln('cash', 'var', 100, { payMode: 'especes' })]);
-    expect(main(d).pending.map(x => [x.line.key, x.amount])).toContainEqual(['cash', 100]);
     expect(blockTotals(budgetLines(d, M), 'var').budget).toBe(500);
     checkLine(d, M, 'cash', '2027-01-08');
-    expect(main(d).pending.map(x => x.line.key)).not.toContain('cash');
     expect(blockTotals(budgetLines(d, M), 'var').budget).toBe(500);
     setBankAccountInBudget(d, CASH_ACCOUNT_ID, false);
-    expect(blockTotals(budgetLines(d, M), 'var').budget).toBe(400);
+    expect(blockTotals(budgetLines(d, M), 'var').budget).toBe(500);
     uncheckLine(d, M, 'cash');
-    expect(main(d).pending.map(x => x.line.key)).not.toContain('cash');
+    expect(isLineInBudget(d, d.months[M].lines.find(l => l.key === 'cash')!)).toBe(true);
   });
 
   it('CA107: une ligne var du principal reste inchangée', () => {
@@ -972,14 +968,14 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
     expect(budgetLines(withLine, '2027-02').map(l => l.key)).toEqual(['sal', 'ali']);
   });
 
-  it('CA113: Espèces « oui », Swile « non », lignes vers chacun, transfert à 0 €: l’estimé suit les pointages (RG92), le réel ne bouge pas', () => {
+  it('CA113: ligne Espèces, Swile « non », ligne vers Swile, transfert à 0 €: l’estimé suit les pointages (RG92), la ligne Espèces ne bouge aucun compte (0037), le réel ne bouge pas', () => {
     const d = started([ln('c', 'var', 50, { payMode: 'especes' }), swile()]);
     setBankAccountInBudget(d, SWILE, false);
     d.accountMovements = [{ id: 'z', month: M, day: 1, label: 'Zéro', amount: 0, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: SWILE }];
     checkLine(d, M, 'c', '2027-01-05');
     checkLine(d, M, 'swile', '2027-01-06');
     const ledger = new Ledger(d, M);
-    expect([MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID, SWILE].map(id => monthBalance(d, M, id)!.end)).toEqual([950, 50, 100]);
+    expect([MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID, SWILE].map(id => monthBalance(d, M, id)!.end)).toEqual([1000, 0, 100]);
     expect([MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID, SWILE].map(id => ledger.bankMonth(id, M)!.balance)).toEqual([1000, 0, 0]);
     expect(main(d).ignored).toHaveLength(1);
   });

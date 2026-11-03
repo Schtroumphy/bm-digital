@@ -45,13 +45,13 @@ describe('type de compte', () => {
 });
 
 describe('groupes de la clôture', () => {
-  it('CA2: chaque compte est dans un seul groupe, celui de son type', () => {
+  it('CA2: chaque compte est dans un seul groupe, celui de son type ; le compte Espèces réservé n’y figure pas (spec 0037, RG21)', () => {
     const d = base([]);
     open(d, 'cc', 'Compte joint', 'courant', 100);
     open(d, 'ep', 'Livret A', 'epargne', 1000);
     open(d, 'iv', 'PEA', 'invest', 5000);
     open(d, 'sans', 'Sans type', undefined, 7);
-    expect(namesOf(d, 'courant')).toEqual(['Compte principal', 'Espèces', 'Compte joint', 'Sans type']);
+    expect(namesOf(d, 'courant')).toEqual(['Compte principal', 'Compte joint', 'Sans type']);
     expect(namesOf(d, 'epargne')).toEqual(['Livret A']);
     expect(namesOf(d, 'invest')).toEqual(['PEA']);
     const all = view(d).groups.flatMap(g => g.rows.map(r => r.id));

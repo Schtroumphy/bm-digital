@@ -285,18 +285,21 @@ export type Database = {
       envelope_allocations: {
         Row: {
           amount: number
+          cash_part: number | null
           envelope_id: string
           month: string
           user_id: string
         }
         Insert: {
           amount: number
+          cash_part?: number | null
           envelope_id: string
           month: string
           user_id?: string
         }
         Update: {
           amount?: number
+          cash_part?: number | null
           envelope_id?: string
           month?: string
           user_id?: string

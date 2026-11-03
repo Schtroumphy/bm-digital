@@ -33,7 +33,7 @@ export function transferItems(d: BudgetData, m: MonthKey): TransferItem[] {
   const main = mainAccount(d).id;
   const out: TransferItem[] = [];
   for (const e of d.envelopes) {
-    out.push({ target: { kind: 'env', id: e.id }, label: `Allocation ${e.name} (enveloppe)`, fromAccountId: main, toAccountId: e.accountId, amount: md?.alloc[e.id] ?? 0, pointedOn: md?.checks?.[envelopeCheckKey(e.id)]?.doneOn });
+    out.push({ target: { kind: 'env', id: e.id }, label: `Allocation ${e.name} (enveloppe)`, fromAccountId: main, toAccountId: e.accountId, amount: (md?.alloc[e.id] ?? 0) - (md?.cashPart?.[e.id] ?? 0), pointedOn: md?.checks?.[envelopeCheckKey(e.id)]?.doneOn });
   }
   for (const l of lines) {
     if (isSavingsBlock(l.block) && l.linkedAccountId) {

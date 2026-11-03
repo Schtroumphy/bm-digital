@@ -36,6 +36,21 @@ describe('conversion domaine ↔ lignes', () => {
     expect(back.transactions[1]).not.toHaveProperty('offBudget');
   });
 
+  it('spec 0037 : la part en espèces d’une enveloppe vit dans sa ligne d’allocation (colonne cash_part), et une part sans allocation garde une ligne à 0', () => {
+    const data = completeData();
+    const env = data.envelopes[0].id;
+    const dec = data.months['2026-12'];
+    dec.alloc[env] = 100;
+    dec.cashPart = { [env]: 40 };
+    const rows = toRows(data);
+    expect(rows.envelope_allocations.find(r => r.month === '2026-12' && r.envelope_id === env)).toMatchObject({ amount: 100, cash_part: 40 });
+    expect(fromRows(withUser(rows))).toEqual(data);
+    dec.alloc[env] = 0;
+    expect(fromRows(withUser(toRows(data)))).toEqual(data);
+    delete dec.cashPart;
+    expect(toRows(data).envelope_allocations.find(r => r.month === '2026-12' && r.envelope_id === env)!.cash_part).toBeNull();
+  });
+
   it('conserve firstMonth: null (CA8)', () => {
     expect(fromRows(withUser(toRows(emptyData())))?.firstMonth).toBeNull();
   });

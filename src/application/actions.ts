@@ -1,8 +1,9 @@
-import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, fixedTransactionAccountId, freeEnvelopeAccountId, transactionBox, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { applyDetail, normalizeDetail } from '../domain/detail';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
 import { syncLineActual } from '../domain/lineActuals';
 import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId } from '../domain/lineExpenses';
+import { cashPartAbove } from '../domain/cash';
 import { exceedsEnvelopeCash } from '../domain/envelopeCash';
 import { isMonthLocked } from '../domain/ledger';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
@@ -46,14 +47,15 @@ export function saveAsTemplate(d: BudgetData, m: MonthKey) {
  * Sets an envelope's allocation for a month (replacement, not addition) and
  * copies the value into the budget model so that future months start from it,
  * even when it equals the current allocation. 0 is valid. Refuses negative or
- * invalid amounts, and does nothing for an unknown envelope or a month that is
+ * invalid amounts, an amount below the cash part already entered for the month
+ * (spec 0037, RG11), and does nothing for an unknown envelope or a month that is
  * not initialized or is locked. Returns true when applied.
  */
 export function setEnvelopeAllocation(d: BudgetData, m: MonthKey, envelopeId: string, amount: number): boolean {
   const md = d.months[m];
   if (!md?.initialized || isMonthLocked(d, m)) return false;
   if (!d.envelopes.some(e => e.id === envelopeId)) return false;
-  if (!(amount >= 0)) return false;
+  if (!(amount >= 0) || cashPartAbove(d, m, envelopeId, amount) !== null) return false;
   const next = round2(amount);
   md.alloc[envelopeId] = next;
   d.template.envAlloc[envelopeId] = next;
@@ -253,6 +255,9 @@ export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
   return true;
 }
 
+/** The transaction without its account: money that debits none. */
+const withoutAccount = ({ accountId: _accountId, ...rest }: Transaction): Transaction => rest;
+
 /**
  * Records a transaction (every type is a real entry, spec 0019, RG2); an entry on a line also feeds the actual of that line (RG20).
  * Refused (false) on a locked month, for a withdrawal credited to the dedicated account of its savings line (spec 0007, RG7), and for a
@@ -262,7 +267,8 @@ export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
  * Without an account, the transaction takes the one resolved from its box (spec 0006, RG3):
  * the account is written down, so a later change of the box does not move it (RG6).
  * An envelope expense may be paid in cash (`payMode: 'especes'`, spec 0026, RG5); it is refused when it exceeds the cash balance of the envelope (RG7), whatever its virtual balance.
- * The mode only exists on an envelope expense: it is dropped elsewhere, and `virtuel` is written as no mode at all.
+ * A variable expense on a line managed in cash (box in `especes` mode, no account given) or given with `payMode: 'especes'` debits no account (spec 0037, RG7):
+ * it has no account at all and counts in the actual of its line. The mode is dropped on the other types, and `virtuel` is written as no mode at all.
  * An operation may be assigned to a savings account (`assignedAccountId`, spec 0028): only `var`, `fix` and `rev`, an active savings account other than the
  * operation's own (RG1, RG2, RG20). It may instead be marked « hors budget » (`offBudget`, spec 0031): same types, no account, and never together with an assignment
  * (RG3); `env` and `epa` are refused. `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
@@ -278,10 +284,14 @@ export function addTransaction(d: BudgetData, input: Transaction, keepAssignment
   const fixed = input.type === 'var' ? fixedTransactionAccountId(d, input) : undefined;
   if (fixed && input.accountId !== undefined && input.accountId !== fixed) return false;
   const envelope = input.type === 'env' ? d.envelopes.find(e => e.id === input.target) : undefined;
-  const inCash = !!envelope && input.payMode === 'especes';
-  if (inCash && exceedsEnvelopeCash(d, envelope.id, input.month, input.amount)) return false;
+  const envInCash = !!envelope && input.payMode === 'especes';
+  if (envInCash && exceedsEnvelopeCash(d, envelope.id, input.month, input.amount)) return false;
+  // A variable expense on a line managed in cash, with no account chosen, debits no account (spec 0037, RG7, RG8); a given `especes` mode is kept too.
+  const varInCash = input.type === 'var' && (input.payMode === 'especes' || (input.accountId === undefined && transactionBox(d, input)?.payMode === 'especes'));
+  const inCash = envInCash || varInCash;
   const t = envelope
     ? { ...input, accountId: envelope.accountId }
+    : varInCash ? withoutAccount(input)
     : input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   if (t.assignedAccountId !== undefined && !canAssignTo(d, t.type, accountIdOf(d, t.accountId), t.assignedAccountId, keepAssignment)) return false;
   const detail = normalizeDetail(input.detail);

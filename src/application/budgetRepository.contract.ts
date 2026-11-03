@@ -191,6 +191,25 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(loaded).toEqual(data);
     });
 
+    it('spec 0037 : la part en espèces d’une enveloppe et un retrait vers « Espèces » sont conservés (CA13)', async () => {
+      const repo = open();
+      const data = completeData();
+      const dec = data.months['2026-12'];
+      const env = data.envelopes[0].id;
+      dec.alloc[env] = 100;
+      dec.cashPart = { [env]: 40 };
+      data.accountMovements!.push({ id: 'm-ret', month: '2026-12', day: 6, label: 'Retrait du mois', amount: 200, fromAccountId: 'acc-main', toAccountId: 'especes' });
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.months['2026-12'].cashPart).toEqual({ [env]: 40 });
+      expect(loaded.accountMovements!.find(m => m.id === 'm-ret')).toMatchObject({ toAccountId: 'especes', amount: 200 });
+      expect(loaded).toEqual(data);
+      // Taking the part away leaves no trace.
+      delete dec.cashPart;
+      await repo.save(data);
+      expect((await open().load())!.months['2026-12']).not.toHaveProperty('cashPart');
+    });
+
     it('spec 0019 : la cible d’un transfert est conservée, les transferts sans cible restent sans cible', async () => {
       const repo = open();
       const data = completeData();

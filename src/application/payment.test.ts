@@ -42,9 +42,9 @@ const balance = (d: BudgetData, id: string) => new Ledger(d, M).bankMonth(id, M)
 const box = (d: BudgetData, key: string) => d.months[M].lines.find(l => l.key === key)!;
 
 describe('résolution du compte d’une box', () => {
-  it('CA1: une box en Espèces résout vers le compte Espèces', () => {
+  it('CA1 (0037, RG7): une box en Espèces ne résout vers aucun compte propre : elle retombe sur le principal, qui n’est jamais débité', () => {
     const d = started();
-    expect(resolveBoxAccountId(d, { payMode: 'especes', accountId: 'bourso' })).toBe(CASH_ACCOUNT_ID);
+    expect(resolveBoxAccountId(d, { payMode: 'especes', accountId: 'bourso' })).toBe(MAIN_ACCOUNT_ID);
   });
 
   it('CA2: une box en Virtuel avec un compte attribué résout vers ce compte', () => {
@@ -90,13 +90,15 @@ describe('saisie d’une dépense sur une box', () => {
     expect([balance(d, 'bourso'), balance(d, CASH_ACCOUNT_ID)]).toEqual(before);
   });
 
-  it('CA6: sans toucher à « Payé avec », la dépense d’une box Espèces baisse le solde Espèces', () => {
+  it('CA6 (0037, RG7): sans toucher à « Payé avec », la dépense d’une box Espèces ne débite aucun compte et compte dans le réel de la ligne', () => {
     const d = started();
     setLinePayment(d, M, 'marche', { payMode: 'especes' });
     addTransaction(d, tx({ target: 'marche', amount: 30 }));
-    expect(d.transactions[0].accountId).toBe(CASH_ACCOUNT_ID);
-    expect(balance(d, CASH_ACCOUNT_ID)).toBe(20);
+    expect(d.transactions[0]).toMatchObject({ payMode: 'especes', amount: 30 });
+    expect(d.transactions[0]).not.toHaveProperty('accountId');
+    expect(balance(d, CASH_ACCOUNT_ID)).toBe(50);
     expect(balance(d, MAIN_ACCOUNT_ID)).toBe(100);
+    expect(box(d, 'marche').actual).toBe(30);
   });
 
   it('un compte choisi explicitement à la saisie l’emporte sur la box', () => {
@@ -282,12 +284,13 @@ describe('diagnostic : réel d’une ligne variable payée en Espèces', () => {
     expect(box(d, 'alim').actual).toBe(25);
   });
 
-  it('(b) Espèces hors budget (0008, RG1) : le réel compte la dépense, le solde Espèces baisse', () => {
+  it('(b) compte Espèces réservé hors budget (0008, RG1) : le réel compte la dépense, aucun solde ne bouge (0037, RG22)', () => {
     const d = withAlimentation(false);
     setLinePayment(d, M, 'alim', { payMode: 'especes' });
     addTransaction(d, tx({ target: 'alim', amount: 25 }));
     expect(box(d, 'alim').actual).toBe(25);
-    expect(balance(d, CASH_ACCOUNT_ID)).toBe(25);
+    expect(balance(d, CASH_ACCOUNT_ID)).toBe(50);
+    expect(balance(d, MAIN_ACCOUNT_ID)).toBe(100);
   });
 
   it('(d) mois non créé : la dépense saisie sur la ligne du modèle alimente le réel à la création du mois', () => {

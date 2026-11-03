@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
 import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
@@ -11,9 +11,9 @@ import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
 import { defaultTransferTarget, similarPointedItem, transferItems } from '../../domain/transfers';
 import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
-import { creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
+import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
-import { activeBankAccounts, assignableAccounts, bankAccount, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget } from '../../domain/bank';
+import { activeBankAccounts, assignableAccounts, bankAccount, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget, transactionBox } from '../../domain/bank';
 import { lineCheck } from '../../domain/checkoff';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
@@ -31,10 +31,8 @@ const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' 
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
-export function ExpensesScreen({ initialTab = 'saisie', month, statementSource, fundEnvelope, onFundUsed }: { initialTab?: 'saisie' | 'soldes'; month: MonthKey; statementSource: StatementSource; fundEnvelope: string | null; onFundUsed: () => void }) {
+export function ExpensesScreen({ initialTab = 'saisie', month, statementSource }: { initialTab?: 'saisie' | 'soldes'; month: MonthKey; statementSource: StatementSource }) {
   const [tab, setTab] = useState<'saisie' | 'soldes'>(initialTab);
-  // The prefill is read by the form on its first render, then forgotten: coming back to the screen later opens it empty.
-  useEffect(() => { if (fundEnvelope) onFundUsed(); }, [fundEnvelope, onFundUsed]);
   const [importing, setImporting] = useState(false);
   if (importing) return <ImportWizard source={statementSource} onClose={() => setImporting(false)} />;
   return (
@@ -56,7 +54,7 @@ export function ExpensesScreen({ initialTab = 'saisie', month, statementSource, 
           Importer
         </button>
       </div>
-      {tab === 'saisie' ? <EntryTab month={month} fundEnvelope={fundEnvelope} /> : <BalancesTab month={month} />}
+      {tab === 'saisie' ? <EntryTab month={month} /> : <BalancesTab month={month} />}
     </>
   );
 }
@@ -96,7 +94,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: string | null }) {
+function EntryTab({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
@@ -104,7 +102,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
-  const [transfer, setTransfer] = useState(fundEnvelope !== null);
+  const [transfer, setTransfer] = useState(false);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
   const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string; assignedAccountId: string } | null>(null);
@@ -127,6 +125,8 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   // A withdrawal cannot be credited to the dedicated account of its savings line (spec 0007, RG7).
   const refusedAccountId = form.type === 'epa' ? lines.find(l => l.key === target)?.linkedAccountId : undefined;
   const accountRefused = accountId === refusedAccountId;
+  // A variable line managed in cash takes no « Payé avec »: the expense debits no account (spec 0037, RG7, RG8).
+  const cashLine = form.type === 'var' ? transactionBox(data, { type: 'var', month, target })?.payMode === 'especes' : false;
   // A fixed/credit line whose account is archived takes no expense (spec 0014).
   const lineBlocker = form.type === 'fix' && target ? expenseLineBlocker(data, month, target) : null;
   // Savings accounts the operation can be assigned to (spec 0028, RG2, RG16): none for an envelope expense or a savings withdrawal.
@@ -244,7 +244,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
   const add = () => {
     if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, accountId, detail: form.detail, ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...(form.type === 'env' && form.payMode === 'especes' ? { payMode: 'especes' as const } : {}) }),
+      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, ...(cashLine ? {} : { accountId }), detail: form.detail, ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }),
     );
     // Picking another account is a one-off: the next expense follows its box again.
     setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '' }));
@@ -290,7 +290,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
           </div>
         </div>
         {transfer ? (
-          <TransferFields month={month} locked={locked} fundEnvelope={fundEnvelope} label={form.label} detail={form.detail} amount={amount} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '' }))} />
+          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '' }))} />
         ) : (
           <>
         <div>
@@ -305,7 +305,9 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
         </div>
         <div>
           <div className="field-label is-gap">{form.type === 'epa' || form.type === 'rev' ? 'Reçu sur' : 'Payé avec'}</div>
-          {form.type === 'env' ? (
+          {cashLine ? (
+            <div className="muted">Espèces : aucun compte n’est débité. Le montant s’ajoute au réel de la ligne.</div>
+          ) : form.type === 'env' ? (
             // An envelope expense is always on the envelope's account: only cash or virtual is chosen (spec 0026, RG5).
             <div className="chips is-wrap">
               {([['virtuel', 'Virtuel'], ['especes', 'Espèces']] as const).map(([mode, name]) => (
@@ -382,7 +384,7 @@ function EntryTab({ month, fundEnvelope }: { month: MonthKey; fundEnvelope: stri
               <span className="tx-f-label">Compte</span>
               <select className="text-input" value={filter.accountId} onChange={e => setFilter(f => ({ ...f, accountId: e.target.value }))}>
                 <option value="all">Tous les comptes</option>
-                {data.accounts.map(a => (
+                {data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID).map(a => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
@@ -804,31 +806,32 @@ function Spark({ values }: { values: number[] }) {
  * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget item the transfer stands for
  * (optional; the envelope or the savings line of the destination is proposed). The label, detail and amount are those of the form.
  */
-function TransferFields({ month, locked, fundEnvelope, label, detail, amount, onDone }: { month: MonthKey; locked: boolean; fundEnvelope: string | null; label: string; detail: string; amount: number; onDone: () => void }) {
+function TransferFields({ month, locked, label, detail, amount, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; onDone: () => void }) {
   const { data, update } = useStore();
-  const accounts = data.accounts.filter(a => !a.archived);
+  // The reserved « Espèces » account is hidden (spec 0037, RG21).
+  const accounts = data.accounts.filter(a => !a.archived && a.id !== CASH_ACCOUNT_ID);
   const main = accounts.find(a => a.isDefault) ?? accounts[0];
-  // « Alimenter en espèces » (spec 0026, RG3): from « Espèces » to the envelope's account, standing for the envelope.
-  const funded = data.envelopes.find(e => e.id === fundEnvelope);
-  const [fromId, setFromId] = useState(funded ? CASH_ACCOUNT_ID : main?.id ?? '');
-  const [toChoice, setToChoice] = useState(funded?.accountId ?? '');
+  const [fromId, setFromId] = useState(main?.id ?? '');
+  const [toChoice, setToChoice] = useState('');
   const [day, setDay] = useState(String(defaultDay(month)));
   // `undefined`: not chosen yet, the default of the destination applies; `''`: « aucune ».
-  const [chosen, setChosen] = useState<string | undefined>(funded ? `env:${funded.id}` : undefined);
-  const toId = toChoice && toChoice !== fromId && accounts.some(a => a.id === toChoice) ? toChoice : accounts.find(a => a.id !== fromId)?.id ?? '';
-  const items = transferItems(data, month).filter(i => i.toAccountId === toId);
+  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  // « Espèces » (a withdrawal, spec 0037, RG1) is a destination of any account but an envelope's; it is not an account and credits none.
+  const canWithdraw = !isEnvelopeAccount(accounts.find(a => a.id === fromId));
+  const toId = toChoice === CASH_ID && canWithdraw ? CASH_ID : toChoice && toChoice !== CASH_ID && toChoice !== fromId && accounts.some(a => a.id === toChoice) ? toChoice : accounts.find(a => a.id !== fromId)?.id ?? '';
+  const items = toId === CASH_ID ? [] : transferItems(data, month).filter(i => i.toAccountId === toId);
   const valueOf = (t: MovementTarget | null | undefined) => (t ? (t.kind === 'line' ? `line:${t.key}` : `env:${t.id}`) : '');
-  const value = chosen !== undefined ? chosen : valueOf(defaultTransferTarget(data, month, toId, fromId));
+  const value = toId === CASH_ID ? '' : chosen !== undefined ? chosen : valueOf(defaultTransferTarget(data, month, toId, fromId));
   const item = items.find(i => valueOf(i.target) === value);
   const dayNumber = Number(day);
-  const ready = !!fromId && !!toId && fromId !== toId && amount > 0 && Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31 && !locked;
+  const ready = !!fromId && !!toId && (fromId !== toId) && amount > 0 && Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31 && !locked;
   const add = () => {
     if (!ready) return;
-    update(d => void addTransfer(d, { id: newId('m'), month, day: dayNumber, label: label.trim() || 'Transfert', amount, fromAccountId: fromId, toAccountId: toId, ...(item ? { target: item.target } : {}), detail }));
+    update(d => void addTransfer(d, { id: newId('m'), month, day: dayNumber, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(item ? { target: item.target } : {}), detail }));
     setChosen(undefined);
     onDone();
   };
-  const accountChips = (current: string, pick: (id: string) => void, exclude?: string) => (
+  const accountChips = (current: string, pick: (id: string) => void, exclude?: string, withCash = false) => (
     <div className="chips is-wrap">
       {accounts.filter(a => a.id !== exclude).map(a => (
         <Chip key={a.id} on={current === a.id} onClick={() => pick(a.id)}>
@@ -838,6 +841,14 @@ function TransferFields({ month, locked, fundEnvelope, label, detail, amount, on
           </span>
         </Chip>
       ))}
+      {withCash && (
+        <Chip on={current === CASH_ID} onClick={() => pick(CASH_ID)}>
+          <span className="acc-item">
+            <Icon name="cash" size={13} stroke={2.2} />
+            {CASH_LABEL} (retrait)
+          </span>
+        </Chip>
+      )}
     </div>
   );
   return (
@@ -848,22 +859,24 @@ function TransferFields({ month, locked, fundEnvelope, label, detail, amount, on
       </div>
       <div>
         <div className="field-label is-gap">Vers</div>
-        {accountChips(toId, id => { setToChoice(id); setChosen(undefined); }, fromId)}
+        {accountChips(toId, id => { setToChoice(id); setChosen(undefined); }, fromId, canWithdraw)}
       </div>
       <div className="form-row">
         <label className="field-w">
           <span className="field-label">Jour</span>
           <input className="text-input" inputMode="numeric" value={day} onChange={e => setDay(e.target.value.replace(/\D/g, ''))} />
         </label>
-        <label className="field-w">
-          <span className="field-label">Rattacher à (facultatif)</span>
-          <select className="text-input" value={value} onChange={e => setChosen(e.target.value)}>
-            <option value="">Aucun (transfert libre)</option>
-            {items.map(i => (
-              <option key={valueOf(i.target)} value={valueOf(i.target)}>{i.label}</option>
-            ))}
-          </select>
-        </label>
+        {toId !== CASH_ID && (
+          <label className="field-w">
+            <span className="field-label">Rattacher à (facultatif)</span>
+            <select className="text-input" value={value} onChange={e => setChosen(e.target.value)}>
+              <option value="">Aucun (transfert libre)</option>
+              {items.map(i => (
+                <option key={valueOf(i.target)} value={valueOf(i.target)}>{i.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       {item?.pointedOn && <div className="impact">Cette ligne est pointée : le transfert remplacera sa contrepartie fictive dans le solde estimé.</div>}
       {locked && <div className="alert-box">Ce mois est clôturé : aucun transfert ne peut y être créé.</div>}

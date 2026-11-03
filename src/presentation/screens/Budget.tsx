@@ -17,6 +17,9 @@ import { setLineAccount, setLineLinkedAccount } from '../../application/bankAcco
 import { addEnvelope, renameEnvelope } from '../../application/envelopes';
 import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, updateLine } from '../../application/actions';
+import { closeBlockersAfterReconcile, closeMonthReconciling } from '../../application/cash';
+import { cashPartAbove, reconcilableLines, type ReconcilableLine } from '../../domain/cash';
+import { CashMonthBlock } from '../components/CashMonthBlock';
 import { closeBlockers, closeMonth, reopenBlocker, reopenMonth, type CloseBlocker } from '../../application/monthClosing';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
@@ -39,8 +42,6 @@ export const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: numb
   inv: { title: 'Investissements', icon: 'trend', hue: HUE.inv },
 };
 
-/** Yellow of the « bonus » star of the surplus KPI. */
-const STAR = 'oklch(0.8 0.15 90)';
 
 export const BLOCK_TITLES = Object.fromEntries(Object.entries(BLOCKS).map(([k, v]) => [k, v.title])) as Record<BlockKey, string>;
 
@@ -117,6 +118,7 @@ function closeBlockerText(b: CloseBlocker): string | null {
  */
 export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKey; onRefused: () => void; onDone: () => void }) {
   const { data, update } = useStore();
+  const [reconciling, setReconciling] = useState(false);
   if (!data.months[month]?.initialized || isYearClosed(data, parseMonth(month).year)) return null;
   if (isMonthClosed(data, month)) {
     const blocker = reopenBlocker(data, month);
@@ -138,16 +140,64 @@ export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKe
     );
   }
   const close = () => {
+    // Cash lines not fully entered: the closing offers to regularise them first (spec 0037, RG19).
+    if (reconcilableLines(data, month).length) return setReconciling(true);
     if (closeBlockers(data, month).length) return onRefused();
     if (!window.confirm(`Clôturer ${monthLabel(month)} ? Le mois deviendra en lecture seule.`)) return;
     update(d => void closeMonth(d, month));
     onDone();
   };
   return (
-    <div className="btn-outline" onClick={close}>
-      <Icon name="lock" size={14} />
-      Clôturer le mois
-    </div>
+    <>
+      <div className="btn-outline" onClick={close}>
+        <Icon name="lock" size={14} />
+        Clôturer le mois
+      </div>
+      {reconciling && <CashReconcileDialog month={month} lines={reconcilableLines(data, month)} onClose={() => setReconciling(false)} onDone={() => { setReconciling(false); onDone(); }} />}
+    </>
+  );
+}
+
+/**
+ * « Clôturer <mois> — lignes en espèces non entièrement dépensées » (spec 0037, RG19): each line is proposed on its own, nothing is ticked by default.
+ * A confirmed line gets a cash expense « Reste non saisi » for the rest of its budget; a refused one stays as it is. The closing can be refused after the
+ * regularisation (it changes the actuals, hence the amount still available): the reasons are shown and the buttons disabled.
+ */
+function CashReconcileDialog({ month, lines, onClose, onDone }: { month: MonthKey; lines: ReconcilableLine[]; onClose: () => void; onDone: () => void }) {
+  const { data, update } = useStore();
+  const [picked, setPicked] = useState<string[]>([]);
+  const toggle = (key: string) => setPicked(p => (p.includes(key) ? p.filter(k => k !== key) : [...p, key]));
+  const withPicked = closeBlockersAfterReconcile(data, month, picked);
+  const without = closeBlockersAfterReconcile(data, month, []);
+  const reasons = (picked.length ? withPicked : without).map(closeBlockerText).filter((t): t is string => t !== null);
+  const finish = (keys: string[]) => {
+    update(d => void closeMonthReconciling(d, month, keys, () => newId('t')));
+    onDone();
+  };
+  return (
+    <>
+      <div className="backdrop" onClick={onClose} />
+      <div className="cash-dialog">
+        <div className="form-title">Clôturer {monthLabel(month)} · lignes en espèces non entièrement dépensées</div>
+        <div className="muted">Pour chaque ligne cochée, une dépense en espèces « Reste non saisi » est ajoutée : le réel de la ligne devient son budget. Aucun compte n’est débité.</div>
+        {lines.map(l => (
+          <label key={l.key} className="cash-dialog-row">
+            <input type="checkbox" checked={picked.includes(l.key)} onChange={() => toggle(l.key)} />
+            <span>{l.name}</span>
+            <span className="muted">budget {money(l.budget)} · saisi {money(l.spent)}</span>
+            <b>Ajouter {money(l.rest)} ?</b>
+          </label>
+        ))}
+        {reasons.map(t => (
+          <div key={t} className="alert-box" style={{ margin: 0 }}>{t}</div>
+        ))}
+        <div className="cash-dialog-actions">
+          <div className="btn-quiet" onClick={onClose}>Annuler</div>
+          <div className={`btn-outline${without.length ? ' is-disabled' : ''}`} onClick={without.length ? undefined : () => finish([])}>Clôturer sans régulariser</div>
+          <div className={`btn-dark${!picked.length || withPicked.length ? ' is-disabled' : ''}`} onClick={!picked.length || withPicked.length ? undefined : () => finish(picked)}>Confirmer et clôturer</div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -202,6 +252,7 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose, onOpenGoals 
         </div>
       )}
       <div className={uninit ? 'is-preview' : undefined}>
+        <CashMonthBlock month={month} />
         <div className="summary">
           <div className="panel kpi kpi-hero">
             <div className="kpi-label">Reste à placer</div>
@@ -212,14 +263,20 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose, onOpenGoals 
               </div>
             )}
           </div>
-          <div className="panel kpi">
-            <div className="kpi-label" title="Revenus réels − sorties réelles (crédits, dépenses, épargnes, placements, enveloppes). Une ligne sans réel compte à son budget.">
-              <Icon name="star" size={12} stroke={2} color={s.surplus < 0 ? BAD : STAR} style={{ fill: s.surplus < 0 ? BAD : STAR }} />
-              Surplus
-            </div>
-            <div className="kpi-value" style={{ color: s.surplus < 0 ? BAD : undefined }}>{money(s.surplus)}</div>
-            {s.surplus < 0 && <div className="kpi-sub" style={{ color: BAD }}>Marge négative</div>}
-          </div>
+          <GapKpi
+            label="Écart dépenses"
+            title="Budget − réel des crédits, dépenses fixes et variables. Une ligne sans réel compte à son budget. Positif : vous dépensez moins que prévu."
+            value={s.expenseGap}
+            positive="Moins dépensé que prévu"
+            negative="Plus dépensé que prévu"
+          />
+          <GapKpi
+            label="Écart épargne"
+            title="Réel − budget des épargnes et placements (les allocations d’enveloppes comptent à leur budget). Une ligne sans réel compte à son budget. Positif : vous épargnez plus que prévu."
+            value={s.savingsGap}
+            positive="Plus épargné que prévu"
+            negative="Moins épargné que prévu"
+          />
           <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
           <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
           <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.grossSavings)} sub={'Réelle : ' + money(s.realSavings)} />
@@ -265,6 +322,17 @@ export function BudgetScreen({ month, closeAttempt, onDismissClose, onOpenGoals 
         </div>
       </div>
     </>
+  );
+}
+
+/** KPI of a gap against the budget: signed amount, red when negative, neutral and without caption at 0 (spec 0038, RG8-RG9). */
+function GapKpi({ label, title, value, positive, negative }: { label: string; title: string; value: number; positive: string; negative: string }) {
+  return (
+    <div className="panel kpi">
+      <div className="kpi-label" title={title}>{label}</div>
+      <div className="kpi-value" style={{ color: value < 0 ? BAD : undefined }}>{money(value, true)}</div>
+      {value !== 0 && <div className="kpi-sub" style={{ color: value < 0 ? BAD : undefined }}>{value > 0 ? positive : negative}</div>}
+    </div>
   );
 }
 
@@ -689,6 +757,8 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                 <AllocEditor
                   value={alloc[e.id] ?? 0}
                   onSet={amount => {
+                    const part = cashPartAbove(data, month, e.id, amount);
+                    if (part !== null) return void window.alert(`L’allocation ne peut pas passer sous la part en espèces du mois (${money(part)}). Réduis d’abord la part en espèces (écran Enveloppes).`);
                     update(d => void setEnvelopeAllocation(d, month, e.id, amount));
                     setWarned(true);
                   }}

@@ -78,6 +78,11 @@ export interface MonthData {
   checks?: Record<string, LineCheck>;
   /** Bank account id → statement of this month (one per account and month; spec 0009, RG62). */
   accountBalances?: Record<string, AccountBalanceEntry>;
+  /**
+   * Envelope id → cash part of the month (spec 0037, RG11): the share of the envelope's allocation held in cash, informative, 0 ≤ part ≤ allocation.
+   * The envelope's virtual balance drops by it and its cash balance rises by it. Absent or missing key = 0.
+   */
+  cashPart?: Record<string, number>;
   /** Personal notes of the month, in creation order (spec 0027, RG12). Editable even on a locked or uninitialized month; never copied to another month. */
   notes?: MonthNote[];
 }
@@ -185,7 +190,10 @@ export interface AccountMovement {
   amount: number;
   /** Account debited, or `ENVELOPES_ID` (« Enveloppes (global) »): the credit of an envelope's account whose debit was the global one (spec 0016, RG27). */
   fromAccountId: string;
-  /** Account credited, or `ENVELOPES_ID`: a debit « vers enveloppes », no account credited (spec 0016, RG25). */
+  /**
+   * Account credited, or `ENVELOPES_ID`: a debit « vers enveloppes », no account credited (spec 0016, RG25). Or `CASH_ID` (« Espèces »): a cash
+   * withdrawal, the source account is debited and no account is credited (spec 0037, RG1).
+   */
   toAccountId: string;
   importAccountId?: string;
   fingerprint?: string;

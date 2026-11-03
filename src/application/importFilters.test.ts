@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyBulk, emptyFilters, filterCounts, filterLines, lineStates, matchesFilters, pruneFilters, setChecked, type PreviewFilters } from './importFilters';
 import { changeNature, isIncome, prepareImport, previewCounts, validateImport, type PreviewLine } from './statementImport';
-import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts } from '../domain/bank';
+import { MAIN_ACCOUNT_ID, defaultBankAccounts } from '../domain/bank';
+import { CASH_ID } from '../domain/internalTransfers';
 import { emptyData } from '../domain/empty';
 import type { StatementRow } from '../domain/statement';
 import type { BudgetData, Line } from '../domain/types';
@@ -177,7 +178,7 @@ describe('traitement en masse', () => {
     const ids = new Set(lines.filter(l => !isIncome(l)).map(l => l.id));
     const r = applyBulk(d, lines, ids, { nature: 'retrait' });
     expect(r.changed).toBe(r.lines.filter(l => l.nature === 'retrait' && !isIncome(l)).length - 1); // « RETRAIT » l'était déjà
-    expect(byLabel(r.lines, 'EDF')).toMatchObject({ nature: 'retrait', target: { kind: 'account', id: CASH_ACCOUNT_ID } });
+    expect(byLabel(r.lines, 'EDF')).toMatchObject({ nature: 'retrait', target: { kind: 'account', id: CASH_ID } });
     expect(byLabel(r.lines, 'FAVEUR')).toBe(byLabel(lines, 'FAVEUR'));
     // L'annulation consiste à reprendre le tableau d'origine, inchangé.
     expect(byLabel(lines, 'EDF').nature).toBe('depense');
