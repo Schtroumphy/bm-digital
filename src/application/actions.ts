@@ -6,6 +6,7 @@ import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId } fr
 import { cashPartAbove } from '../domain/cash';
 import { exceedsEnvelopeCash } from '../domain/envelopeCash';
 import { isMonthLocked } from '../domain/ledger';
+import { deducedDate, validateBudgetStart } from '../domain/periods';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
@@ -160,7 +161,11 @@ export function createFirstMonth(d: BudgetData, draft: SetupDraft, today = curre
   const before = addMonths(m, -1);
   d.statements[before] = Object.fromEntries([...rows.epa, ...rows.inv].map(r => [r.id, r.balance]));
   d.envHistory[before] = Object.fromEntries(rows.env.map((r): [string, EnvHistory] => [r.id, { alloc: 0, spent: 0, balance: r.balance }]));
-  if (d.firstMonth === null) d.firstMonth = m;
+  if (d.firstMonth === null) {
+    d.firstMonth = m;
+    // The optional start of the budget (spec 0039, RG2): kept only when it is within the bounds of the first month and differs from the 1st of it.
+    if (draft.startDate && draft.startDate !== `${m}-01` && validateBudgetStart(d, draft.startDate) === null) d.settings.startDate = draft.startDate;
+  }
   return true;
 }
 
@@ -329,6 +334,15 @@ export function setTransactionDetail(d: BudgetData, id: string, detail: string):
   return true;
 }
 
+/** Flags or unflags an expense or an entry, to find it again through the filter. Allowed on a locked month: it changes no figure. */
+export function setTransactionFlag(d: BudgetData, id: string, flagged: boolean): boolean {
+  const t = d.transactions.find(x => x.id === id);
+  if (!t) return false;
+  if (flagged) t.flagged = true;
+  else delete t.flagged;
+  return true;
+}
+
 /** What `updateTransaction` can change on an expense or an entry: everything but its month of attachment and its import trace. */
 export interface TransactionPatch {
   label: string;
@@ -347,7 +361,7 @@ export interface TransactionPatch {
 /**
  * Rewrites an expense or an entry (label, amount, bank date, detail, nature, imputation) under the rules of `addTransaction`: it is removed and
  * added again, and put back untouched when the new version is refused. Its month of attachment, its account (unless the imputation changes it) and
- * its import trace (deduplication) are kept. A date outside the month of attachment becomes its bank date (spec 0015, RG4). Refused (false) on a locked month.
+ * its import trace (deduplication) are kept. A date that the month of attachment and the day cannot give back (outside its period, or the other occurrence of a day that exists twice in it) becomes its bank date (spec 0015, RG4; spec 0039, RG11a). Refused (false) on a locked month.
  */
 export function updateTransaction(d: BudgetData, id: string, patch: TransactionPatch): boolean {
   const old = d.transactions.find(x => x.id === id);
@@ -361,7 +375,7 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date.slice(0, 7) === old.month ? {} : { bankDate: patch.date }) };
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...(same && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;

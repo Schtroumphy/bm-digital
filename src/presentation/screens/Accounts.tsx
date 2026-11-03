@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccountDot } from '../components/AccountPicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
+import { PeriodBar } from '../components/PeriodBar';
+import { outOfPeriodReason } from '../components/EntryDate';
 import { GOOD, tone, toneVars } from '../components/tone';
 import {
   addBankAccount,
@@ -21,7 +23,9 @@ import { decideAccountKind, linkLineToAccount } from '../../application/accountK
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
 import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
 import { assignedOperations, assignedTotals } from '../../domain/assignedOperations';
-import { MOVE_LEGEND, attachedMovements, realMovements } from '../../domain/bankMovements';
+import { MOVE_LEGEND, attachedMovements, beforeBudgetMovements, realMovements } from '../../domain/bankMovements';
+import { movementsToCsv } from '../../domain/movementsCsv';
+import { budgetStart, fullDate, monthOfDate, periodOf } from '../../domain/periods';
 import { IN_BUDGET_HINT, OPENING_MESSAGE } from '../components/hints';
 import { openingCashRefusal, setEnvelopeOpeningCash } from '../../application/envelopes';
 import { envelopeAccountTotal, envelopeCash, envelopesGroupTotals } from '../../domain/envelopeCash';
@@ -31,7 +35,6 @@ import type { AccountKind, BankAccount, MonthKey, TxType } from '../../domain/ty
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
-/** Kinds the user can choose (spec 0010, RG3). « enveloppe » is never chosen: the account of an envelope is made with its envelope (spec 0011, RG3). */
 /** Libellé d'un mouvement où chaque émoji de la légende porte sa description en infobulle. */
 function markedLabel(label: string): ReactNode {
   return Array.from(label).map((ch, i) => {
@@ -40,6 +43,7 @@ function markedLabel(label: string): ReactNode {
   });
 }
 
+/** Kinds the user can choose (spec 0010, RG3). « enveloppe » is never chosen: the account of an envelope is made with its envelope (spec 0011, RG3). */
 const KIND_CHOICES: { value: AccountKind; label: string }[] = [
   { value: 'courant', label: 'Courant' },
   { value: 'epargne', label: 'Épargne' },
@@ -85,12 +89,20 @@ const MOVE_KIND: Record<string, string> = { expense: 'Écriture', transfer: 'Tra
 /** Nature of an expense or an entry, read from the budget item it is attached to. */
 const IMPUTATION_KIND: Record<TxType, string> = { var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie d’épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent' };
 
+/** Emoji marks of the labels (legend of the account detail): left out of the export. */
+const MARKS = new RegExp(`(${MOVE_LEGEND.map(l => l.mark).join('|')})\\s*`, 'gu');
+
+/** Category of a real movement, as shown under its label and used by the filter of the account panel. */
+const categoryOf = (mv: { kind: string; imputation?: { type: TxType } }): string => (mv.imputation ? IMPUTATION_KIND[mv.imputation.type] : MOVE_KIND[mv.kind] ?? 'Écriture');
+
 const groupOf = (a: BankAccount): Group =>
   isEnvelopeAccount(a) ? 'env' : a.isDefault ? 'main' : kindOf(a) === 'epargne' ? 'sav' : kindOf(a) === 'invest' ? 'inv' : 'other';
 const tagOf = (a: BankAccount, g: Group) => (g === 'main' ? 'Principal' : g === 'env' ? 'Enveloppe' : g === 'sav' ? 'Épargne' : g === 'inv' ? 'Investissement' : a.inBudget ? 'Autre compte' : 'Hors budget');
 /** Savings and investment accounts are read by what is paid in; the others by what is spent. */
 const isSaving = (g: Group) => g === 'sav' || g === 'inv';
 const dayOf = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+/** Date at which an account's opening balance is read: the start of the period of its opening month (spec 0039, RG12). */
+const openingDayOf = (d: Parameters<typeof periodOf>[0], a: BankAccount) => dayOf(periodOf(d, a.openingMonth).start);
 
 export function AccountsScreen({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
@@ -277,7 +289,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </div>
         )}
         <div>
-          <div className="kpi-label cpt-label-tip">Solde de départ, au 1er {monthLabel(a.openingMonth).toLowerCase()}<span className="cpt-tip" title="Solde du compte le 1er jour du mois de départ, avant toute écriture de ce mois. Ce que le compte a reçu ou payé avant (un salaire reçu le 30 du mois précédent, par exemple) y est déjà : ne le retranchez pas." aria-label="Voir l’explication">i</span></div>
+          <div className="kpi-label cpt-label-tip">Solde de départ, au {openingDayOf(data, a)}<span className="cpt-tip" title="Solde du compte à la date de début de la période, avant toute écriture de ce jour. Ce que le compte a reçu ou payé avant cette date y est déjà : ne le retranchez pas." aria-label="Voir l’explication">i</span></div>
           <EditableAmount
             id={`ao:${a.id}`}
             value={a.openingBalance}
@@ -285,7 +297,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
             onCommit={v => v !== null && update(d => setBankAccountOpening(d, a.id, { balance: v }))}
             className="cpt-opening"
             inputClassName="cell-input is-stmt"
-            title="Solde au 1er jour du mois de départ"
+            title="Solde à la date de début de la période du mois de départ"
           >
             {money(a.openingBalance)}
           </EditableAmount>
@@ -297,7 +309,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
         </div>
         {env && (
           <div>
-            <div className="kpi-label cpt-label-tip">Espèces de départ (à part), au 1er {monthLabel(a.openingMonth).toLowerCase()}<span className="cpt-tip" title="Espèces de l’enveloppe au 1er jour du mois de départ. Ce n’est pas un solde du compte : elles n’entrent pas dans son solde réel." aria-label="Voir l’explication">i</span></div>
+            <div className="kpi-label cpt-label-tip">Espèces de départ (à part), au {openingDayOf(data, a)}<span className="cpt-tip" title="Espèces de l’enveloppe à la date de début de la période du mois de départ. Ce n’est pas un solde du compte : elles n’entrent pas dans son solde réel." aria-label="Voir l’explication">i</span></div>
             <EditableAmount
               id={`aoc:${a.id}`}
               value={env.openingCash}
@@ -310,7 +322,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
               }}
               className="cpt-opening"
               inputClassName="cell-input is-stmt"
-              title={cashLocked ? 'Le mois de départ est clos ou verrouillé : le départ en espèces n’est plus modifiable.' : 'Espèces au 1er jour du mois de départ'}
+              title={cashLocked ? 'Le mois de départ est clos ou verrouillé : le départ en espèces n’est plus modifiable.' : 'Espèces à la date de début de la période du mois de départ'}
             >
               {money(env.openingCash)}
             </EditableAmount>
@@ -366,7 +378,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </div>
           <div style={{ flex: 1 }}>
             <div className="banner-title">Saisis les soldes de départ</div>
-            <div className="banner-text">Indique le solde de ton compte principal au 1er jour de son mois de départ : sans lui, les soldes calculés sont faux.</div>
+            <div className="banner-text">Indique le solde de ton compte principal à la date de début de son mois de départ : sans lui, les soldes calculés sont faux.</div>
           </div>
           <div className="btn-quiet" onClick={() => update(d => confirmOpeningBalances(d))}>
             C’est bon, 0 € partout
@@ -492,6 +504,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           })}
         </div>
       )}
+      <PeriodBar key={month} month={month} />
       <div className="tabs" role="group" aria-label="Mode d’affichage">
         <div className={`tab${tab === 'view' ? ' is-active' : ''}`} onClick={() => setTab('view')}>Vue d’ensemble</div>
         <div className={`tab${tab === 'setup' ? ' is-active' : ''}`} onClick={() => setTab('setup')}>
@@ -512,18 +525,40 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
 function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankAccount; month: MonthKey; tab: PanelTab; setTab: (t: PanelTab) => void; onClose: () => void }) {
   const { data, ledger } = useStore();
   const asideRef = useRef<HTMLElement>(null);
+  // Categories kept by the filter of the movements (empty = no filter). Reset when the account or the month changes.
+  const [kept, setKept] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  useEffect(() => { setKept([]); setFilterOpen(false); }, [account.id, month]);
   // Picking an account brings the top of its panel into view.
   useEffect(() => { asideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [account.id]);
   const g = groupOf(account);
   const r = ledger.bankMonth(account.id, month);
-  const moves = [...realMovements(data, account.id, month), ...attachedMovements(data, account.id, month)].sort((x, y) => y.date.localeCompare(x.date));
+  const period = periodOf(data, month);
+  // Entries dated before the start of the budget are in no period: listed in the first month, greyed, outside the balances (spec 0039, RG17).
+  const before = month === data.firstMonth ? beforeBudgetMovements(data, account.id) : [];
+  const start = budgetStart(data);
+  const moves = [...realMovements(data, account.id, month), ...attachedMovements(data, account.id, month), ...before].sort((x, y) => y.date.localeCompare(x.date));
   // Operations assigned to this account (spec 0028): listed in grey, never summed in the balance nor in the flows above.
   const assigned = assignedOperations(data, account.id, month);
   const assignedSum = assignedTotals(assigned);
-  // Real movements and assigned operations share one list, newest first.
+  const categories = [...new Set(moves.map(categoryOf))].sort((a, b) => a.localeCompare(b, 'fr'));
+  const filtering = kept.length > 0;
+  const shown = filtering ? moves.filter(mv => kept.includes(categoryOf(mv))) : moves;
+  const shownTotal = round2(shown.reduce((sum, mv) => sum + mv.amount, 0));
+  // Downloads the movements shown (the filter applies) as a CSV file.
+  const exportCsv = () => {
+    const csv = movementsToCsv(shown.map(mv => ({ date: mv.date, label: mv.label.replace(MARKS, '').trim(), category: categoryOf(mv), amount: mv.amount, outside: !!(mv.outOfMonth || mv.beforeBudget) })));
+    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${account.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-${month}${filtering ? '-filtre' : ''}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  // Real movements and assigned operations share one list, newest first. A filter on the categories leaves out the assigned operations.
   const listed = [
-    ...moves.map(move => ({ date: move.date, move, assigned: undefined })),
-    ...assigned.map(op => ({ date: op.date, move: undefined, assigned: op })),
+    ...shown.map(move => ({ date: move.date, move, assigned: undefined })),
+    ...(filtering ? [] : assigned).map(op => ({ date: op.date, move: undefined, assigned: op })),
   ].sort((x, y) => y.date.localeCompare(x.date));
   const rows = ledger.months.flatMap(m => {
     const b = ledger.bankMonth(account.id, m);
@@ -544,11 +579,11 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
         </div>
         <div className="cpt-panel-solde">
           <span className="drawer-solde">{r ? money(r.balance) : '—'}</span>
-          <span className="muted" title={isEnvelopeAccount(account) ? VIRTUAL_HINT : undefined}>{isEnvelopeAccount(account) ? 'solde virtuel' : 'solde réel'} · fin {monthLabel(month).toLowerCase()}</span>
+          <span className="muted" title={isEnvelopeAccount(account) ? VIRTUAL_HINT : undefined}>{isEnvelopeAccount(account) ? 'solde virtuel' : 'solde réel'} · fin {monthLabel(month).toLowerCase()} ({dayOf(period.end)})</span>
         </div>
         {r && (
           <div className="cpt-stats">
-            <div className="stat"><div className="stat-label">Début du mois</div><div className="stat-value">{money(r.start)}</div></div>
+            <div className="stat"><div className="stat-label">Solde de début ({dayOf(period.start)})</div><div className="stat-value">{money(r.start)}</div></div>
             <div className="stat"><div className="stat-label">Entrées</div><div className="stat-value" style={{ color: GOOD }}>{money(r.in, true)}</div></div>
             <div className="stat"><div className="stat-label">Sorties</div><div className="stat-value">{money(-r.out)}</div></div>
           </div>
@@ -557,13 +592,40 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
       <div className="tabs cpt-panel-tabs" role="group" aria-label="Contenu du compte">
         <div className={`tab${tab === 'moves' ? ' is-active' : ''}`} onClick={() => setTab('moves')}>Mouvements</div>
         <div className={`tab${tab === 'hist' ? ' is-active' : ''}`} onClick={() => setTab('hist')}>Historique</div>
+        {tab === 'moves' && shown.length > 0 && (
+          <span className="icon-btn" role="button" style={{ marginLeft: 'auto' }} aria-label="Exporter les mouvements en CSV" title={`Exporter ${filtering ? 'les mouvements filtrés' : 'les mouvements du mois'} en CSV`} onClick={exportCsv}><Icon name="download" size={14} /></span>
+        )}
+        {tab === 'moves' && categories.length > 1 && (
+          <span className="acc-picker">
+            <span className={`icon-btn${filtering ? ' is-on' : ''}`} role="button" aria-label="Filtrer les mouvements" title="Filtrer les mouvements" onClick={() => setFilterOpen(o => !o)}><Icon name="filter" size={14} /></span>
+            {filterOpen && (
+              <>
+                <div className="backdrop" onClick={() => setFilterOpen(false)} />
+                <div className="popmenu acc-menu" style={{ right: 0, minWidth: 200 }}>
+                  <div className="popmenu-label">Type de mouvement</div>
+                  {categories.map(c => (
+                    <label key={c} className="popmenu-item">
+                      <span className="acc-item"><input type="checkbox" checked={kept.includes(c)} onChange={() => setKept(k => (k.includes(c) ? k.filter(x => x !== c) : [...k, c]))} style={{ accentColor: 'var(--violet-ink)' }} />{c}</span>
+                    </label>
+                  ))}
+                  {filtering && (<><div className="popmenu-sep" /><div className="popmenu-item" onClick={() => { setKept([]); setFilterOpen(false); }}>Effacer le filtre</div></>)}
+                </div>
+              </>
+            )}
+          </span>
+        )}
       </div>
       {tab === 'moves' ? (
         moves.length === 0 && assigned.length === 0 ? (
           <div className="empty">Aucune écriture ce mois-ci.</div>
         ) : (
           <>
-          {assigned.length > 0 && (
+          {filtering && (
+            <div className="assigned-summary">
+              Filtre : {kept.join(', ')} · {shown.length} mouvement{shown.length > 1 ? 's' : ''} · total {money(shownTotal, true)}
+            </div>
+          )}
+          {!filtering && assigned.length > 0 && (
             <div className="assigned-summary">
               Affecté ce mois-ci : dépenses {money(assignedSum.expenses)} · entrées {money(assignedSum.entries)} · net {money(assignedSum.net, true)}
             </div>
@@ -589,11 +651,14 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
               }
               const mv = item.move;
               return (
-                <li key={i} className="cpt-move" style={mv.outOfMonth ? { opacity: 0.65 } : undefined} title={mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${mv.date.slice(8, 10)}/${mv.date.slice(5, 7)}/${mv.date.slice(0, 4)} : comptée dans le solde de ${monthLabel(mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
+                <li key={i} className="cpt-move" style={mv.outOfMonth || mv.beforeBudget ? { opacity: 0.65 } : undefined} title={mv.beforeBudget && start ? outOfPeriodReason(start) : mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${fullDate(mv.date)} : comptée dans le solde de ${monthLabel(monthOfDate(data, mv.date) ?? mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
                   <span className="cpt-move-date">{dayOf(mv.date)}</span>
                   <span className="cpt-move-label">
                     <span className="ellipsis" title={mv.label}>{markedLabel(mv.label)}</span>
-                    <span className="muted is-small ellipsis">{mv.imputation ? `${IMPUTATION_KIND[mv.imputation.type]} · ${mv.imputation.name}` : MOVE_KIND[mv.kind] ?? 'Écriture'}</span>
+                    <span className="muted is-small ellipsis">
+                      {mv.beforeBudget && <span className="cpt-tag" style={{ marginRight: 6 }}>Hors période</span>}
+                      {mv.imputation ? `${categoryOf(mv)} · ${mv.imputation.name}` : categoryOf(mv)}
+                    </span>
                   </span>
                   <b className="num" style={mv.amount > 0 ? { color: GOOD } : undefined}>{money(mv.amount, true)}</b>
                 </li>

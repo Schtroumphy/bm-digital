@@ -34,6 +34,7 @@ export function toRows(d: BudgetData): TableRows {
     emergency_due: orNull(d.settings.emergencyDue),
     invest_due: orNull(d.settings.investDue),
     goals_migrated: d.settings.goalsMigrated === true,
+    start_date: orNull(d.settings.startDate),
   });
 
   (d.goals ?? []).forEach(g =>
@@ -102,7 +103,7 @@ export function toRows(d: BudgetData): TableRows {
   );
 
   for (const [month, md] of Object.entries(d.months)) {
-    rows.months.push({ month, initialized: md.initialized, closed: orNull(md.closed) });
+    rows.months.push({ month, initialized: md.initialized, closed: orNull(md.closed), end_date: orNull(md.endDate) });
     md.lines.forEach((l, position) =>
       rows.budget_lines.push({
         month,
@@ -167,6 +168,7 @@ export function toRows(d: BudgetData): TableRows {
       pay_mode: orNull(t.payMode),
       assigned_account_id: orNull(t.assignedAccountId),
       off_budget: orNull(t.offBudget),
+      flagged: orNull(t.flagged),
       position,
     }),
   );
@@ -296,6 +298,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       alloc: {},
       transfersDone: {},
       closed: orUndefined(m.closed),
+      endDate: orUndefined(m.end_date),
     });
   }
   for (const r of byPosition(rows.budget_lines)) months[r.month]?.lines.push(lineOf(r));
@@ -367,6 +370,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       payMode: orUndefined(r.pay_mode) as PayMode | undefined,
       assignedAccountId: orUndefined(r.assigned_account_id),
       offBudget: r.off_budget ? true : undefined,
+      flagged: r.flagged ? true : undefined,
     }),
   );
 
@@ -483,6 +487,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       emergencyDue: orUndefined(s.emergency_due),
       investDue: orUndefined(s.invest_due),
       goalsMigrated: s.goals_migrated ? (true as const) : undefined,
+      startDate: orUndefined(s.start_date),
     }),
   };
 }

@@ -3,22 +3,25 @@ import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { EditableAmount } from '../components/Editable';
 import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { DetailInput } from '../components/DetailInput';
+import { EntryDate } from '../components/EntryDate';
 import { Icon } from '../components/Icon';
 import { GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
-import { addTransaction, deleteTransaction, deleteTransactions, setStatement, transactionsCsv, updateTransaction, setTransactionDetail } from '../../application/actions';
+import { deleteTransaction, deleteTransactions, setStatement, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
+import { addManualTransaction, addManualTransfer } from '../../application/manualEntry';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
 import { defaultTransferTarget, similarPointedItem, transferItems } from '../../domain/transfers';
-import { addTransfer, deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
+import { deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, assignableAccounts, bankAccount, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget, transactionBox } from '../../domain/bank';
-import { lineCheck } from '../../domain/checkoff';
+import { isoDate, lineCheck } from '../../domain/checkoff';
+import { defaultEntryDate, isRealDate } from '../../domain/periods';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { exceedsEnvelopeCash } from '../../domain/envelopeCash';
-import { addMonths, currentMonthKey, dayLabel, money, monthLabel, parseAmount, parseMonth, round2, sanitizeAmountInput } from '../../domain/format';
+import { addMonths, money, monthLabel, parseAmount, round2, sanitizeAmountInput } from '../../domain/format';
 import { accounts, isMonthLocked, monthLines } from '../../domain/ledger';
 import type { AccountMovement, MonthKey, MovementTarget, PayMode, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
@@ -59,15 +62,6 @@ export function ExpensesScreen({ initialTab = 'saisie', month, statementSource }
   );
 }
 
-/** Day given to a new expense: today in the current month, else the month's last day (past) or first day (future). */
-function defaultDay(month: MonthKey) {
-  const now = currentMonthKey();
-  if (month === now) return new Date().getDate();
-  if (month > now) return 1;
-  const { year, month: m } = parseMonth(month);
-  return new Date(year, m + 1, 0).getDate();
-}
-
 /** Libellé d'une écriture (+ détail) : clic sur le libellé pour ajouter ou modifier le détail (le crayon de fin de ligne modifie toute l'écriture). */
 /** `attach`: where the entry is attached (budget line, or the link of a transfer), shown under the detail. */
 function EntryLabel({ entry, attach, hideDetail, onOpen }: { entry: { id: string; label: string; detail?: string }; attach?: string; hideDetail?: boolean; onOpen: (id: string, detail?: string) => void }) {
@@ -98,8 +92,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
+  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
   const [transfer, setTransfer] = useState(false);
@@ -133,6 +127,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   const assignOptions = isAssignableType(form.type) ? assignableAccounts(data, accountId) : [];
   const assignedId = form.assignedAccountId === OFF_BUDGET_CHOICE && isAssignableType(form.type) ? OFF_BUDGET_CHOICE : assignOptions.some(a => a.id === form.assignedAccountId) ? form.assignedAccountId : '';
   const amount = parseAmount(form.amount) ?? 0;
+  // The real date of the new entry is always explicit (spec 0039, RG11): today when it is in the period of the month, else the nearest end of the period.
+  const entryDate = form.date || defaultEntryDate(data, month, isoDate());
   // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
   const budgetAmount = isAccountInBudget(data, accountId) ? amount : 0;
 
@@ -151,9 +147,12 @@ function EntryTab({ month }: { month: MonthKey }) {
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId || t.assignedAccountId === filter.accountId)
     .filter(t => matchesEntrySearch(t, filter.q))
     .filter(t => !filter.pointedOnly || isPointed(t))
-    .filter(t => (!filter.from || bankDateOf(t) >= filter.from) && (!filter.to || bankDateOf(t) <= filter.to))
+    .filter(t => !filter.flaggedOnly || t.flagged === true)
+    .filter(t => (!filter.from || bankDateOf(t, data) >= filter.from) && (!filter.to || bankDateOf(t, data) <= filter.to))
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
-    .sort((a, b) => bankDateOf(b).localeCompare(bankDateOf(a)));
+    .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
+  const isFiltered = !!(filter.q || filter.type !== 'all' || filter.accountId !== 'all' || filter.pointedOnly || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
+  const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
   // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
   const picked = shown.filter(t => selected.has(t.id));
   const allPicked = shown.length > 0 && picked.length === shown.length;
@@ -172,7 +171,7 @@ function EntryTab({ month }: { month: MonthKey }) {
   };
   const targetsOf = (type: TxType): [string, string][] =>
     type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, l.name]) : type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, l.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
-  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t), detail: t.detail ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? (t.offBudget ? OFF_BUDGET_CHOICE : '') });
+  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t, data), detail: t.detail ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? (t.offBudget ? OFF_BUDGET_CHOICE : '') });
   const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target, assignedAccountId: editingTx.assignedAccountId === OFF_BUDGET_CHOICE ? null : editingTx.assignedAccountId || null, offBudget: editingTx.assignedAccountId === OFF_BUDGET_CHOICE };
   // The edit is tried on a copy first: a refused version (locked month, imputation or account not allowed) leaves the entry untouched and keeps the form open.
   const editAllowed = !!editingTx && !!editPatch && updateTransaction(structuredClone(data), editingTx.id, editPatch);
@@ -184,8 +183,8 @@ function EntryTab({ month }: { month: MonthKey }) {
   };
   const exportPicked = () => {
     if (picked.length === 0) return;
-    const rows = [...picked].sort((a, b) => bankDateOf(a).localeCompare(bankDateOf(b))).map(t => ({
-      date: bankDateOf(t),
+    const rows = [...picked].sort((a, b) => bankDateOf(a, data).localeCompare(bankDateOf(b, data))).map(t => ({
+      date: bankDateOf(t, data),
       label: t.label,
       detail: t.detail ?? '',
       type: TYPE_LABEL[t.type],
@@ -242,12 +241,12 @@ function EntryTab({ month }: { month: MonthKey }) {
   }
 
   const add = () => {
-    if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused) return;
+    if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused || !isRealDate(entryDate)) return;
     update(d =>
-      addTransaction(d, { id: newId('t'), month, day: defaultDay(month), label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, ...(cashLine ? {} : { accountId }), detail: form.detail, ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }),
+      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(form.type, target), amount, type: form.type, target, ...(cashLine ? {} : { accountId }), detail: form.detail, ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '' }));
+    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -273,6 +272,10 @@ function EntryTab({ month }: { month: MonthKey }) {
           </label>
         </div>
         <label className="field-w">
+          <span className="field-label">Date <span className="field-optional">de l’opération</span></span>
+          <input className="text-input" type="date" value={entryDate} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+        </label>
+        <label className="field-w">
           <span className="field-label">Détail <span className="field-optional">facultatif</span></span>
           <DetailInput value={form.detail} onChange={detail => setForm(f => ({ ...f, detail }))} onEnter={add} />
         </label>
@@ -290,7 +293,7 @@ function EntryTab({ month }: { month: MonthKey }) {
           </div>
         </div>
         {transfer ? (
-          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '' }))} />
+          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} date={entryDate} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '', date: '' }))} />
         ) : (
           <>
         <div>
@@ -414,18 +417,30 @@ function EntryTab({ month }: { month: MonthKey }) {
                   <input type="checkbox" checked={filter.pointedOnly} onChange={e => setFilter(f => ({ ...f, pointedOnly: e.target.checked }))} />
                   Pointées
                 </label>
+                <label className="tx-pointed-filter" title="N’afficher que les opérations marquées d’un drapeau">
+                  <input type="checkbox" checked={filter.flaggedOnly} onChange={e => setFilter(f => ({ ...f, flaggedOnly: e.target.checked }))} />
+                  Marquées
+                </label>
                 <label className="tx-pointed-filter" title="Afficher le détail sous le libellé de chaque ligne">
                   <input type="checkbox" checked={filter.showDetail} onChange={e => setFilter(f => ({ ...f, showDetail: e.target.checked }))} />
                   Détails
                 </label>
-                {(filter.from || filter.to || filter.min || filter.max || filter.pointedOnly) && (
-                  <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '', pointedOnly: false }))}>
+                {(filter.from || filter.to || filter.min || filter.max || filter.pointedOnly || filter.flaggedOnly) && (
+                  <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '', pointedOnly: false, flaggedOnly: false }))}>
                     Effacer
                   </span>
                 )}
               </div>
             </div>
           </div>
+          {isFiltered && (
+            <div className="tx-bulk">
+              <span>
+                {shown.length} opération{shown.length > 1 ? 's' : ''} filtrée{shown.length > 1 ? 's' : ''} · Total dépenses {money(spentOf(shown))}
+                {shownRevenue > 0 && ` · Revenus ${money(shownRevenue)} · Différence ${money(round2(shownRevenue - spentOf(shown)))}`}
+              </span>
+            </div>
+          )}
           {picked.length > 0 && (
             <div className="tx-bulk">
               <span>
@@ -456,7 +471,7 @@ function EntryTab({ month }: { month: MonthKey }) {
             <Fragment key={t.id}>
               <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}${isPointed(t) ? ' is-pointed' : ''}`}>
                 <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
-                <span className="muted" title={bankDateOf(t).slice(0, 7) !== t.month ? `Rattachée à ${monthLabel(t.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(t).slice(0, 7), Number(bankDateOf(t).slice(8, 10)))}</span>
+                <EntryDate entry={t} attachedWord="Rattachée" />
                 <EntryLabel entry={t} hideDetail={!filter.showDetail} onOpen={openDetail} />
                 <span className="tx-target">
                   <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
@@ -467,6 +482,11 @@ function EntryTab({ month }: { month: MonthKey }) {
                       {data.accounts.find(a => a.id === t.assignedAccountId)?.name ?? 'Compte'}
                     </span>
                   )}
+                  {t.payMode === 'especes' && (t.type === 'var' || t.type === 'env') && (
+                    <span className="tx-assigned" title="Payée en espèces : ne débite aucun compte, absente des mouvements du compte">
+                      Espèces
+                    </span>
+                  )}
                   {t.offBudget && (
                     <span className="tx-assigned" title="Hors budget : n’entre pas dans les chiffres du budget, sans effet sur les soldes">
                       Hors budget
@@ -475,16 +495,19 @@ function EntryTab({ month }: { month: MonthKey }) {
                 </span>
                 <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
                 <b className="num" style={signedAmount(t) > 0 ? { color: GOOD } : undefined}>{money(signedAmount(t), true)}</b>
-                {locked ? <span /> : (
-                  <span className="tx-actions">
+                <span className="tx-actions">
+                  <span className={`icon-btn${t.flagged ? ' is-on' : ''}`} title={t.flagged ? 'Retirer le drapeau' : 'Marquer d’un drapeau (filtre « Marquées »)'} onClick={() => update(d => setTransactionFlag(d, t.id, !t.flagged))}>
+                    <Icon name="flag" size={13} stroke={2} />
+                  </span>
+                  {!locked && (<>
                     <span className="icon-btn" title="Modifier" onClick={() => (editingTx?.id === t.id ? setEditingTx(null) : startEdit(t))}>
                       <Icon name="pencil" size={13} stroke={2} />
                     </span>
                     <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
                       <Icon name="close" size={14} />
                     </span>
-                  </span>
-                )}
+                  </>)}
+                </span>
               </div>
               {editingTx?.id === t.id && (
                 <div className="tx-edit">
@@ -584,12 +607,12 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
   // « Réparti dans les enveloppes » next to a debit « vers enveloppes » (spec 0016, RG29): calculated, never typed, no balance.
   const split = envelopeSplit(data, month);
   // Several debits « vers enveloppes » in a month: the monthly total is shown once, on the first one listed.
-  const firstPoolId = [...movements].sort((a, b) => bankDateOf(b).localeCompare(bankDateOf(a))).find(m => isEnvelopesPool(m.toAccountId))?.id;
+  const firstPoolId = [...movements].sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data))).find(m => isEnvelopesPool(m.toAccountId))?.id;
   // State of the link between the two lines of the bank file (spec 0016, RG18).
   const linkLabel = (m: AccountMovement) => {
     const state = linkStateOf(m);
     const day = (date: string) => date.slice(8, 10) + '/' + date.slice(5, 7);
-    if (state === 'lie') return `Lié · Débit ${day(debitDateOf(m))} ${nameOf(m.fromAccountId)}, Crédit ${day(creditDateOf(m))} ${nameOf(m.toAccountId)}`;
+    if (state === 'lie') return `Lié · Débit ${day(debitDateOf(m, data))} ${nameOf(m.fromAccountId)}, Crédit ${day(creditDateOf(m, data))} ${nameOf(m.toAccountId)}`;
     if (state === 'debit') return 'Une face (débit)';
     if (state === 'credit') return 'Une face (crédit)';
     return null;
@@ -611,12 +634,12 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
         <b>{money(movements.reduce((a, m) => a + m.amount, 0))}</b>
       </div>
       {[...movements]
-        .sort((a, b) => bankDateOf(b).localeCompare(bankDateOf(a)))
+        .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)))
         .map(m =>
           editing?.id === m.id ? (
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
-                <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
+                <EntryDate entry={m} attachedWord="Rattaché" />
                 <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
                 <span className="muted ellipsis">
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
@@ -633,7 +656,7 @@ function MovementsBlock({ month, locked, showDetail }: { month: MonthKey; locked
           ) : (
             <Fragment key={m.id}>
               <div className={`mv-grid tx-row${m.target?.kind === 'line' && lineCheck(data, month, m.target.key) ? ' is-pointed' : ''}`}>
-                <span className="muted" title={bankDateOf(m).slice(0, 7) !== m.month ? `Rattaché à ${monthLabel(m.month).toLowerCase()}` : undefined}>{dayLabel(bankDateOf(m).slice(0, 7), Number(bankDateOf(m).slice(8, 10)))}</span>
+                <EntryDate entry={m} attachedWord="Rattaché" />
                 <EntryLabel entry={m} hideDetail={!showDetail} attach={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join(' · ')} onOpen={openDetail} />
                 <span className="muted ellipsis" title={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join('\n')}>
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
@@ -806,14 +829,13 @@ function Spark({ values }: { values: number[] }) {
  * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget item the transfer stands for
  * (optional; the envelope or the savings line of the destination is proposed). The label, detail and amount are those of the form.
  */
-function TransferFields({ month, locked, label, detail, amount, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; onDone: () => void }) {
+function TransferFields({ month, locked, label, detail, amount, date, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; date: string; onDone: () => void }) {
   const { data, update } = useStore();
   // The reserved « Espèces » account is hidden (spec 0037, RG21).
   const accounts = data.accounts.filter(a => !a.archived && a.id !== CASH_ACCOUNT_ID);
   const main = accounts.find(a => a.isDefault) ?? accounts[0];
   const [fromId, setFromId] = useState(main?.id ?? '');
   const [toChoice, setToChoice] = useState('');
-  const [day, setDay] = useState(String(defaultDay(month)));
   // `undefined`: not chosen yet, the default of the destination applies; `''`: « aucune ».
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   // « Espèces » (a withdrawal, spec 0037, RG1) is a destination of any account but an envelope's; it is not an account and credits none.
@@ -823,11 +845,10 @@ function TransferFields({ month, locked, label, detail, amount, onDone }: { mont
   const valueOf = (t: MovementTarget | null | undefined) => (t ? (t.kind === 'line' ? `line:${t.key}` : `env:${t.id}`) : '');
   const value = toId === CASH_ID ? '' : chosen !== undefined ? chosen : valueOf(defaultTransferTarget(data, month, toId, fromId));
   const item = items.find(i => valueOf(i.target) === value);
-  const dayNumber = Number(day);
-  const ready = !!fromId && !!toId && (fromId !== toId) && amount > 0 && Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31 && !locked;
+  const ready = !!fromId && !!toId && (fromId !== toId) && amount > 0 && isRealDate(date) && !locked;
   const add = () => {
     if (!ready) return;
-    update(d => void addTransfer(d, { id: newId('m'), month, day: dayNumber, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(item ? { target: item.target } : {}), detail }));
+    update(d => void addManualTransfer(d, { id: newId('m'), month, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(item ? { target: item.target } : {}), detail }, date));
     setChosen(undefined);
     onDone();
   };
@@ -862,10 +883,6 @@ function TransferFields({ month, locked, label, detail, amount, onDone }: { mont
         {accountChips(toId, id => { setToChoice(id); setChosen(undefined); }, fromId, canWithdraw)}
       </div>
       <div className="form-row">
-        <label className="field-w">
-          <span className="field-label">Jour</span>
-          <input className="text-input" inputMode="numeric" value={day} onChange={e => setDay(e.target.value.replace(/\D/g, ''))} />
-        </label>
         {toId !== CASH_ID && (
           <label className="field-w">
             <span className="field-label">Rattacher à (facultatif)</span>

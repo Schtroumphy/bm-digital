@@ -57,12 +57,12 @@ export function PointageCard({ month, locked, today }: { month: MonthKey; locked
 
 const IGNORED_TIP = 'Ce compte est hors budget : le mouvement est enregistré sur lui seul et ne modifie pas le solde du compte principal.';
 
-const DATE_ERRORS: Record<BalanceDateError, string> = { invalid: 'Date invalide', outside: 'Date hors du mois', future: 'Date dans le futur' };
+const DATE_ERRORS: Record<BalanceDateError, string> = { invalid: 'Date invalide', outside: 'Date hors de la période du mois', future: 'Date dans le futur' };
 
 function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: MonthKey; locked: boolean; today: string }) {
-  const { update } = useStore();
+  const { data, update } = useStore();
   const id = p.account.id;
-  const bounds = balanceDateBounds(month, today);
+  const bounds = balanceDateBounds(data, month, today);
   // Nothing can be dated in a future month (RG32).
   const canWrite = !locked && bounds.min <= bounds.max && p.real !== null;
   // Date of the statement being edited, why the last attempt was refused, adjustment form, adjustment being cancelled.
@@ -78,7 +78,7 @@ function AccountBody({ p, month, locked, today }: { p: AccountPointage; month: M
     setEditingDate(true);
   };
   const saveStatement = (amount: number, on: string) => {
-    const err = validateBalanceDate(month, on, today);
+    const err = validateBalanceDate(data, month, on, today);
     setError(err ? DATE_ERRORS[err] : null);
     if (!err) update(d => void setAccountStatement(d, month, id, amount, on, today));
   };

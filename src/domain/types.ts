@@ -85,6 +85,11 @@ export interface MonthData {
   cashPart?: Record<string, number>;
   /** Personal notes of the month, in creation order (spec 0027, RG12). Editable even on a locked or uninitialized month; never copied to another month. */
   notes?: MonthNote[];
+  /**
+   * Last day of the month's period, `YYYY-MM-DD` (spec 0039, RG3). Absent = the default end (same day number as the end of the previous month, `periods.ts`).
+   * The start of a month is never stored: it is the day after the end of the previous one.
+   */
+  endDate?: string;
 }
 
 /** A note of the « Notes du mois » card of the dashboard (spec 0027). */
@@ -157,6 +162,8 @@ export interface Transaction {
    * e.g. a pooled gift). Same effect as an assignment on every figure and balance. Only ever `true`; absent = counted. Exclusive with `assignedAccountId`.
    */
   offBudget?: true;
+  /** Flagged by the user to find it again through the filter of the Saisie screen. Information only: touches no figure. Only ever `true`; absent = not flagged. */
+  flagged?: true;
   /** `rev` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
   source?: string;
 }
@@ -326,6 +333,8 @@ export interface Settings {
   investDue?: string;
   /** Spec 0032, RG15: the three goals above have been turned into `BudgetData.goals`. The fields above are never read again. */
   goalsMigrated?: true;
+  /** Start of the budget, `YYYY-MM-DD` (spec 0039, RG2): start of the period of the first month and date of the opening balances. Absent = the 1st of the first month. */
+  startDate?: string;
 }
 
 /** The four kinds of annual goal (spec 0032): amount on accounts, savings rate, spending ceiling, amount saved during the year. */

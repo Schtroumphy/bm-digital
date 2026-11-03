@@ -30,7 +30,7 @@ export function assignedOperations(d: BudgetData, accountId: string, m: MonthKey
     .filter(t => t.month === m && t.assignedAccountId === accountId)
     .map(t => ({
       id: t.id,
-      date: bankDateOf(t),
+      date: bankDateOf(t, d),
       label: t.label,
       ...(t.detail ? { detail: t.detail } : {}),
       amount: t.type === 'rev' ? t.amount : -t.amount,

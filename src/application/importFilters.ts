@@ -1,3 +1,4 @@
+import { monthOfDate } from '../domain/periods';
 import { normalizeLabel, fullLabelOf } from '../domain/statement';
 import type { BudgetData, ImportTarget, MonthKey } from '../domain/types';
 import { changeMonth, changeNature, completionOf, isImportMonth, isIncome, isLocked, lineBalanceWarning, lineProblem, linkedPartner, reconcileLinks, targetIsValid, type LineNature, type PreviewLine } from './statementImport';
@@ -64,7 +65,8 @@ export function lineStates(d: BudgetData, l: PreviewLine, done: ReadonlySet<stri
   if (l.similarImported === 'probable') out.push('doublon_probable');
   if (l.similarImported === 'semblable') out.push('semblable_importee');
   if (l.similarManual) out.push('saisie_manuelle');
-  if (l.month !== l.row.date.slice(0, 7)) out.push('mois_different');
+  // The month differs from the one whose period contains the date (spec 0039, RG21); a date before the start of the budget is compared to its calendar month.
+  if (l.month !== (monthOfDate(d, l.row.date) ?? l.row.date.slice(0, 7))) out.push('mois_different');
   if (!l.checked) out.push('decochee');
   return out;
 }

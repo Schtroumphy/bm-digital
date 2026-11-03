@@ -529,18 +529,21 @@ export type Database = {
       months: {
         Row: {
           closed: boolean | null
+          end_date: string | null
           initialized: boolean
           month: string
           user_id: string
         }
         Insert: {
           closed?: boolean | null
+          end_date?: string | null
           initialized?: boolean
           month: string
           user_id?: string
         }
         Update: {
           closed?: boolean | null
+          end_date?: string | null
           initialized?: boolean
           month?: string
           user_id?: string
@@ -592,6 +595,7 @@ export type Database = {
           invest_target: number
           pointage_start: string | null
           savings_rate_target: number
+          start_date: string | null
           user_id: string
         }
         Insert: {
@@ -605,6 +609,7 @@ export type Database = {
           invest_target?: number
           pointage_start?: string | null
           savings_rate_target?: number
+          start_date?: string | null
           user_id?: string
         }
         Update: {
@@ -618,6 +623,7 @@ export type Database = {
           invest_target?: number
           pointage_start?: string | null
           savings_rate_target?: number
+          start_date?: string | null
           user_id?: string
         }
         Relationships: []
@@ -736,6 +742,7 @@ export type Database = {
           import_account_id: string | null
           label: string
           month: string
+          flagged: boolean | null
           off_budget: boolean | null
           pay_mode: string | null
           position: number
@@ -759,6 +766,7 @@ export type Database = {
           import_account_id?: string | null
           label: string
           month: string
+          flagged?: boolean | null
           off_budget?: boolean | null
           pay_mode?: string | null
           position?: number
@@ -782,6 +790,7 @@ export type Database = {
           import_account_id?: string | null
           label?: string
           month?: string
+          flagged?: boolean | null
           off_budget?: boolean | null
           pay_mode?: string | null
           position?: number

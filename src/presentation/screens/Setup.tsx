@@ -20,6 +20,7 @@ import {
 import { IN_BUDGET_HINT } from '../components/hints';
 import { BANK_HUES, CASH_ACCOUNT_ID, kindForBlock, MAIN_ACCOUNT_ID } from '../../domain/bank';
 import type { AccountKind } from '../../domain/types';
+import { budgetStartBounds, fullDate, validateBudgetStart } from '../../domain/periods';
 import { money, monthLabel, monthName, parseAmount, parseMonth, rawNumber, round2, sanitizeAmountInput } from '../../domain/format';
 import { newId, useStore } from '../state/store';
 
@@ -173,7 +174,9 @@ export function SetupScreen({ draft, setDraft, onOpenBudget }: { draft: SetupDra
   const created = !!data.months[draft.month]?.initialized;
   const step = STEPS[draft.step];
   const summary = setupSummary(draft);
-  const allowed = isSetupMonthAllowed(data, draft.month);
+  // A start of the budget out of bounds blocks the creation (spec 0039, RG4); it is only asked for at the very first creation.
+  const startRefused = data.firstMonth === null && !!draft.startDate && validateBudgetStart({ ...data, firstMonth: draft.month }, draft.startDate) !== null;
+  const allowed = isSetupMonthAllowed(data, draft.month) && !startRefused;
   const goTo = (i: number) => setDraft(d => ({ ...d, step: Math.max(0, Math.min(LAST, i)) }));
 
   const create = () => {
@@ -202,7 +205,9 @@ export function SetupScreen({ draft, setDraft, onOpenBudget }: { draft: SetupDra
   };
 
   const warn =
-    step.id === 'fin' && !allowed
+    step.id === 'fin' && startRefused
+        ? 'Le début du budget est hors des bornes : corrige-le à l’étape Période.'
+        : step.id === 'fin' && !allowed
         ? 'Ce mois n’est plus autorisé : choisis-en un autre à l’étape Période.'
         : step.id === 'fin' && summary.emptyLists.length
           ? `Étapes vides : ${summary.emptyLists.map(id => LISTS[id].label).join(', ')}.`
@@ -249,6 +254,10 @@ export function SetupScreen({ draft, setDraft, onOpenBudget }: { draft: SetupDra
 function StartStep({ draft, setDraft }: { draft: SetupDraft; setDraft: SetDraft }) {
   const { data } = useStore();
   const months = setupMonths(data);
+  // The start of the budget is checked against the month being chosen (spec 0039, RG4).
+  const probe = { ...data, firstMonth: draft.month };
+  const startBounds = budgetStartBounds(probe);
+  const startError = draft.startDate ? validateBudgetStart(probe, draft.startDate) : null;
   return (
     <div className="panel-lg">
       {data.firstMonth === null && (
@@ -262,10 +271,26 @@ function StartStep({ draft, setDraft }: { draft: SetupDraft; setDraft: SetDraft 
           <div className="su-h">Premier mois du budget</div>
           <div className="muted">
             {data.firstMonth === null
-              ? 'Les soldes que tu saisis sont ceux du 1er jour de ce mois.'
+              ? `Les soldes que tu saisis sont ceux du ${draft.startDate && validateBudgetStart({ ...data, firstMonth: draft.month }, draft.startDate) === null ? fullDate(draft.startDate) : '1er jour de ce mois'}.`
               : `Ton budget commence en ${monthLabel(data.firstMonth)} : tu peux initialiser ce mois ou un mois à venir.`}
           </div>
         </div>
+        {data.firstMonth === null && (
+          <label className="field-w">
+            <span className="field-label">Début du budget <span className="field-optional">facultatif</span></span>
+            <input
+              className="text-input"
+              type="date"
+              value={draft.startDate ?? ''}
+              min={startBounds?.min}
+              max={startBounds?.max}
+              onChange={e => setDraft(d => ({ ...d, startDate: e.target.value || undefined }))}
+            />
+            <span className="muted is-small">
+              {startError ?? 'Date du solde de départ des comptes. Vide : le 1er du mois. Exemple : le 29 du mois précédent, si ton salaire tombe ce jour-là.'}
+            </span>
+          </label>
+        )}
         <div className="su-chips">
           {months.map(m => (
             <div key={m} className={`su-chip${m === draft.month ? ' is-on' : ''}`} onClick={() => setDraft(d => ({ ...d, month: m }))}>

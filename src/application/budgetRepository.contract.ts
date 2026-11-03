@@ -22,6 +22,9 @@ export function completeData(): BudgetData {
   d.settings = { ...d.settings, investAccounts: ['l-ep'], emergencyDue: '2027-12-31', investDue: '2028-06-30' };
   // Spec 0032 : un objectif de chaque type, le marqueur de migration posé.
   d.settings.goalsMigrated = true;
+  // Spec 0039 : début du budget et fin de période d'un mois (dates fixes).
+  d.settings.startDate = '2026-09-29';
+  d.months['2026-11'].endDate = '2026-11-28';
   d.goals = [
     { id: 'g1', year: 2026, kind: 'amount', name: 'Fonds de secours', target: 22950.5, accounts: ['e-la', 'e-ld'], due: '2027-12-31', position: 0 },
     { id: 'g2', year: 2026, kind: 'rate', name: 'Taux d’épargne', target: 60, position: 1 },

@@ -4,6 +4,7 @@ import { isMonthInBalanceRange } from './balanceRange';
 import { lineEntriesNote } from './lineActuals';
 import { MOVE_MARK, countedAmount, envelopeCheckKey, estimatedMovements, flowOf, realMovements, type BankMovement, type CountedSource } from './bankMovements';
 import { addMonths, compareMonths, money, parseMonth, round2 } from './format';
+import { inPeriod, periodOf } from './periods';
 import { closeKey, isMonthLocked, isYearClosed, monthLines } from './ledger';
 import type { AccountBalanceEntry, BankAccount, BudgetData, ExecMode, Line, LineCheck, MonthKey } from './types';
 
@@ -157,17 +158,17 @@ export const lateCount = (d: BudgetData, m: MonthKey, today: string): number => 
 /** Why a date of statement or adjustment is refused (RG32, RG62, RG65). */
 export type BalanceDateError = 'invalid' | 'outside' | 'future';
 
-/** Checks a date for month `m`: a real date, in the month, not after `today`. Null = valid. */
-export function validateBalanceDate(m: MonthKey, on: string, today: string): BalanceDateError | null {
+/** Checks a date for month `m`: a real date, in the period of the month (spec 0039, RG22), not after `today`. Null = valid. */
+export function validateBalanceDate(d: BudgetData, m: MonthKey, on: string, today: string): BalanceDateError | null {
   if (!isIsoDate(on)) return 'invalid';
-  if (on.slice(0, 7) !== m) return 'outside';
+  if (!inPeriod(d, m, on)) return 'outside';
   return on > today ? 'future' : null;
 }
 
-/** Range of a statement or adjustment date (RG32): the 1st to the last day of the month, never after today. A month in the future gives min > max (nothing possible). */
-export function balanceDateBounds(m: MonthKey, today: string): { min: string; max: string } {
-  const last = `${m}-${pad2(daysInMonth(m))}`;
-  return { min: `${m}-01`, max: last < today ? last : today };
+/** Range of a statement or adjustment date (RG32; spec 0039, RG22): the first to the last day of the period of the month, never after today. A month in the future gives min > max (nothing possible). */
+export function balanceDateBounds(d: BudgetData, m: MonthKey, today: string): { min: string; max: string } {
+  const p = periodOf(d, m);
+  return { min: p.start, max: p.end < today ? p.end : today };
 }
 
 /** Start and end of a month for an account, from the single starting balance (RG57, RG58). */
@@ -353,8 +354,9 @@ export function accountPointage(d: BudgetData, m: MonthKey, accountId: string, t
   const real = realMonthBalance(d, m, accountId);
   const realList = detailOf(d, realMovements(d, accountId, m));
   // Cancelled adjustments stay listed, struck through, and no longer count (RG66).
+  const within = (date: string) => inPeriod(d, m, date);
   for (const a of d.adjustments ?? []) {
-    if (a.accountId === accountId && a.cancelledOn && a.date.startsWith(m)) {
+    if (a.accountId === accountId && a.cancelledOn && within(a.date)) {
       realList.push({ date: a.date, label: a.label, amount: a.amount, kind: 'adjustment', counted: false, adjustmentId: a.id, cancelledOn: a.cancelledOn, createdOn: a.createdOn });
     }
   }

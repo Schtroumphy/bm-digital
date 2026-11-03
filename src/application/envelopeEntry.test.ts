@@ -4,7 +4,7 @@ import { Ledger } from '../domain/ledger';
 import { addEnvelopeEntry } from './quickEntry';
 
 const M = '2026-12';
-const entry = { id: 'q1', amount: 12.5, day: 10, label: '' };
+const entry = { id: 'q1', amount: 12.5, date: '2026-12-10', label: '' };
 const balance = (d: ReturnType<typeof seedData>, id: string) => new Ledger(d, '2026-12').envMonth(id, M)!.balance;
 
 describe('« + » d’une enveloppe (spec 0027, CA16)', () => {
@@ -30,8 +30,8 @@ describe('« + » d’une enveloppe (spec 0027, CA16)', () => {
     const id = d.envelopes[0].id;
     expect(addEnvelopeEntry(d, M, id, { ...entry, amount: 0 })).toBe(false);
     expect(addEnvelopeEntry(d, M, id, { ...entry, amount: -3 })).toBe(false);
-    expect(addEnvelopeEntry(d, M, id, { ...entry, day: 0 })).toBe(false);
-    expect(addEnvelopeEntry(d, M, id, { ...entry, day: 32 })).toBe(false);
+    expect(addEnvelopeEntry(d, M, id, { ...entry, date: '2026-12-00' })).toBe(false);
+    expect(addEnvelopeEntry(d, M, id, { ...entry, date: '2026-12-32' })).toBe(false);
     expect(addEnvelopeEntry(d, M, 'inconnue', entry)).toBe(false);
     expect(d.transactions).toHaveLength(n);
   });

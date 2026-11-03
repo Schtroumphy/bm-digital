@@ -30,7 +30,7 @@ function DetailLink({ to, onOpen }: { to: DashboardTarget; onOpen: (t: Dashboard
 }
 
 /** « + » of a row: opens the shared quick entry form next to it and records the entry through `record` (spec 0027, RG6, RG8). */
-function PlusButton({ month, name, hue, record }: { month: MonthKey; name: string; hue: number; record: (input: { amount: number; day: number; label: string }) => void }) {
+function PlusButton({ month, name, hue, record }: { month: MonthKey; name: string; hue: number; record: (input: { amount: number; date: string; label: string }) => void }) {
   const [open, setOpen] = useState(false);
   const t = tone(hue);
   return (

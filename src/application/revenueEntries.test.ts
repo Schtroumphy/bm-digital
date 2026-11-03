@@ -340,7 +340,7 @@ describe('date hors soldes (spec 0015, RG6)', () => {
 
   it('avertit pour une date avant le premier mois, avant l’ouverture du compte, ou dans une année clôturée avec report ajusté ; pas dans la plage', () => {
     const d = ranged();
-    expect(balanceDateWarning(d, MAIN_ACCOUNT_ID, '2026-08-31')).toMatch(/premier mois/);
+    expect(balanceDateWarning(d, MAIN_ACCOUNT_ID, '2026-08-31')).toMatch(/début du budget/);
     expect(balanceDateWarning(d, SWILE, '2026-09-15')).toMatch(/ouverture du compte/);
     expect(balanceDateWarning(d, MAIN_ACCOUNT_ID, '2026-09-01')).toBeNull();
     expect(balanceDateWarning(d, SWILE, '2026-10-01')).toBeNull();
@@ -374,7 +374,7 @@ describe('date hors soldes (spec 0015, RG6)', () => {
     const [first, second] = lines;
     expect(lineStates(d, first)).toContain('date_hors_soldes');
     expect(lineStates(d, second)).not.toContain('date_hors_soldes');
-    expect(lineBalanceWarning(d, first)).toMatch(/premier mois/);
+    expect(lineBalanceWarning(d, first)).toMatch(/début du budget/);
     expect(lineProblem(d, first)).toBeNull();
     const batch = validateImport(d, { ...p, lines }, newId);
     expect(batch).toMatchObject({ expenses: 2, outsideBalances: 1 });

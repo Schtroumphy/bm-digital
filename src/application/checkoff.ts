@@ -2,6 +2,7 @@ import { envelopeCheckKey } from '../domain/bankMovements';
 import { envelopeCheck, isEnvelopePointable, isoDate, isIsoDate, isPointable, isValidDueDay, lineCheck, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
 import { round2 } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
+import { monthOfDate } from '../domain/periods';
 import type { BudgetData, ExecMode, Line, LineCheck, MonthKey } from '../domain/types';
 
 /*
@@ -114,7 +115,7 @@ export function setAccountStatement(d: BudgetData, m: MonthKey, accountId: strin
     if (md.accountBalances) delete md.accountBalances[accountId];
     return 'ok';
   }
-  const error = validateBalanceDate(m, on, today);
+  const error = validateBalanceDate(d, m, on, today);
   if (error) return error;
   if (!Number.isFinite(amount)) return 'invalid';
   (md.accountBalances ??= {})[accountId] = { amount: round2(amount), on };
@@ -133,7 +134,7 @@ export type AdjustmentResult = 'ok' | 'locked' | 'none' | 'zero' | BalanceDateEr
 export function createAdjustment(d: BudgetData, m: MonthKey, id: string, accountId: string, date: string, amount: number, today = isoDate()): AdjustmentResult {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return 'locked';
   if (!d.accounts.some(a => a.id === accountId) || d.adjustments?.some(a => a.id === id)) return 'none';
-  const error = validateBalanceDate(m, date, today);
+  const error = validateBalanceDate(d, m, date, today);
   if (error) return error;
   if (!Number.isFinite(amount) || round2(amount) === 0) return 'zero';
   (d.adjustments ??= []).push({ id, accountId, date, amount: round2(amount), label: ADJUSTMENT_LABEL, createdOn: today });
@@ -147,7 +148,8 @@ export function createAdjustment(d: BudgetData, m: MonthKey, id: string, account
 export function cancelAdjustment(d: BudgetData, id: string, today = isoDate()): boolean {
   const a = d.adjustments?.find(x => x.id === id);
   if (!a || a.cancelledOn) return false;
-  const m = a.date.slice(0, 7);
+  // The month of an adjustment is the one whose period contains its date (spec 0039, RG9).
+  const m = monthOfDate(d, a.date) ?? a.date.slice(0, 7);
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return false;
   a.cancelledOn = today;
   return true;

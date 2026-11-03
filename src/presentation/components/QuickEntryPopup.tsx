@@ -1,34 +1,28 @@
 import { useState } from 'react';
-import { daysInMonth } from '../../domain/checkoff';
-import { currentMonthKey, parseAmount, parseMonth, sanitizeAmountInput } from '../../domain/format';
+import { isoDate } from '../../domain/checkoff';
+import { parseAmount, sanitizeAmountInput } from '../../domain/format';
+import { defaultEntryDate, isRealDate } from '../../domain/periods';
 import type { MonthKey } from '../../domain/types';
-
-/** Day proposed for an entry: today in the current month, else the last day of a past month or the first of a future one. */
-function defaultDay(month: MonthKey) {
-  const now = currentMonthKey();
-  if (month === now) return new Date().getDate();
-  if (month > now) return 1;
-  const { year, month: m } = parseMonth(month);
-  return new Date(year, m + 1, 0).getDate();
-}
+import { useStore } from '../state/store';
 
 export interface QuickEntryInput {
   amount: number;
-  day: number;
+  /** Real date of the entry, `YYYY-MM-DD` (spec 0039, RG11). */
+  date: string;
   label: string;
 }
 
 /**
- * Small form « Nouvelle écriture · <name> » (amount, day, label), shared by the « + » of a budget line (spec 0019, RG21) and the « + » of the
+ * Small form « Nouvelle écriture · <name> » (amount, date, label), shared by the « + » of a budget line (spec 0019, RG21) and the « + » of the
  * dashboard (spec 0027, RG6, RG8). It only collects and validates the input; the caller records the entry. The form is mounted when opened, so it starts empty each time.
  */
 export function QuickEntryPopup({ month, name, onSave, onClose }: { month: MonthKey; name: string; onSave: (input: QuickEntryInput) => void; onClose: () => void }) {
-  const [form, setForm] = useState({ amount: '', day: String(defaultDay(month)), label: '' });
+  const { data } = useStore();
+  const [form, setForm] = useState({ amount: '', date: defaultEntryDate(data, month, isoDate()), label: '' });
   const amount = parseAmount(form.amount) ?? 0;
-  const day = Number(form.day);
-  const valid = amount > 0 && Number.isInteger(day) && day >= 1 && day <= daysInMonth(month);
+  const valid = amount > 0 && isRealDate(form.date);
   const save = () => {
-    if (valid) onSave({ amount, day, label: form.label });
+    if (valid) onSave({ amount, date: form.date, label: form.label });
   };
   return (
     <>
@@ -40,8 +34,8 @@ export function QuickEntryPopup({ month, name, onSave, onClose }: { month: Month
           <input autoFocus inputMode="decimal" value={form.amount} placeholder="0,00" onChange={e => setForm(f => ({ ...f, amount: sanitizeAmountInput(e.target.value) }))} onKeyDown={e => e.key === 'Enter' && save()} />
         </label>
         <label className="check-field">
-          <span>Jour</span>
-          <input inputMode="numeric" value={form.day} onChange={e => setForm(f => ({ ...f, day: e.target.value.replace(/\D/g, '') }))} onKeyDown={e => e.key === 'Enter' && save()} />
+          <span>Date</span>
+          <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} onKeyDown={e => e.key === 'Enter' && save()} />
         </label>
         <label className="check-field">
           <span>Libellé</span>

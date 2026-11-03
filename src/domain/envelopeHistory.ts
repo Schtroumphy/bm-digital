@@ -1,6 +1,7 @@
 import { realMovements } from './bankMovements';
 import { addMonths, compareMonths, round2 } from './format';
 import { bankDateOf } from './lineExpenses';
+import { periodOf } from './periods';
 import type { BudgetData, Envelope, MonthKey } from './types';
 
 /*
@@ -21,8 +22,8 @@ export interface HistoryRow {
   kind: 'opening' | 'movement' | 'expense';
 }
 
-/** The month of a `YYYY-MM-DD` date is at or before `m`. */
-const upTo = (date: string, m: MonthKey) => compareMonths(date.slice(0, 7), m) <= 0;
+/** The date is at or before the end of the period of `m` (spec 0039, RG9). */
+const upTo = (d: BudgetData, date: string, m: MonthKey) => date <= periodOf(d, m).end;
 
 /** Rows in chronological order (stable: same-day entries keep their order), the running balance filled in from the opening row. */
 function withBalances(date: string, opening: number, moves: Omit<HistoryRow, 'balance'>[]): HistoryRow[] {
@@ -47,15 +48,15 @@ export function virtualHistory(d: BudgetData, envelopeId: string, m: MonthKey): 
   for (let k = account.openingMonth; compareMonths(k, m) <= 0; k = addMonths(k, 1)) {
     for (const mv of realMovements(d, account.id, k)) moves.push({ date: mv.date, label: mv.label, amount: mv.amount, kind: mv.kind === 'expense' ? 'expense' : 'movement' });
   }
-  return withBalances(`${account.openingMonth}-01`, account.openingBalance, moves);
+  return withBalances(periodOf(d, account.openingMonth).start, account.openingBalance, moves);
 }
 
-/** The cash part of each recorded month from `start` to `m` as « Part du mois » rows (in), dated the 1st of the month. */
+/** The cash part of each recorded month from `start` to `m` as « Part du mois » rows (in), dated the first day of its period. */
 function cashParts(d: BudgetData, envelopeId: string, start: MonthKey, m: MonthKey): Omit<HistoryRow, 'balance'>[] {
   return Object.keys(d.months)
     .filter(k => compareMonths(k, start) >= 0 && compareMonths(k, m) <= 0 && (d.months[k].cashPart?.[envelopeId] ?? 0) > 0)
     .sort(compareMonths)
-    .map((k): Omit<HistoryRow, 'balance'> => ({ date: `${k}-01`, label: 'Part du mois', amount: d.months[k].cashPart![envelopeId], kind: 'movement' }));
+    .map((k): Omit<HistoryRow, 'balance'> => ({ date: periodOf(d, k).start, label: 'Part du mois', amount: d.months[k].cashPart![envelopeId], kind: 'movement' }));
 }
 
 /**
@@ -69,10 +70,10 @@ export function cashHistory(d: BudgetData, envelopeId: string, m: MonthKey, open
   const moves: Omit<HistoryRow, 'balance'>[] = [
     ...cashParts(d, e.id, start, m),
     ...d.transactions
-      .filter(t => t.type === 'env' && t.target === e.id && t.payMode === 'especes' && upTo(bankDateOf(t), m))
-      .map((t): Omit<HistoryRow, 'balance'> => ({ date: bankDateOf(t), label: t.label, amount: -t.amount, kind: 'expense' })),
+      .filter(t => t.type === 'env' && t.target === e.id && t.payMode === 'especes' && upTo(d, bankDateOf(t, d), m))
+      .map((t): Omit<HistoryRow, 'balance'> => ({ date: bankDateOf(t, d), label: t.label, amount: -t.amount, kind: 'expense' })),
   ];
-  return withBalances(`${start}-01`, opening ?? e.openingCash, moves);
+  return withBalances(periodOf(d, start).start, opening ?? e.openingCash, moves);
 }
 
 /** Lowest balance the cash list reaches in the whole history (to refuse an opening that would make it negative, D11). */

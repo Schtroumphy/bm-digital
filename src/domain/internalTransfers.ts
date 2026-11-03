@@ -25,13 +25,13 @@ export const movementAccountName = (d: BudgetData, accountId: string): string =>
   isEnvelopesPool(accountId) ? ENVELOPES_LABEL : accountId === CASH_ID ? CASH_LABEL : d.accounts.find(a => a.id === accountId)?.name ?? 'Supprimé';
 
 /** Date at which the sending account is debited: the debit face's date (or the only face's date, RG14). */
-export const debitDateOf = (mv: AccountMovement): string => bankDateOf(mv);
+export const debitDateOf = (mv: AccountMovement, d?: BudgetData): string => bankDateOf(mv, d);
 /** Date at which the receiving account is credited: the credit face's date, else the debit's (RG14). */
-export const creditDateOf = (mv: AccountMovement): string => mv.creditTrace?.bankDate ?? bankDateOf(mv);
+export const creditDateOf = (mv: AccountMovement, d?: BudgetData): string => mv.creditTrace?.bankDate ?? bankDateOf(mv, d);
 
 /** The trace of the debit face (the flat import fields), if the movement has one. */
-export function debitTraceOf(mv: AccountMovement): ImportTrace | undefined {
-  return mv.importAccountId && mv.fingerprint && mv.rank ? { importAccountId: mv.importAccountId, fingerprint: mv.fingerprint, rank: mv.rank, bankDate: bankDateOf(mv) } : undefined;
+export function debitTraceOf(mv: AccountMovement, d?: BudgetData): ImportTrace | undefined {
+  return mv.importAccountId && mv.fingerprint && mv.rank ? { importAccountId: mv.importAccountId, fingerprint: mv.fingerprint, rank: mv.rank, bankDate: bankDateOf(mv, d) } : undefined;
 }
 
 /** « Lié » when both faces are traced, « debit » / « credit » for a movement with a single face, `null` when it has no trace (typed by hand). */
@@ -43,7 +43,7 @@ export function linkStateOf(mv: AccountMovement): TransferLinkState | null {
 }
 
 /** All the import traces of a movement (one or two): each is a deduplication key, a key serving once whatever the face (RG16). */
-export const tracesOf = (mv: AccountMovement): ImportTrace[] => [debitTraceOf(mv), mv.creditTrace].filter((t): t is ImportTrace => t !== undefined);
+export const tracesOf = (mv: AccountMovement, d?: BudgetData): ImportTrace[] => [debitTraceOf(mv, d), mv.creditTrace].filter((t): t is ImportTrace => t !== undefined);
 
 /** Whole days between two `YYYY-MM-DD` dates (absolute). */
 export function daysBetween(a: string, b: string): number {
@@ -106,7 +106,7 @@ export function findCompletable(d: BudgetData, face: { accountId: string; credit
     if (state !== (face.credit ? 'debit' : 'credit')) continue;
     if ((face.credit ? mv.toAccountId : mv.fromAccountId) !== face.accountId) continue;
     if (otherAccountId !== undefined && (face.credit ? mv.fromAccountId : mv.toAccountId) !== otherAccountId) continue;
-    const gap = daysBetween(face.credit ? debitDateOf(mv) : creditDateOf(mv), face.date);
+    const gap = daysBetween(face.credit ? debitDateOf(mv, d) : creditDateOf(mv, d), face.date);
     if (gap <= tolerance && (!best || gap < best.gap)) best = { mv, gap };
   }
   return best?.mv ?? null;

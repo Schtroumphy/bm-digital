@@ -539,9 +539,9 @@ describe('relevé, écart et régularisation', () => {
     expect(createAdjustment(d, M, 'x', MAIN_ACCOUNT_ID, '2027-01-30', 5, TODAY)).toBe('future');
     expect(createAdjustment(d, M, 'x', MAIN_ACCOUNT_ID, '2027-01-21', 0, TODAY)).toBe('zero');
     expect(d.adjustments).toBeUndefined();
-    expect(balanceDateBounds(M, TODAY)).toEqual({ min: '2027-01-01', max: TODAY });
-    expect(balanceDateBounds('2026-12', TODAY)).toEqual({ min: '2026-12-01', max: '2026-12-31' });
-    expect(balanceDateBounds('2027-03', TODAY).min > balanceDateBounds('2027-03', TODAY).max).toBe(true);
+    expect(balanceDateBounds(d, M, TODAY)).toEqual({ min: '2027-01-01', max: TODAY });
+    expect(balanceDateBounds(d, '2026-12', TODAY)).toEqual({ min: '2026-12-01', max: '2026-12-31' });
+    expect(balanceDateBounds(d, '2027-03', TODAY).min > balanceDateBounds(d, '2027-03', TODAY).max).toBe(true);
   });
 
   it('un identifiant de régularisation déjà utilisé est refusé', () => {

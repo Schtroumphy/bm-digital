@@ -457,7 +457,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .flow-cell.is-hero .flow-value { font-size: 22px; color: var(--violet-ink); }
 .tx-head { display: flex; align-items: center; padding: 14px 22px 6px; font-weight: 700; }
 .tx-title { font-size: 15px; flex: 1; }
-.tx-grid { display: grid; grid-template-columns: 18px 54px minmax(0, 1fr) 220px 130px 96px 56px; column-gap: 10px; padding: 0 22px; }
+.tx-grid { display: grid; grid-template-columns: 18px 54px minmax(0, 1fr) 220px 130px 96px 84px; column-gap: 10px; padding: 0 22px; }
 .tx-cols { padding: 4px 22px; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
 .tx-row { align-items: center; min-height: 34px; border-top: 1px solid rgba(32, 30, 29, 0.05); }
 .tx-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 22px; background: oklch(0.965 0.03 300); font-size: 13px; font-weight: 600; }
@@ -835,7 +835,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .field-w .detail-input .text-input { height: 36px; }
 /* En-têtes alignés sur les cellules : case sans marge native, pastille du compte sans son retrait. */
 .tx-grid input[type="checkbox"] { margin: 0; width: 16px; height: 16px; justify-self: start; }
-.tx-grid { grid-template-columns: 16px 54px minmax(0, 1fr) 220px 130px 96px 56px; }
+.tx-grid { grid-template-columns: 16px 54px minmax(0, 1fr) 220px 130px 96px 84px; }
 .tx-row .acc-picker { margin-left: -4px; }
 .tx-cols > span { white-space: nowrap; }
 
@@ -1160,3 +1160,8 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cash-dialog-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .cash-dialog-row span:first-of-type { flex: 1; font-weight: 600; }
 .cash-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* Période du mois (spec 0039) */
+.cpt-period { margin-bottom: 14px; gap: 6px; }
+.cpt-period-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cpt-period-row .text-input { width: auto; }

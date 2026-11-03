@@ -1,5 +1,6 @@
 import { accountIdOf } from './bank';
 import { round2 } from './format';
+import { deducedDate } from './periods';
 import type { BlockKey, BudgetData, Line, MonthKey, Transaction } from './types';
 
 /*
@@ -20,8 +21,15 @@ export const isCarryingBlock = (block: BlockKey): boolean => block === 'fix' || 
 /** The two types of entry written on a budget line. */
 const isLineEntry = (t: Transaction): boolean => t.type === 'fix' || t.type === 'rev';
 
-/** Date of an entry at the bank: its `bankDate`, else the day of its month of attachment (spec 0015, RG2). */
-export const bankDateOf = (t: { month: MonthKey; day: number; bankDate?: string }): string => t.bankDate ?? `${t.month}-${String(t.day).padStart(2, '0')}`;
+/**
+ * Date of an entry at the bank: its `bankDate`, else the day of its month of attachment (spec 0015, RG2). With the budget given, a day that exists twice in
+ * the period of the month is read at its latest date (spec 0039, RG11a); without it, the plain `month` + `day`.
+ */
+export const bankDateOf = (t: { month: MonthKey; day: number; bankDate?: string }, d?: BudgetData): string =>
+  t.bankDate ?? (d ? deducedDate(d, t.month, t.day) : `${t.month}-${String(t.day).padStart(2, '0')}`);
+
+/** The date of an entry was deduced from its day and its month, not recorded (spec 0039, RG11a). */
+export const isDateDeduced = (t: { bankDate?: string }): boolean => t.bankDate === undefined;
 
 /** The entries (expenses or revenue entries) recorded on a fixed, credit or revenue line of a month. */
 export const lineExpenses = (d: BudgetData, m: MonthKey, key: string): Transaction[] => d.transactions.filter(t => isLineEntry(t) && t.month === m && t.target === key);

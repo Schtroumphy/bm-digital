@@ -7,7 +7,7 @@ import { QuickEntryPopup } from './QuickEntryPopup';
 
 /**
  * « + Écriture » on a line of the Budget screen (spec 0019, RG21): a small icon, visible only when the row is hovered or has the keyboard focus,
- * drawn over the end of the name so the row never changes height or alignment. It opens a small form (amount, day, label) that records a real
+ * drawn over the end of the name so the row never changes height or alignment. It opens a small form (amount, date, label) that records a real
  * entry on the account imposed by the line. Hidden when the month is locked or when the line cannot take an entry (savings line with no dedicated account).
  */
 export function LineQuickEntry({ month, line, locked }: { month: MonthKey; line: Line; locked: boolean }) {

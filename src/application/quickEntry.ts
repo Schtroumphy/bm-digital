@@ -1,5 +1,5 @@
 import { accountIdOf } from '../domain/bank';
-import { daysInMonth } from '../domain/checkoff';
+import { isRealDate } from '../domain/periods';
 import { round2 } from '../domain/format';
 import type { BudgetData, MonthKey, TxType } from '../domain/types';
 import { addTransaction } from './actions';
@@ -13,10 +13,12 @@ import { addTransfer } from './accountMovements';
 export interface QuickEntry {
   id: string;
   amount: number;
-  /** Day of the month. */
-  day: number;
+  /** Real date of the entry, `YYYY-MM-DD` (spec 0039, RG11): written as its bank date. */
+  date: string;
   label: string;
 }
+
+const dayOf = (date: string) => Number(date.slice(8, 10));
 
 const TYPE_OF_BLOCK: Partial<Record<string, TxType>> = { var: 'var', fix: 'fix', cre: 'fix', rev: 'rev' };
 
@@ -26,21 +28,21 @@ const TYPE_OF_BLOCK: Partial<Record<string, TxType>> = { var: 'var', fix: 'fix',
  */
 export function addLineEntry(d: BudgetData, m: MonthKey, key: string, entry: QuickEntry): boolean {
   const line = d.months[m]?.initialized ? d.months[m].lines.find(l => l.key === key) : undefined;
-  if (!line || !(entry.amount > 0) || !Number.isInteger(entry.day) || entry.day < 1 || entry.day > daysInMonth(m)) return false;
+  if (!line || !(entry.amount > 0) || !isRealDate(entry.date)) return false;
   const label = entry.label.trim() || line.name;
   const amount = round2(entry.amount);
   const type = TYPE_OF_BLOCK[line.block];
-  if (type) return addTransaction(d, { id: entry.id, month: m, day: entry.day, label, amount, type, target: key });
+  if (type) return addTransaction(d, { id: entry.id, month: m, day: dayOf(entry.date), bankDate: entry.date, label, amount, type, target: key });
   if (!line.linkedAccountId) return false;
-  return addTransfer(d, { id: entry.id, month: m, day: entry.day, label, amount, fromAccountId: accountIdOf(d, line.accountId), toAccountId: line.linkedAccountId, target: { kind: 'line', key } });
+  return addTransfer(d, { id: entry.id, month: m, day: dayOf(entry.date), bankDate: entry.date, label, amount, fromAccountId: accountIdOf(d, line.accountId), toAccountId: line.linkedAccountId, target: { kind: 'line', key } });
 }
 
 /**
  * « + » on an envelope of the dashboard (spec 0027, RG8): an expense of the envelope, on its own account, the same entry as the Saisie screen
- * makes (`addTransaction`, type `env`). Refused (false) on a locked or uninitialized month, an unknown envelope, an amount that is not positive or a day outside the month.
+ * makes (`addTransaction`, type `env`). Refused (false) on a locked or uninitialized month, an unknown envelope, an amount that is not positive or a date that does not exist.
  */
 export function addEnvelopeEntry(d: BudgetData, m: MonthKey, envelopeId: string, entry: QuickEntry): boolean {
   const envelope = d.envelopes.find(e => e.id === envelopeId);
-  if (!envelope || !d.months[m]?.initialized || !(entry.amount > 0) || !Number.isInteger(entry.day) || entry.day < 1 || entry.day > daysInMonth(m)) return false;
-  return addTransaction(d, { id: entry.id, month: m, day: entry.day, label: entry.label.trim() || envelope.name, amount: round2(entry.amount), type: 'env', target: envelopeId });
+  if (!envelope || !d.months[m]?.initialized || !(entry.amount > 0) || !isRealDate(entry.date)) return false;
+  return addTransaction(d, { id: entry.id, month: m, day: dayOf(entry.date), bankDate: entry.date, label: entry.label.trim() || envelope.name, amount: round2(entry.amount), type: 'env', target: envelopeId });
 }

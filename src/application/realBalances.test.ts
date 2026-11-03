@@ -246,23 +246,23 @@ describe('réel de ligne dérivé et écriture rapide (RG19 à RG24)', () => {
 
   it('CA19 : une écriture rapide de 30 € sur une ligne : le réel vaut 30 €, le solde réel du compte de la ligne varie de 30 € à sa date', () => {
     const d = started([ln('ali', 'var', 300), ln('cant', 'fix', 50, { accountId: CASH_ACCOUNT_ID })]);
-    expect(addLineEntry(d, M, 'ali', { id: 'q1', amount: 30, day: 12, label: '' })).toBe(true);
+    expect(addLineEntry(d, M, 'ali', { id: 'q1', amount: 30, date: '2026-10-12', label: '' })).toBe(true);
     expect(d.months[M].lines[0].actual).toBe(30);
     expect(real(d)).toBe(970);
-    expect(addLineEntry(d, M, 'cant', { id: 'q2', amount: 30, day: 12, label: 'Cantine' })).toBe(true);
+    expect(addLineEntry(d, M, 'cant', { id: 'q2', amount: 30, date: '2026-10-12', label: 'Cantine' })).toBe(true);
     expect(real(d, CASH_ACCOUNT_ID)).toBe(-30);
     expect(d.transactions[0].label).toBe('ali');
   });
 
   it('CA19 : sur une ligne d’épargne, l’écriture rapide est un transfert vers le compte dédié ; refusée sans compte dédié, sur un mois clos ou pour un montant nul', () => {
     const d = started([ln('liv', 'epa', 100, { linkedAccountId: LIVRET }), ln('sans', 'epa', 100)]);
-    expect(addLineEntry(d, M, 'liv', { id: 'q', amount: 30, day: 12, label: '' })).toBe(true);
+    expect(addLineEntry(d, M, 'liv', { id: 'q', amount: 30, date: '2026-10-12', label: '' })).toBe(true);
     expect([real(d), real(d, LIVRET), d.months[M].lines[0].actual]).toEqual([970, 530, 30]);
-    expect(addLineEntry(d, M, 'sans', { id: 'q2', amount: 30, day: 12, label: '' })).toBe(false);
-    expect(addLineEntry(d, M, 'liv', { id: 'q3', amount: 0, day: 12, label: '' })).toBe(false);
-    expect(addLineEntry(d, M, 'liv', { id: 'q4', amount: 5, day: 40, label: '' })).toBe(false);
+    expect(addLineEntry(d, M, 'sans', { id: 'q2', amount: 30, date: '2026-10-12', label: '' })).toBe(false);
+    expect(addLineEntry(d, M, 'liv', { id: 'q3', amount: 0, date: '2026-10-12', label: '' })).toBe(false);
+    expect(addLineEntry(d, M, 'liv', { id: 'q4', amount: 5, date: '2026-10-40', label: '' })).toBe(false);
     d.months[M].closed = true;
-    expect(addLineEntry(d, M, 'liv', { id: 'q5', amount: 5, day: 12, label: '' })).toBe(false);
+    expect(addLineEntry(d, M, 'liv', { id: 'q5', amount: 5, date: '2026-10-12', label: '' })).toBe(false);
   });
 
   it('CA21 : un mois clos garde l’effet de ses écritures ; une ligne sans écriture y a un réel nul', () => {

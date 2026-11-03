@@ -61,6 +61,7 @@ const ICONS = {
   flask: <path d="M10 2v7.5L4 20a1 1 0 0 0 .9 1.5h14.2A1 1 0 0 0 20 20l-6-10.5V2M8.5 2h7M7 16h10" />,
   note: <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5" />,
   save: <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8" />,
+  filter: <path d="M3 5h18l-7 8v6l-4 2v-8z" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS;

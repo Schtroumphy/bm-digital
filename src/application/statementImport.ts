@@ -5,6 +5,7 @@ import { isMonthLocked } from '../domain/ledger';
 import { accountPairKey, fingerprintOf, fullLabelOf, isTransferReceived, normalizeLabel, suggestedPattern, type StatementError, type StatementReading, type StatementRow } from '../domain/statement';
 import type { AccountMovement, BankAccount, BudgetData, ImportNature, ImportRule, ImportTarget, ImportTrace, MonthKey, MovementTarget, Transaction } from '../domain/types';
 import { balanceDateWarning } from '../domain/balanceRange';
+import { monthOfDate } from '../domain/periods';
 import { bankDateOf, expenseLine, expenseLineAccountId, revenueLine } from '../domain/lineExpenses';
 import { syncLineActual } from '../domain/lineActuals';
 import { defaultTransferTarget, isValidTransferTarget } from '../domain/transfers';
@@ -317,15 +318,15 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
   const byDay = new Map<string, { fingerprint: string; category?: string }[]>();
   // Every import trace already stored is a key that can serve once: a transaction has one, a transfer up to two (debit face, credit face; spec 0016, RG16).
   const stored: { trace: ImportTrace; amount: number; credit: boolean; category?: string }[] = [
-    ...d.transactions.filter(t => t.importAccountId && t.fingerprint).map(t => ({ trace: { importAccountId: t.importAccountId!, fingerprint: t.fingerprint!, rank: t.rank ?? 0, bankDate: bankDateOf(t) }, amount: t.amount, credit: t.type === 'rev', category: t.category })),
-    ...(d.accountMovements ?? []).flatMap(mv => tracesOf(mv).map(trace => ({ trace, amount: mv.amount, credit: trace === mv.creditTrace, category: mv.category }))),
+    ...d.transactions.filter(t => t.importAccountId && t.fingerprint).map(t => ({ trace: { importAccountId: t.importAccountId!, fingerprint: t.fingerprint!, rank: t.rank ?? 0, bankDate: bankDateOf(t, d) }, amount: t.amount, credit: t.type === 'rev', category: t.category })),
+    ...(d.accountMovements ?? []).flatMap(mv => tracesOf(mv, d).map(trace => ({ trace, amount: mv.amount, credit: trace === mv.creditTrace, category: mv.category }))),
   ];
   for (const x of stored) {
     if (x.trace.rank) known.add(importKey(x.trace.importAccountId, x.trace.fingerprint, x.trace.rank));
     const k = dayKey(x.trace.importAccountId, x.trace.bankDate, x.amount, x.credit);
     byDay.set(k, [...(byDay.get(k) ?? []), { fingerprint: x.trace.fingerprint, category: x.category }]);
   }
-  const manual = new Set(d.transactions.filter(t => !t.fingerprint).map(t => dayKey(accountIdOf(d, t.accountId), bankDateOf(t), t.amount, t.type === 'rev')));
+  const manual = new Set(d.transactions.filter(t => !t.fingerprint).map(t => dayKey(accountIdOf(d, t.accountId), bankDateOf(t, d), t.amount, t.type === 'rev')));
   const before = new Map(previous.map(l => [l.id, l]));
   // Lines carried over from the previous preview with their corrections: the automatic pairing leaves them as they are (a unlinked or requalified line stays so).
   const carried = new Set<string>();
@@ -350,7 +351,8 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     const rankKey = `${accountId ?? `pair:${pairKey}`}\u0001${fingerprint}`;
     const rank = (seen.get(rankKey) ?? 0) + 1;
     seen.set(rankKey, rank);
-    const month = row.date.slice(0, 7);
+    // The proposed month is the one whose period contains the date (spec 0039, RG21); before the start of the budget, the calendar month of the date.
+    const month = monthOfDate(d, row.date) ?? row.date.slice(0, 7);
     const base = { id: String(index), row, pairKey, accountId, fingerprint, rank, month, remember: null, suggestedPattern: suggestedPattern(row), newLineName: '' };
     const credit = row.direction === 'credit';
 

@@ -45,6 +45,8 @@ export interface SetupDraft {
   step: number;
   /** First month of the budget. */
   month: MonthKey;
+  /** Start of the budget, `YYYY-MM-DD`, optional (spec 0039, RG2): absent = the 1st of the first month. Only used when the budget has no first month yet. */
+  startDate?: string;
   rows: Record<SetupListId, SetupRow[]>;
 }
 
