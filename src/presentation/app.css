@@ -78,6 +78,7 @@ input, button { font-family: inherit; }
 /* ── sidebar ───────────────────────────────────────────── */
 .sidebar {
   width: 78px; flex: none; border-right: 1px solid var(--hairline); background: #fff;
+  position: sticky; top: 0; height: 100vh; align-self: flex-start; overflow-y: auto;
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 0;
 }
 .brand {
@@ -301,16 +302,7 @@ input, button { font-family: inherit; }
 /* Alone on its row: a slim full-width strip instead of a whole tile. */
 .env-add.is-row { grid-column: 1 / -1; min-height: 32px; }
 
-/* pointage (spec 0009) */
-.check {
-  flex: none; width: 16px; height: 16px; border-radius: 5px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
-  border: 1.5px solid rgba(32, 30, 29, 0.28); background: #fff; cursor: pointer;
-}
-.check.is-on { border-color: var(--t-base); background: var(--t-base); }
-.check.is-locked { cursor: default; }
-.env-tile-head .env-check { margin-left: auto; }
-.env-check { display: inline-flex; align-items: center; gap: 4px; flex: none; }
-.check-slot { flex: none; width: 16px; }
+/* jour prévu et mode d'exécution (spec 0009) ; encart « À venir ce mois-ci » (spec 0043) */
 .check-meta { flex: none; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.55); cursor: pointer; border-radius: 99px; padding: 1px 5px; white-space: nowrap; }
 .check-meta:hover { background: rgba(32, 30, 29, 0.06); }
 .check-meta { opacity: 0.55; display: inline-flex; }
@@ -321,10 +313,9 @@ input, button { font-family: inherit; }
 .line-row.is-off-budget { color: rgba(32, 30, 29, 0.45); }
 .late-badge { flex: none; margin-left: 4px; padding: 0 6px; border-radius: 99px; background: var(--warn-bg); color: var(--warn-ink); font-size: 10px; font-weight: 700; white-space: nowrap; }
 .check-menu { top: 20px; right: 0; width: 230px; }
-.check-note { padding: 2px 10px 4px; font-size: 11px; color: rgba(32, 30, 29, 0.55); }
 .check-field { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 10px; font-size: 12px; font-weight: 500; }
 .check-field input, .check-field select { width: 110px; height: 24px; box-sizing: border-box; border: 1px solid var(--hairline); border-radius: 6px; font-size: 12px; font-family: inherit; padding: 0 6px; background: #fff; }
-.pointage { padding: 4px 0 8px; display: flex; flex-direction: column; }
+.coming-up { padding: 4px 0 8px; display: flex; flex-direction: column; }
 .pt-head { display: flex; align-items: center; gap: 7px; padding: 6px 14px; cursor: pointer; }
 .pt-head:hover { background: rgba(32, 30, 29, 0.025); }
 .pt-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -333,11 +324,7 @@ input, button { font-family: inherit; }
 .pt-line { display: flex; justify-content: space-between; align-items: center; min-height: 24px; }
 .pt-balance { display: flex; align-items: center; gap: 6px; }
 .pt-link { cursor: pointer; text-decoration: underline; color: rgba(32, 30, 29, 0.6); }
-.pt-btn { padding: 2px 8px; font-size: 11px; }
 .pt-maj { font-size: 10.5px; color: rgba(32, 30, 29, 0.5); }
-.pt-maj.is-editable { cursor: pointer; }
-.pt-maj.is-editable:hover { text-decoration: underline; }
-.cell-input.pt-date { width: 128px; height: 22px; text-align: left; }
 .pt-detail { margin-top: 6px; padding: 6px 10px; border-radius: 10px; background: rgba(32, 30, 29, 0.03); font-size: 12px; }
 .pt-detail-title { font-weight: 700; margin-bottom: 3px; }
 .pt-detail-sub { margin-top: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(32, 30, 29, 0.5); }
@@ -642,12 +629,6 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .line-add:hover { color: var(--ink); }
 .line-add:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .line-add-menu { top: 24px; }
-/* Pointage fictif (spec 0019) : mouvement d'un pointage, atténué dans la vue « Estimé (budget) ». */
-.pt-row.is-fictive { color: rgba(32, 30, 29, 0.55); font-style: italic; }
-.pt-views { display: flex; gap: 4px; padding: 2px 0 6px; }
-.pt-view { padding: 3px 10px; border-radius: 99px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: rgba(32, 30, 29, 0.6); background: rgba(32, 30, 29, 0.05); border: 0; font-family: inherit; }
-.pt-view.is-on { color: var(--ink); background: var(--violet-tint); }
-.sim-signal { margin: 2px 0 4px; padding: 6px 10px; border-radius: 8px; font-size: 12px; background: oklch(0.97 0.04 85); }
 .line-name-wrap .line-name { flex: 1; min-width: 0; }
 .line-name-wrap .edit-wrap { flex: 1; min-width: 0; }
 .accounts-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) 270px 150px 100px 100px 110px 120px 90px 90px 28px 40px; column-gap: 10px; padding: 0 22px; }
@@ -849,14 +830,10 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .tx-row .acc-picker { margin-left: -4px; }
 .tx-cols > span { white-space: nowrap; }
 
-.tx-row.is-pointed .num { font-weight: 800; }
-.tx-row.is-pointed .tx-target { color: var(--violet-ink); font-weight: 700; }
 
 .mv-grid .icon-btn { white-space: nowrap; flex: none; }
 
-/* Pointed entry: a check in the left padding of the row, out of the grid so no column moves. */
 .tx-row { position: relative; }
-.tx-row.is-pointed::before { content: ''; position: absolute; left: 6px; top: 50%; width: 5px; height: 9px; margin-top: -6px; border: solid var(--violet-ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 
 
 .entry-detail.is-attach { color: var(--violet-ink); opacity: 0.8; }

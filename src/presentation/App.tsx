@@ -237,7 +237,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             onOpen={(t: DashboardTarget) => go(t)}
           />
         )}
-        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenStatements={() => go('releve')} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
+        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
         {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} focus={focus} />}
         {screen === 'releve' && (
           <ReleveScreen

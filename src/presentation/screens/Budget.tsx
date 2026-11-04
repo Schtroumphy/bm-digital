@@ -7,12 +7,11 @@ import { EditableAmount, EditableText } from '../components/Editable';
 import { goalHue, goalSummaryText } from '../components/goalStyle';
 import { currentYear, firstGoalOfKind, goalView, summaryGoals } from '../../domain/goals';
 import { Icon, type IconName } from '../components/Icon';
-import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
 import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
 import type { OperationsFocus } from './Expenses';
 import { lineEntriesNote } from '../../domain/lineActuals';
 import { LineQuickEntry } from '../components/LineQuickEntry';
-import { LineCheckBox, LineCheckMeta } from '../components/LineCheck';
+import { LineScheduleMeta } from '../components/LineSchedule';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
 import { addEnvelope, renameEnvelope } from '../../application/envelopes';
@@ -21,14 +20,15 @@ import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAs
 import { cashPartAbove } from '../../domain/cash';
 import { CashMonthBlock } from '../components/CashMonthBlock';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
-import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
+import { isoDate } from '../../domain/checkoff';
+import { lineTooltip } from '../../domain/comingUp';
 import { envelopeCash, envelopeConsumption } from '../../domain/envelopeCash';
 import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from '../../domain/types';
 import { EnvelopesTotal } from './Envelopes';
-import { PointageCard } from './PointageCard';
+import { ComingUpCard } from './ComingUpCard';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
@@ -50,7 +50,7 @@ export function BudgetActions({ month }: { month: MonthKey }) {
   const md = data.months[month];
   const locked = isMonthLocked(data, month);
   const prevReady = !!data.months[addMonths(month, -1)]?.initialized;
-  const confirmReplace = () => !md?.initialized || window.confirm(`Remplacer les lignes de ${monthLabel(month)} ? Les pointages des lignes remplacées seront effacés.`);
+  const confirmReplace = () => !md?.initialized || window.confirm(`Remplacer les lignes de ${monthLabel(month)} ?`);
 
   const exportCsv = () => {
     const blob = new Blob([monthCsv(monthLines(data, month), BLOCK_TITLES, l => !isLineInBudget(data, l))], { type: 'text/csv;charset=utf-8' });
@@ -103,7 +103,7 @@ export function BudgetActions({ month }: { month: MonthKey }) {
   );
 }
 
-export function BudgetScreen({ month, onOpenGoals, onOpenStatements, onOpenOperations }: { month: MonthKey; onOpenGoals: () => void; onOpenStatements: () => void; onOpenOperations: (f: OperationsFocus) => void }) {
+export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: MonthKey; onOpenGoals: () => void; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, ledger, update } = useStore();
   const uninit = !data.months[month]?.initialized;
   const locked = isMonthLocked(data, month);
@@ -210,7 +210,7 @@ export function BudgetScreen({ month, onOpenGoals, onOpenStatements, onOpenOpera
           </div>
           <div className="budget-col">
             <EnvelopesCompact month={month} locked={locked || !data.months[month]?.initialized} />
-            <PointageCard month={month} today={today} onOpenStatements={onOpenStatements} />
+            <ComingUpCard month={month} today={today} />
           </div>
         </div>
       </div>
@@ -380,7 +380,6 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
                 }}
               >
                 <div className="line-name-wrap">
-                  <LineCheckBox month={month} line={l} locked={locked} today={today} />
                   {block === 'var' && <PayModePicker data={data} box={l} disabled={locked} onChange={patch => update(d => setLinePayment(d, month, l.key, patch))} />}
                   {isSavings && (
                     <span className="acc-stack">
@@ -392,7 +391,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={[l.name, lineTooltip(data, month, l, today)].filter(Boolean).join('\n')} disabled={locked}>
                     {l.name}
                   </EditableText>
-                  {block !== 'var' && <LineCheckMeta month={month} line={l} locked={locked} today={today} />}
+                  {block !== 'var' && <LineScheduleMeta month={month} line={l} locked={locked} today={today} />}
                   <LineQuickEntry month={month} line={l} locked={locked || !data.months[month]?.initialized} />
                 </div>
                 <div className="rel">
@@ -633,7 +632,6 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
             <div
               key={e.id}
               className={`env-tile${canEdit ? ' is-editable' : ''}`}
-              title={envelopeTooltip(data, month, e) || undefined}
               style={{ background: vio.bg, borderColor: warn ? 'oklch(0.8 0.12 55)' : vio.line }}
               onClick={canEdit ? () => setEditing(`ea:${e.id}`) : undefined}
             >
@@ -643,7 +641,6 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                   {e.name}
                 </EditableText>
                 {warn && <span className="warn-dot" />}
-                <EnvelopeCheckBox month={month} env={e} locked={locked} />
               </div>
               {/* Spec 0026, RG26: the budget virtual balance alone (not capped, a negative one shows), the cash balance right under it, none when 0. */}
               <div className="env-tile-solde">{money(ledger.envMonth(e.id, month)?.balance ?? 0)}</div>
