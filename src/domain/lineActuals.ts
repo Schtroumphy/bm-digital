@@ -13,8 +13,17 @@ import type { BudgetData, Line, MonthKey } from './types';
  */
 
 /** The entries recorded on a line in a month: amounts and nothing else. */
-export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): number[] {
-  if (isSavingsBlock(l.block)) return (d.accountMovements ?? []).filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key).map(mv => mv.amount);
+export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number[] {
+  if (isSavingsBlock(l.block)) {
+    const movements = d.accountMovements ?? [];
+    const lines = d.months[m]?.lines ?? [];
+    const toThisLine = movements.filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key).map(mv => mv.amount);
+    // Money the line's account passes on to another savings line is no longer on this line: it leaves its actual (it is in the other line's).
+    const passedOn = l.linkedAccountId
+      ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && mv.target?.kind === 'line' && mv.target.key !== l.key && lines.some(o => o.key === (mv.target as { key: string }).key && isSavingsBlock(o.block))).map(mv => -mv.amount)
+      : [];
+    return [...toThisLine, ...passedOn];
+  }
   const type = l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix';
   // An operation assigned to a savings account is not counted: the actual is the sum of the entries that stay in the budget (spec 0028, RG5).
   return d.transactions.filter(t => t.month === m && t.type === type && t.target === l.key && !isTransactionOffBudget(t)).map(t => t.amount);
@@ -24,7 +33,7 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
 export const lineEntryCount = (d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): number => lineEntryAmounts(d, m, l).length;
 
 /** The actual a line must have: the sum of its entries, null when it has none. */
-export function derivedActual(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): number | null {
+export function derivedActual(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number | null {
   const amounts = lineEntryAmounts(d, m, l);
   return amounts.length ? round2(amounts.reduce((s, a) => s + a, 0)) : null;
 }

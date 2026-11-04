@@ -4,6 +4,7 @@ import { addEnvelope } from './envelopes';
 import { setLineAccount, setMainBankAccount, setBankAccountInBudget, archiveBankAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, accountIdOf } from '../domain/bank';
 import { availableReal, monthSummary } from '../domain/budget';
+import { syncLineActuals } from '../domain/lineActuals';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
 import type { BlockKey, BudgetData, Line } from '../domain/types';
@@ -150,5 +151,21 @@ describe('disponible à placer (réel)', () => {
     const d = started([]);
     expect(availableReal(d, '2027-02')).toBeNull();
     expect(monthSummary(d, new Ledger(d, TODAY), '2027-02').availableReal).toBeNull();
+  });
+  it('un virement redistribué entre comptes d’épargne sort du réel de la ligne source et n’est pas compté deux fois', () => {
+    const d = started([
+      { ...ln('lydia', 'epa', 0, null), linkedAccountId: 'acc-lydia' },
+      { ...ln('mada', 'epa', 180, null), linkedAccountId: 'acc-mada' },
+      { ...ln('copines', 'epa', 120, null), linkedAccountId: 'acc-copines' },
+    ]);
+    const mv = (id: string, key: string, from: string, to: string, amount: number) => ({ id, month: M, day: 2, label: id, amount, fromAccountId: from, toAccountId: to, target: { kind: 'line' as const, key } });
+    d.accountMovements = [
+      mv('in', 'lydia', MAIN_ACCOUNT_ID, 'acc-lydia', 300),
+      mv('m', 'mada', 'acc-lydia', 'acc-mada', 180),
+      mv('c', 'copines', 'acc-lydia', 'acc-copines', 120),
+    ];
+    syncLineActuals(d);
+    expect(d.months[M].lines.map(l => l.actual)).toEqual([0, 180, 120]);
+    expect(avail(d)).toBe(remaining(d));
   });
 });
