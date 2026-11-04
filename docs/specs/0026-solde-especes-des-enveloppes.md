@@ -4,6 +4,7 @@
 - Date : 2026-10-25
 - Branche prévue : feat/solde_especes_enveloppes (PR vers `develop`)
 - Amende : 0011 (Q3, mode Espèces des enveloppes rouvert ; « Exclus » sur la part `cash`), 0002. S'appuie sur 0019 (transfert, deux soldes).
+- Amendement 2026-11-04 : le solde espèces est informatif et se corrige à la main par un « ajustement » daté du jour (RG27 à RG34, D42 à D50). Statut de cet amendement : validée (2026-11-04, aucune question ouverte). Amende RG2, RG18, Exclus. Ne change ni la saisie des dépenses en espèces ni le refus du Départ espèces (D11).
 - Révision : le solde espèces est un solde INDÉPENDANT du solde de l'enveloppe, et non une sous-partie (correction du développeur, remplace la décision Q1 A).
 
 ## Contexte et objectif
@@ -27,7 +28,8 @@ Inclus :
 - (Rouverture) Historique des mouvements par enveloppe, en deux listes (Virtuel, Espèces), avec le solde après chaque ligne.
 
 Exclus :
-- Saisie directe d'un mouvement espèces en dehors du formulaire « Transfert » et du formulaire de dépense.
+- Saisie directe d'un mouvement espèces en dehors du formulaire de dépense, du départ espèces et de l'ajustement du solde (RG27). (Amendé : le formulaire « Transfert » n'alimente plus l'espèces depuis 0037.)
+- Ajustement du solde espèces depuis l'écran Comptes, la tuile Budget ou l'assistant (RG27 : écran Enveloppes seulement).
 - Mode Espèces des lignes `var` (spec 0006, inchangé), autres comptes, objectifs.
 - Répartition automatique entre espèces et virtuel.
 - Règles de l'import CSV.
@@ -41,12 +43,12 @@ Exclus :
 ## Règles de gestion
 
 - RG1. Chaque enveloppe a un solde espèces d'ouverture (≥ 0, 0 par défaut), daté du mois de départ du compte de l'enveloppe. `Envelope.cash` est remplacé par ce solde d'ouverture, dont le sens change (plus une part du solde).
-- RG2. Le solde espèces est dérivé à la lecture ; il n'est jamais saisi hors ouverture.
+- RG2. Le solde espèces est dérivé à la lecture ; il n'est jamais saisi hors ouverture et hors ajustement (RG27 à RG34, qui l'amendent : le solde dérivé inclut les ajustements).
 - RG3. Le solde virtuel et le solde du compte de l'enveloppe ne sont jamais modifiés par une opération espèces (ouverture, transfert d'espèces, dépense en espèces).
 - RG4. Un transfert dont la source est le compte « Espèces » et dont la destination est le compte de l'enveloppe (cible `env` facultative, 0019 RG14 ; le critère est source Espèces + destination compte de l'enveloppe, D10) augmente le solde espèces de l'enveloppe de son montant et débite le compte « Espèces », dans le solde réel ET le solde estimé, à sa date (mécanique 0019). Il ne crédite pas le compte de l'enveloppe (voir Q1). Un transfert vers l'enveloppe depuis un autre compte n'augmente que le virtuel et ne change pas le solde espèces.
 - RG5. Le formulaire « Nouvelle dépense » d'une enveloppe propose « Payé avec » : « Virtuel » ou « Espèces ». Défaut : Virtuel. Le choix est enregistré sur la dépense.
 - RG6. Une dépense payée en espèces diminue le solde espèces seul ; elle ne touche ni le solde virtuel, ni le compte de l'enveloppe, ni le compte « Espèces » (déjà débité au transfert). Une dépense payée en virtuel ne diminue que le virtuel (0011 RG10 inchangé).
-- RG7. Bornes : le solde espèces est ≥ 0, sans plafond lié au solde virtuel. Une dépense en espèces supérieure au solde espèces est refusée (« Espèces insuffisantes sur cette enveloppe », voir Q3). Le solde virtuel garde son comportement actuel (peut être négatif, 0011 RG13).
+- RG7. (INCHANGÉE , confirmée le 2026-11-04, D51) Bornes : le solde espèces est ≥ 0, sans plafond lié au solde virtuel. Une dépense en espèces supérieure au solde espèces est refusée (« Espèces insuffisantes sur cette enveloppe »). Le départ espèces rendant le solde négatif à une date est refusé (D11, `openingCashRefusal`, comportement actuel conservé). Le solde cible d'un ajustement est ≥ 0 (RG30). Le solde virtuel garde son comportement actuel (peut être négatif, 0011 RG13).
 - RG8. Mois verrouillé ou clos : le solde espèces d'ouverture n'est pas modifiable ; création et suppression d'écritures selon les règles existantes.
 - RG9. Le solde espèces n'a aucun effet sur « Reste à placer », « Disponible » ni sur les totaux budgétaires. Pour les soldes de comptes, son seul effet est le débit du compte « Espèces » de RG4.
 - RG10. Conversion : pour chaque enveloppe, `cash` devient son solde espèces d'ouverture, sans borne par le solde virtuel. Le solde virtuel ne change pas (le solde de départ de l'enveloppe est conservé tel quel, voir Q5). Aucune écriture n'est fabriquée. Les dépenses `env` existantes sont considérées payées en virtuel.
@@ -70,10 +72,20 @@ Soldes de départ (rouverture)
 
 - RG26. (Amende RG12, D8 et D9 pour la tuile du Budget SEULEMENT) Sur la tuile d'enveloppe de l'écran Budget (`Budget.tsx`, `EnvelopeBalances`), le chiffre principal (`env-tile-solde`) est le solde VIRTUEL seul, et le solde espèces s'affiche sur la ligne juste en dessous, seul (libellé « Espèces X € », masquée si X = 0, Q38/Q39). Il n'y a plus ni total (virtuel + espèces) en titre ni sous-titre « Virtuel X · Espèces Y » sur cette tuile. La ligne « alloué X » reste en dessous des deux (ordre : virtuel, espèces, alloué). Le virtuel de la tuile est celui lu aujourd'hui, le virtuel budgétaire `envMonth.balance` (Q41). Les cartes de l'écran Enveloppes gardent RG12 (total en titre, sous-titre des deux soldes, Q40) ; les cartes de l'écran Comptes gardent RG21, RG23, RG24, RG25.
 
+Ajustement du solde espèces (amendement 2026-11-04 : l'espèces n'est pas tracée, le solde est informatif)
+- RG27. Dans la carte « Espèces » du panneau d'une enveloppe (écran Enveloppes SEUL, pas d'écran Comptes, de tuile Budget ni d'assistant), un champ « Solde actuel » (EditableAmount) affiche le solde espèces ACTUEL, c'est-à-dire à la date du jour. L'utilisateur y tape le solde voulu ; Entrée ou sortie du champ valide, Échap annule. La saisie des dépenses « Payé avec Espèces » (RG5, RG6) reste pleinement possible et continue d'impacter le solde espèces ; l'ajustement s'y ajoute, il ne la remplace pas.
+- RG28. Valider crée un « ajustement » : un mouvement espèces signé, daté, de montant = solde voulu − solde espèces actuel à la date de l'ajustement. Si l'écart est nul, rien n'est créé. Le départ espèces (`openingCash`) n'est pas modifié.
+- RG29. Le solde espèces dérivé devient : ouverture + parts du mois + ajustements − dépenses payées en espèces (Définitions amendées). Un ajustement n'a aucun effet sur le solde virtuel, les comptes, « Reste à placer », « Disponible » ni les totaux (RG3, RG9).
+- RG30. Bornes : le solde CIBLE saisi doit être ≥ 0 (négatif ou non numérique : refusé, « Montant positif ou nul requis »). De plus, l'ajustement est refusé si, une fois appliqué à la date du jour, le plus bas solde espèces à partir de cette date (mouvements postérieurs inclus, par exemple une dépense en espèces datée plus tard) serait < 0 : message « Solde espèces négatif à une date postérieure » (même règle que le départ, D11, D52). Rien n'est modifié en cas de refus.
+- RG31. Le solde espèces reste ≥ 0 en toutes circonstances : aucun état négatif n'est affiché ni toléré (RG7 conservée, D51). Pour saisir une dépense en espèces au-delà du solde, il faut d'abord ajuster le solde vers le haut.
+- RG32. (Remplace la décision Q6) Date : l'ajustement est TOUJOURS daté de la date du jour (now), non modifiable ; aucun sélecteur de date. Il ne dépend pas du mois affiché dans l'écran Enveloppes : quand le mois affiché n'est pas le mois courant, le champ « Solde actuel » reste celui d'aujourd'hui, avec le libellé « Solde actuel (au jj/mm) » ; il est ajustable de la même façon. L'écart se calcule sur le solde espèces à la date du jour (jour inclus, ajustements du même jour compris dans l'ordre de création).
+- RG33. Mois clos ou verrouillé : évalué sur la date du jour. Si le mois qui contient la date du jour est verrouillé ou clos (année clôturée comprise), le champ est en lecture seule et l'ajustement refusé (« Mois clos ou verrouillé »), comme RG8. Un ajustement daté du jour avant le mois de départ du compte de l'enveloppe est refusé (« Avant le mois de départ »). Un ajustement existant ne se modifie pas : il se supprime (depuis la liste Espèces de l'historique, si son mois n'est pas clos ou verrouillé) ou se compense par un nouvel ajustement.
+- RG34. Historique (amende RG18) : la liste Espèces affiche chaque ajustement comme une ligne « Ajustement » (montant signé, solde après) à sa date. La liste Virtuel ne le contient pas. L'infobulle et le libellé : la carte s'intitule « Espèces (informatif, non tracé) » avec une infobulle : « Les dépenses en espèces ne sont pas suivies. Ce solde est informatif : ajustez-le à la main pour le remettre à jour. Il n'entre dans aucun total budgétaire. » Le champ « départ » (RG14, RG20) reste inchangé.
+
 Historique des mouvements (rouverture)
 - RG16. Le panneau d'une enveloppe (écran Enveloppes) affiche un historique en deux listes présentées en deux onglets : « Virtuel » et « Espèces » (D13). La section « Transactions liées » est conservée, les deux listes s'y ajoutent (D15). Chaque ligne a une date, un libellé, un montant signé et le solde de l'enveloppe concernée après cette ligne.
 - RG17. Liste « Virtuel » : ligne « Ouverture » (départ virtuel), puis, dans l'ordre chronologique du solde, chaque mouvement du compte de l'enveloppe : allocations réelles et transferts reçus depuis un compte autre qu'Espèces (0019), dépenses payées en virtuel. Le solde après la dernière ligne est le solde virtuel de la fin de la période affichée.
-- RG18. Liste « Espèces » : ligne « Ouverture » (départ espèces), puis les transferts Espèces → enveloppe (RG4, entrées) et les dépenses payées en espèces (sorties), avec le solde espèces après chaque ligne.
+- RG18. Liste « Espèces » : ligne « Ouverture » (départ espèces), puis les parts du mois (0037), les ajustements (RG34) et les dépenses payées en espèces (sorties), avec le solde espèces après chaque ligne. (Les transferts Espèces → enveloppe sont supprimés depuis 0037.)
 - RG19. L'historique est en lecture seule et dérivé : aucune saisie de mouvement espèces hors formulaire « Transfert » (bouton « + Alimenter ») et formulaire de dépense (RG5). La suppression d'une dépense ou d'un transfert depuis l'écran Saisie ou Comptes est reflétée à la lecture.
 
 ## Parcours utilisateur
@@ -263,6 +275,59 @@ D38 (ex-Q38). Libellé de la ligne : « Espèces X € ».
 D39 (ex-Q39). La ligne est masquée quand les espèces valent 0.
 D40 (ex-Q40). L'écran Enveloppes (carte avec total en titre et sous-titre des deux soldes, RG12) reste inchangé.
 D41 (ex-Q41). Le virtuel de la tuile reste le solde budgétaire `envMonth.balance` (début + allocation − dépensé). Le « Solde virtuel » de l'écran Comptes (RG25) est, lui, le solde réel du compte ; les deux chiffres peuvent donc différer d'un écran à l'autre.
+
+## Amendement — espèces informatives, ajustement du solde (2026-11-04)
+
+Besoin du développeur : « Je ne trace pas les dépenses en espèces ! C'est à titre informatif. » Le solde dérivé ne baisse plus de lui-même ; il doit pouvoir être remis à la réalité à la main.
+
+Décisions validées (toutes les recommandations) :
+D42. Mécanique : ajustement daté, ligne signée de l'historique Espèces ; l'utilisateur tape le solde voulu, l'app calcule l'écart (RG27, RG28). Pas de valeur saisie qui remplace le calcul, pas de modification du départ.
+D43. Saisie dans l'écran Enveloppes seulement (carte « Espèces »).
+D44. (RÉVISÉE) La saisie des dépenses « Payé avec Espèces » reste pleinement possible et impacte le solde espèces (correction du développeur).
+D51. (ex-Q-A) Le refus « Espèces insuffisantes » sur une dépense en espèces est CONSERVÉ (RG7, D3) ; le solde espèces reste ≥ 0.
+D52. (ex-Q-B) Un ajustement du jour est refusé si le plus bas solde espèces à partir de la date du jour devient < 0 (RG30).
+D45. Le solde cible d'un ajustement est ≥ 0 ; refusé sinon (RG30).
+D46. Ajustement refusé si le mois de la date du jour est clos ou verrouillé (RG33).
+D47. (REMPLACE Q6) Date de l'ajustement = date du jour, non modifiable (RG32).
+D48. Le « Départ espèces » reste saisissable aux trois endroits, inchangé (RG13 à RG15, RG20).
+D49. Libellé « Espèces (informatif, non tracé) » avec infobulle (RG34).
+D50. Stockage additif Supabase des ajustements, test de contrat, `migrate.ts` ; aucune conversion de données.
+
+Le développeur a refusé l'assouplissement du refus du Départ espèces : D11 et `openingCashRefusal` restent tels qu'aujourd'hui (refus si le départ rend le solde négatif à une date). RG7 est conservée dans son texte actuel (D51) : le solde espèces reste ≥ 0 et il n'y a donc pas de tension entre le refus des dépenses et celui du départ.
+
+Design proposé, à valider (écran Enveloppes, panneau, carte « Espèces ») :
+```
+ | Espèces (informatif, non tracé) (i) |
+ | 60,00 €                              |
+ | Solde actuel (au 05/11) [ 45,00 ]    |   <- éditable ; toujours au jour courant, date non modifiable
+ | départ [ 40,00 ]                     |
+ Mouvements [ Virtuel | Espèces ]
+ 01/10  Ouverture            +40,00   40,00
+ 01/10  Part du mois         +20,00   60,00
+ 05/11  Ajustement           -15,00   45,00   [supprimer]
+```
+États : mois clos ou verrouillé (champ en lecture seule), refus avec message en ligne (négatif, solde négatif à une date postérieure, mois clos, avant le mois de départ), écart nul (aucun mouvement). Réutilise `EditableAmount`, `cell-input`, `drawer-tx`, `hist-grid`, l'infobulle « i ».
+
+Impact technique (quoi) :
+- Domaine : type d'ajustement espèces (enveloppe, date, montant signé) dans `BudgetData` ; `cashHistory` intègre les ajustements ; `envelopeCash`, `exceedsEnvelopeCash` et `envelopeConsumption` gardent leur comportement (solde ≥ 0) ; le plus bas solde à partir d'une date (`lowestCashBalance`) intègre les ajustements.
+- Application : action de création (calcul de l'écart, refus RG30/RG33) et de suppression d'un ajustement ; `addTransaction` pour `env` en espèces : saisie et refus pour espèces insuffisantes inchangés ; `openingCashRefusal` INCHANGÉ (il compte désormais les ajustements) ; la date de l'ajustement est injectée (date du jour).
+- Infrastructure : stockage additif des ajustements, `supabaseRows`, `database.types.ts`, test de contrat, `migrate.ts` (valeur par défaut vide).
+- Présentation : `Envelopes.tsx` (champ « Solde actuel », date, ligne d'historique, libellé et infobulle) ; `Expenses.tsx` inchangé (« Payé avec » et message « Espèces insuffisantes »).
+
+Critères d'acceptation :
+- CA25. Given un solde espèces de 60 € et un solde voulu de 45 € saisi, When je valide, Then un ajustement de −15 € est créé à la date choisie, le solde espèces vaut 45 €, `openingCash`, le virtuel et les totaux sont inchangés. (Auto)
+- CA26. Given un solde voulu égal au solde actuel, Then aucun ajustement n'est créé. (Auto)
+- CA27. Given un solde voulu négatif ou non numérique, Then refus avec message et rien ne change. Given une dépense en espèces datée dans le futur qui consomme tout le solde, When j'ajuste le solde du jour à la baisse de façon que le solde futur passerait sous 0, Then l'ajustement est refusé et rien ne change. (Auto)
+- CA28. Given une dépense « Payé avec Espèces » dans la limite du solde, Then elle est acceptée et diminue le solde espèces seul ; Given une dépense supérieure au solde espèces, Then elle est refusée (« Espèces insuffisantes sur cette enveloppe », RG7 inchangée). (Auto)
+- CA29. Given la date du jour dans un mois clos ou verrouillé, ou avant le mois de départ, Then le champ est en lecture seule / l'ajustement refusé ; Given un mois ouvert, Then l'ajustement est daté du jour et accepté ; Given un mois affiché différent du mois courant, Then l'ajustement est quand même daté du jour. (Auto sur la règle, Man sur l'écran)
+- CA29b. Given le Départ espèces, Then son comportement et ses refus (dont le solde négatif à une date, D11) sont inchangés. (Auto : tests existants)
+- CA30. Given un ajustement, Then il figure dans la liste Espèces avec le solde après, et pas dans la liste Virtuel ; supprimer l'ajustement (mois ouvert) le retire et le solde se recalcule. (Auto)
+- CA31. Given l'écran Comptes, la tuile Budget et l'assistant, Then le solde espèces n'y est pas ajustable ; la carte de l'écran Enveloppes porte le libellé « Espèces (informatif, non tracé) » et son infobulle. (Man)
+- CA32. Given la migration, Then sauvegarder puis recharger redonne le même `BudgetData` avec ses ajustements ; données anciennes sans ajustement chargées à l'identique ; build et tests passent, sans nouvelle dépendance. (Auto)
+
+## Questions ouvertes (amendement du 2026-11-04)
+
+Aucune. Décisions du développeur : le refus « Espèces insuffisantes » est conservé (RG7, D3), le solde espèces reste ≥ 0 (D51) ; un ajustement du jour est refusé si le plus bas solde espèces à partir de la date du jour devient < 0 (RG30, D52).
 
 ## Amendement — spec 0037 (2026-11-03)
 
