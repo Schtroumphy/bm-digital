@@ -16,15 +16,17 @@ import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/t
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
 import { addEnvelope, renameEnvelope } from '../../application/envelopes';
 import { setLinePayment } from '../../application/payment';
-import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, setEnvelopeAllocation, updateLine } from '../../application/actions';
-import { cashPartAbove } from '../../domain/cash';
+import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, updateLine } from '../../application/actions';
+import { envelopeSplitRefusal, setEnvelopeSplit, type EnvelopeSplitRefusal } from '../../application/cash';
+import { envelopeCashPart } from '../../domain/cash';
+import { envelopeAllocationFigures } from '../../domain/envelopeAllocation';
 import { CashMonthBlock } from '../components/CashMonthBlock';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { isoDate } from '../../domain/checkoff';
 import { lineTooltip } from '../../domain/comingUp';
-import { envelopeCash, envelopeConsumption } from '../../domain/envelopeCash';
+import { envelopeCash } from '../../domain/envelopeCash';
 import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
-import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
+import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber, round2 } from '../../domain/format';
 import { isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from '../../domain/types';
 import { EnvelopesTotal } from './Envelopes';
@@ -541,50 +543,92 @@ function GoalsCard({ onOpenGoals }: { onOpenGoals: () => void }) {
   );
 }
 
-/** Allocation field of an envelope tile, prefilled with the current value: Entrée or leaving the field replaces it (0 is valid), Échap cancels, a negative amount stays open with an error. */
-function AllocEditor({ value, onSet, onClose }: { value: number; onSet: (amount: number) => void; onClose: () => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const [error, setError] = useState<string | null>(null);
+/** Why an editor submission is refused, and which field to put back in focus. */
+interface SplitError {
+  field: 'alloc' | 'part';
+  message: string;
+}
+
+/**
+ * Editor of the allocation of an envelope tile (spec 0040, RG15 à RG23): two fields, « alloué » and « dont espèces », prefilled with the current values,
+ * and a read-only « virtuel » line that follows the typing. Entrée, or leaving BOTH fields, validates the pair; Tab between the two does not; Échap cancels.
+ * `onSubmit` gets the amounts (null = field left empty = unchanged) and returns an error to display, or null when the pair was saved.
+ */
+function AllocEditor({ value, cashPart, onSubmit, onClose }: { value: number; cashPart: number; onSubmit: (allocation: number | null, part: number | null) => SplitError | null; onClose: () => void }) {
+  const allocRef = useRef<HTMLInputElement>(null);
+  const partRef = useRef<HTMLInputElement>(null);
+  const [allocText, setAllocText] = useState(rawNumber(value));
+  const [partText, setPartText] = useState(cashPart > 0 ? rawNumber(cashPart) : '');
+  const [error, setError] = useState<SplitError | null>(null);
   const cancelled = useRef(false);
   useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
+    allocRef.current?.focus();
+    allocRef.current?.select();
   }, []);
+  // Amount typed in a field: null when empty, NaN when it is not a number.
+  const typed = (text: string) => (text.trim() ? parseAmount(text) ?? NaN : null);
+  const virtual = round2((typed(allocText) ?? value) - (typed(partText) ?? cashPart));
   const submit = () => {
     if (cancelled.current) return;
-    const text = ref.current?.value ?? '';
-    const v = text.trim() ? parseAmount(text) : null;
-    if (v !== null && v < 0) {
-      setError('Montant positif ou nul requis');
-      ref.current?.focus();
-      return;
-    }
-    if (v !== null) onSet(v);
-    onClose();
+    const allocation = typed(allocText);
+    const part = typed(partText);
+    // A negative or non-numeric amount never reaches the use case: same message for both fields.
+    const bad: SplitError | null = Number.isNaN(allocation) || (allocation !== null && allocation < 0) ? { field: 'alloc', message: 'Montant positif ou nul requis' } : Number.isNaN(part) || (part !== null && part < 0) ? { field: 'part', message: 'Montant positif ou nul requis' } : null;
+    // An untouched part is sent as « unchanged »: lowering the allocation alone is then refused as « below the part » (RG17, RG20).
+    const refused = bad ?? onSubmit(allocation, part === cashPart ? null : part);
+    if (!refused) return onClose();
+    setError(refused);
+    (refused.field === 'part' ? partRef : allocRef).current?.focus();
   };
-  return (
-    <div className="env-tile-add" onClick={e => e.stopPropagation()}>
-      <div className="env-tile-add-row">
-        <span>alloué</span>
-        <input
-          ref={ref}
-          className="cell-input is-alloc"
-          inputMode="decimal"
-          defaultValue={rawNumber(value)}
-          onChange={() => setError(null)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') submit();
-            else if (e.key === 'Escape') {
-              cancelled.current = true;
-              onClose();
-            }
-          }}
-          onBlur={submit}
-        />
-      </div>
-      {error && <div className="env-tile-error">{error}</div>}
+  const field = (name: 'alloc' | 'part', label: string, ref: typeof allocRef, text: string, set: (t: string) => void) => (
+    <div className="env-tile-add-row">
+      <span>{label}</span>
+      <input
+        ref={ref}
+        className={`cell-input is-alloc${error?.field === name ? ' is-invalid' : ''}`}
+        inputMode="decimal"
+        value={text}
+        onChange={e => {
+          set(e.target.value);
+          setError(null);
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') submit();
+          else if (e.key === 'Escape') {
+            cancelled.current = true;
+            onClose();
+          }
+        }}
+      />
     </div>
   );
+  return (
+    <div
+      className="env-tile-add"
+      onClick={e => e.stopPropagation()}
+      // Focus moving from one field to the other stays inside the editor: nothing is validated.
+      onBlur={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) submit();
+      }}
+    >
+      {field('alloc', 'alloué', allocRef, allocText, setAllocText)}
+      {field('part', 'dont espèces', partRef, partText, setPartText)}
+      {virtual >= 0 && <div className="env-tile-alloc">virtuel <b>{money(virtual)}</b></div>}
+      {error && <div className="env-tile-error">{error.message}</div>}
+      <div className="env-tile-hint">Entrée = valider · Échap = annuler</div>
+    </div>
+  );
+}
+
+/** Message shown in the editor for a refusal of the pair (spec 0040, RG17). `allocation` and `part` are the amounts typed, null = unchanged. */
+function splitRefusalError(refusal: EnvelopeSplitRefusal, allocation: number, currentPart: number): SplitError {
+  switch (refusal) {
+    case 'part-above-allocation': return { field: 'part', message: `La part en espèces ne peut pas dépasser l’allocation (${money(allocation)})` };
+    case 'allocation-below-part': return { field: 'alloc', message: `L’allocation ne peut pas passer sous la part en espèces (${money(currentPart)})` };
+    case 'invalid-part': return { field: 'part', message: 'Montant positif ou nul requis' };
+    case 'invalid-allocation': return { field: 'alloc', message: 'Montant positif ou nul requis' };
+    default: return { field: 'alloc', message: 'Modification impossible sur ce mois' };
+  }
 }
 
 function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean }) {
@@ -636,48 +680,74 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
               onClick={canEdit ? () => setEditing(`ea:${e.id}`) : undefined}
             >
               <div className="env-tile-head">
-                <AccountDot account={data.accounts.find(a => a.id === e.accountId)} />
                 <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void renameEnvelope(d, e.id, name))} className="env-tile-name" inputClassName="cell-input is-text">
                   {e.name}
                 </EditableText>
                 {warn && <span className="warn-dot" />}
+                <AccountDot account={data.accounts.find(a => a.id === e.accountId)} />
               </div>
-              {/* Spec 0026, RG26: the budget virtual balance alone (not capped, a negative one shows), the cash balance right under it, none when 0. */}
-              <div className="env-tile-solde">{money(ledger.envMonth(e.id, month)?.balance ?? 0)}</div>
-              {envelopeCash(data, e.id, month) !== 0 && (
-                <div className="env-tile-alloc is-cash">
-                  Espèces <b>{money(envelopeCash(data, e.id, month))}</b>
-                </div>
-              )}
               {(() => {
-                const c = envelopeConsumption(data, ledger, e.id, month);
-                if (!c) return null;
+                // Spec 0040: the tile shows what was ALLOCATED in the month (virtual, then cash) and the spending against it, not the balances.
+                const f = envelopeAllocationFigures(data, ledger, e.id, month);
+                const cash = f?.cashAllocation ?? 0;
+                const virtualAlloc = f?.virtualAllocation ?? 0;
+                const bank = ledger.envMonth(e.id, month)?.balance ?? 0;
+                const tip = f
+                  ? `Virtuel : dépensé ${money(f.virtualSpent)} sur ${money(f.virtualAllocation)}${f.cashAllocation > 0 || f.cashSpent !== 0 ? ` · Espèces : dépensé ${money(f.cashSpent)} sur ${money(f.cashAllocation)}` : ''} · Solde virtuel ${money(bank)}${cash > 0 || f.cashSpent !== 0 || envelopeCash(data, e.id, month) > 0 ? ` · Solde espèces ${money(envelopeCash(data, e.id, month))}` : ''}`
+                  : '';
                 return (
-                  <div className="has-tip" data-tip={`Solde de départ ${money(c.start)} · dépensé ${money(c.spent)} · reste ${money(c.remaining)}`}>
-                    <div className="progress dash-bar" style={{ background: vio.soft }}>
-                      <div style={{ width: `${c.consumed}%`, background: c.remaining < 0 ? 'oklch(0.62 0.18 25)' : vio.base }} />
+                  <>
+                    <div className="env-tile-modes">
+                      <div className="env-tile-mode">
+                        <span className="env-tile-mode-label"><span aria-hidden>💳</span>Virtuel</span>
+                        <span className="env-tile-solde">{money(virtualAlloc)}</span>
+                      </div>
+                      {cash > 0 && (
+                        <div className="env-tile-mode">
+                          <span className="env-tile-mode-label"><span aria-hidden>💵</span>Espèces</span>
+                          <span className="env-tile-solde">{money(cash)}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="env-tile-alloc">
-                      dépensé <b>{money(c.spent)}</b> sur {money(c.start)}
-                    </div>
-                  </div>
+                    {f?.showBar && (
+                      <div className="has-tip" data-tip={tip}>
+                        <div className={`progress dash-bar is-split${f.overrun > 0 ? ' is-over' : ''}`} style={{ background: vio.soft }}>
+                          <div style={{ width: `${f.virtualPct}%`, background: f.overrun > 0 ? 'oklch(0.62 0.18 25)' : vio.base }} />
+                          <div className="is-cash-spent" style={{ width: `${f.cashPct}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 );
               })()}
               {canEdit && editing === `ea:${e.id}` ? (
                 <AllocEditor
                   value={alloc[e.id] ?? 0}
-                  onSet={amount => {
-                    const part = cashPartAbove(data, month, e.id, amount);
-                    if (part !== null) return void window.alert(`L’allocation ne peut pas passer sous la part en espèces du mois (${money(part)}). Réduis d’abord la part en espèces (écran Enveloppes).`);
-                    update(d => void setEnvelopeAllocation(d, month, e.id, amount));
+                  cashPart={envelopeCashPart(data, month, e.id)}
+                  onSubmit={(allocation, part) => {
+                    const refusal = envelopeSplitRefusal(data, month, e.id, allocation, part);
+                    if (refusal) return splitRefusalError(refusal, allocation ?? alloc[e.id] ?? 0, envelopeCashPart(data, month, e.id));
+                    update(d => void setEnvelopeSplit(d, month, e.id, allocation, part));
                     setWarned(true);
+                    return null;
                   }}
                   onClose={() => setEditing(null)}
                 />
               ) : (
-                <div className="env-tile-alloc">
-                  alloué <b>{money(alloc[e.id] ?? 0)}</b>
-                </div>
+                (() => {
+                  const f = envelopeAllocationFigures(data, ledger, e.id, month);
+                  return (
+                    <>
+                      {f?.showBar && f.overrun > 0 && <div className="env-tile-over">dépassé de {money(f.overrun)}</div>}
+                      <div className="env-tile-line">
+                        {f?.showBar ? <div className="env-tile-alloc">dépensé <b>{money(f.spent)}</b></div> : <span />}
+                        <div className="env-tile-alloc">
+                          alloué <b>{money(alloc[e.id] ?? 0)}</b>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()
               )}
             </div>
           );

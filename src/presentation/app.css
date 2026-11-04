@@ -289,11 +289,28 @@ input, button { font-family: inherit; }
 .env-tile-add-row { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .env-tile-error { font-size: 11px; font-weight: 600; color: oklch(0.54 0.18 25); }
 .env-empty { margin: 10px 14px 0; font-size: 12px; color: var(--muted); }
+.env-tile-modes { display: flex; gap: 14px; margin: 2px 0 6px; }
+.env-tile-mode { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.env-tile-mode-label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.env-tile-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.env-tile-mode-label > span[aria-hidden] { font-size: 9px; line-height: 1; }
+.env-swatch { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.env-swatch.is-cash { background: repeating-linear-gradient(135deg, oklch(0.72 0.13 85) 0 2px, oklch(0.92 0.06 85) 2px 4px); }
 .env-tile-solde { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
 .env-tile-alloc { font-size: 11px; color: var(--muted); }
 .env-tile-alloc b { color: var(--ink); }
 /* cash line of the Budget tile (spec 0026, RG26): set apart from the virtual balance above it */
 .env-tile-alloc.is-cash { margin-top: 6px; }
+/* Spec 0040: one bar in two successive segments (virtual spent, then cash spent with a hatch), red outline when the month's spending goes past the allocation */
+.progress.is-split { display: flex; overflow: hidden; }
+.progress.is-split > div { border-radius: 0; flex: none; }
+.progress.is-split > .is-cash-spent {
+  background: repeating-linear-gradient(135deg, oklch(0.72 0.13 85) 0 3px, oklch(0.92 0.06 85) 3px 6px);
+}
+.progress.is-over { outline: 1.5px solid oklch(0.62 0.18 25); }
+.env-tile-over { color: oklch(0.54 0.18 25); font-weight: 600; }
+.env-tile-hint { font-size: 10px; color: var(--muted); }
+.cell-input.is-invalid { border-color: oklch(0.62 0.18 25); outline-color: oklch(0.62 0.18 25); }
 .env-add {
   border-radius: 12px; border: 1.5px dashed oklch(0.82 0.06 300); display: flex; align-items: center; justify-content: center;
   gap: 5px; color: oklch(0.45 0.1 300); font-weight: 600; cursor: pointer; min-height: 62px;

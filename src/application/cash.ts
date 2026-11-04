@@ -1,9 +1,9 @@
 import { daysInMonth } from '../domain/checkoff';
-import { reconcilableLines } from '../domain/cash';
+import { envelopeCashPart, reconcilableLines } from '../domain/cash';
 import { round2 } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import type { BudgetData, MonthKey } from '../domain/types';
-import { addTransaction } from './actions';
+import { addTransaction, setEnvelopeAllocation } from './actions';
 import { closeBlockers, closeMonth, type CloseBlocker } from './monthClosing';
 
 /*
@@ -34,6 +34,43 @@ export function setEnvelopeCashPart(d: BudgetData, m: MonthKey, envelopeId: stri
     if (md.cashPart) delete md.cashPart[envelopeId];
     if (md.cashPart && Object.keys(md.cashPart).length === 0) delete md.cashPart;
   } else (md.cashPart ??= {})[envelopeId] = next;
+  return 'ok';
+}
+
+/** Why an allocation and its cash part cannot be set together (spec 0040, RG17). */
+export type EnvelopeSplitRefusal = 'unknown' | 'locked' | 'invalid-allocation' | 'invalid-part' | 'part-above-allocation' | 'allocation-below-part';
+
+/**
+ * The reason the allocation and/or the cash part of an envelope are refused, or null when both can be set (spec 0040, RG17, RG18).
+ * `null` for an amount means « leave as it is ». The pair is judged as a whole, before anything is written.
+ */
+export function envelopeSplitRefusal(d: BudgetData, m: MonthKey, envelopeId: string, allocation: number | null, part: number | null): EnvelopeSplitRefusal | null {
+  const md = d.months[m];
+  if (!md?.initialized || !d.envelopes.some(e => e.id === envelopeId)) return 'unknown';
+  if (isMonthLocked(d, m)) return 'locked';
+  if (allocation !== null && (!Number.isFinite(allocation) || allocation < 0)) return 'invalid-allocation';
+  if (part !== null && (!Number.isFinite(part) || part < 0)) return 'invalid-part';
+  const nextAllocation = round2(allocation ?? md.alloc[envelopeId] ?? 0);
+  const nextPart = round2(part ?? envelopeCashPart(d, m, envelopeId));
+  if (nextPart > nextAllocation) return part !== null ? 'part-above-allocation' : 'allocation-below-part';
+  return null;
+}
+
+/**
+ * Sets the allocation and the cash part of an envelope for a month in one go (spec 0040, RG18, RG19): all or nothing. The write order keeps
+ * the intermediate state valid: the allocation first when it does not go below the current part, else the part first.
+ */
+export function setEnvelopeSplit(d: BudgetData, m: MonthKey, envelopeId: string, allocation: number | null, part: number | null): EnvelopeSplitRefusal | 'ok' {
+  const refused = envelopeSplitRefusal(d, m, envelopeId, allocation, part);
+  if (refused) return refused;
+  const raisesFirst = allocation === null || round2(allocation) >= envelopeCashPart(d, m, envelopeId);
+  if (raisesFirst) {
+    if (allocation !== null) setEnvelopeAllocation(d, m, envelopeId, allocation);
+    if (part !== null) setEnvelopeCashPart(d, m, envelopeId, part);
+  } else {
+    if (part !== null) setEnvelopeCashPart(d, m, envelopeId, part);
+    if (allocation !== null) setEnvelopeAllocation(d, m, envelopeId, allocation);
+  }
   return 'ok';
 }
 

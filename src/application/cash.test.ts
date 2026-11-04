@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addTransfer, deleteAccountMovement } from './accountMovements';
 import { addTransaction, setEnvelopeAllocation } from './actions';
-import { cashPartRefusal, closeBlockersAfterReconcile, closeMonthReconciling, reconcileCashLines, RECONCILE_LABEL, setEnvelopeCashPart } from './cash';
+import { cashPartRefusal, closeBlockersAfterReconcile, closeMonthReconciling, envelopeSplitRefusal, reconcileCashLines, RECONCILE_LABEL, setEnvelopeCashPart, setEnvelopeSplit } from './cash';
 import { loadBudget } from './loadBudget';
 import { addEnvelope } from './envelopes';
 import { setLinePayment } from './payment';
@@ -358,5 +358,75 @@ describe('conversion des données existantes (spec 0037, « Sort des données »
     expect(data.accountMovements!.map(m => m.toAccountId)).toEqual([CASH_ID]);
     expect(saved).toHaveLength(1);
     expect(saved[0].accountMovements!.map(m => m.toAccountId)).toEqual([CASH_ID]);
+  });
+});
+
+describe('allocation et part en espèces réglées ensemble (spec 0040, RG15 à RG23)', () => {
+  const part = (d: BudgetData) => d.months[M].cashPart?.shop ?? 0;
+  const alloc = (d: BudgetData) => d.months[M].alloc.shop;
+
+  it('CA13: saisir une part de 40 sur 100 l’enregistre ; la virtuelle devient 60', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', 100, 40)).toBe('ok');
+    expect(part(d)).toBe(40);
+    expect(alloc(d)).toBe(100);
+  });
+
+  it('CA14: une part à 0 supprime la part ; une part vide (null) ne la change pas', () => {
+    const d = october();
+    setEnvelopeCashPart(d, M, 'shop', 40);
+    expect(setEnvelopeSplit(d, M, 'shop', 120, null)).toBe('ok');
+    expect(part(d)).toBe(40);
+    expect(setEnvelopeSplit(d, M, 'shop', 120, 0)).toBe('ok');
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('CA15: une part au-dessus de l’allocation saisie est refusée, rien n’est enregistré', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', 80, 120)).toBe('part-above-allocation');
+    expect(alloc(d)).toBe(100);
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('CA16: une part négative ou non numérique, une allocation négative sont refusées sans rien écrire', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', 150, -1)).toBe('invalid-part');
+    expect(setEnvelopeSplit(d, M, 'shop', 150, NaN)).toBe('invalid-part');
+    expect(setEnvelopeSplit(d, M, 'shop', -5, 10)).toBe('invalid-allocation');
+    expect(alloc(d)).toBe(100);
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('CA17: monter ou baisser allocation et part ensemble est accepté ; baisser seule l’allocation sous la part est refusé', () => {
+    const d = october();
+    setEnvelopeCashPart(d, M, 'shop', 40);
+    expect(setEnvelopeSplit(d, M, 'shop', 150, 70)).toBe('ok');
+    expect([alloc(d), part(d)]).toEqual([150, 70]);
+    setEnvelopeSplit(d, M, 'shop', 100, 40);
+    expect(setEnvelopeSplit(d, M, 'shop', 50, 20)).toBe('ok');
+    expect([alloc(d), part(d)]).toEqual([50, 20]);
+    expect(setEnvelopeSplit(d, M, 'shop', 10, null)).toBe('allocation-below-part');
+    expect([alloc(d), part(d)]).toEqual([50, 20]);
+  });
+
+  it('RG20: changer seulement la part ne touche pas à l’allocation', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', null, 30)).toBe('ok');
+    expect([alloc(d), part(d)]).toEqual([100, 30]);
+  });
+
+  it('CA19: mois clos ou verrouillé, enveloppe inconnue : refusé', () => {
+    const d = october();
+    expect(envelopeSplitRefusal(d, M, 'zzz', 10, 5)).toBe('unknown');
+    d.months[M].closed = true;
+    expect(setEnvelopeSplit(d, M, 'shop', 100, 40)).toBe('locked');
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('RG23: la part saisie ici est celle de l’écran Enveloppes ; le virement d’allocation ne porte que allocation − part (virtuel)', () => {
+    const d = october();
+    setEnvelopeSplit(d, M, 'shop', 100, 40);
+    expect(envelopeCash(d, 'shop', M)).toBe(40);
+    expect(ledger(d).envMonth('shop', M)!.balance).toBe(60);
   });
 });
