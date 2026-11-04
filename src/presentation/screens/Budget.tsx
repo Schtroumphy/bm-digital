@@ -171,7 +171,7 @@ export function BudgetScreen({ month, onOpenGoals, onOpenStatements, onOpenOpera
             negative="Moins épargné que prévu"
           />
           <Kpi label="Revenus" hue={HUE.rev} value={money(s.income)} />
-          <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} />
+          <Kpi label="Dépenses" hue={HUE.dep} value={money(s.expenses)} sub={'Réelles : ' + money(s.expensesReal)} />
           <Kpi label="Épargne budgétisée" hue={HUE.epa} value={money(s.grossSavings)} sub={'Réelle : ' + money(s.realSavings)} />
           <Kpi label="Taux d’épargne" hue={HUE.obj} value={percent(s.savingsRate)} sub={'Brut : ' + percent(s.grossSavingsRate)} />
           <div className="panel kpi emergency">

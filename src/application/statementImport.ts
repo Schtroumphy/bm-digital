@@ -1,4 +1,4 @@
-import { accountIdOf, canAssignTo, envelopeEntryAccount, fixedTransactionAccountId, isEnvelopeAccount, offBudgetEntryAccount } from '../domain/bank';
+import { accountIdOf, canAssignTo, envelopeEntryAccount, fixedTransactionAccountId, isEnvelopeAccount, offBudgetEntryAccount, savingsExpenseAccountId } from '../domain/bank';
 import { CASH_ID, ENVELOPES_ID, canLinkFaces, findCompletable, isEnvelopesPool, pairFaces, tracesOf, type Face } from '../domain/internalTransfers';
 import { compareMonths, round2 } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
@@ -205,6 +205,9 @@ export function targetIsValid(d: BudgetData, sourceId: string | null, nature: Li
     // A line of an envelope's account can only be spent from that envelope: no variable line on an envelope's account (spec 0011, RG2, RG10).
     const own = ownEnvelopeTarget(d, sourceId);
     if (own) return target.kind === 'env' && own.kind === 'env' && target.id === own.id;
+    // A line of savings of the month tied to the account of the imported line, which must be a savings account: an expense funded by savings (spec 0035, RG1, RG2).
+    // Exception to the account rule of ADR 0014: here the account compared is the one the line is tied to (`linkedAccountId`).
+    if (target.kind === 'savings') return savingsExpenseAccountId(d, month, target.key) === sourceId;
     if (target.kind === 'var') return !!d.months[month]?.lines.some(l => l.block === 'var' && l.key === target.key);
     // A fixed/credit line, only when it is on the account of the imported line (spec 0014, RG3).
     if (target.kind === 'line') {
@@ -272,7 +275,7 @@ export function lineProblem(d: BudgetData, l: PreviewLine): string | null {
   if (!isImportMonth(d, l.month)) return 'Choisir un mois ouvert';
   if (!targetIsValid(d, l.accountId, l.nature, l.target, l.month)) return isExpenseNature(l.nature) || l.nature === 'revenu' || l.nature === 'envin' || l.nature === 'accin' ? 'À rattacher' : l.nature === 'recu' ? 'Choisir le compte source' : 'Choisir une destination';
   // The assignment to a savings account (spec 0028): only on a `var`, `fix` or revenue line, to an account that can take it.
-  if (l.assignedAccountId && (isExpenseNature(l.nature) || l.nature === 'revenu') && l.target?.kind !== 'env' && !canAssignTo(d, l.nature === 'revenu' ? 'rev' : 'var', balanceAccounts(d, l)[0], l.assignedAccountId)) return 'Compte d’affectation invalide';
+  if (l.assignedAccountId && (isExpenseNature(l.nature) || l.nature === 'revenu') && (l.target?.kind === 'savings' || (l.target?.kind !== 'env' && !canAssignTo(d, l.nature === 'revenu' ? 'rev' : 'var', balanceAccounts(d, l)[0], l.assignedAccountId)))) return 'Compte d’affectation invalide';
   return null;
 }
 
@@ -762,7 +765,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
       importAccountId: sourceId, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date, ...(l.row.category ? { category: l.row.category } : {}),
     };
     const t = l.target!;
-    const targetId = t.kind === 'var' || t.kind === 'line' ? t.key : t.id;
+    const targetId = t.kind === 'var' || t.kind === 'line' || t.kind === 'savings' ? t.key : t.id;
     if (l.nature === 'revenu') {
       // « Nouvelle ligne de revenu »: a revenue line at budget 0, in the month of attachment only, on the account of the line (spec 0015, RG9).
       let key = targetId;
@@ -811,7 +814,9 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
           ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId, ...assignment(l) }
           : t.kind === 'line'
             ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId, ...assignment(l) }
-            : { id: newId('t'), ...base, type: 'env', target: targetId };
+            : t.kind === 'savings'
+              ? { id: newId('t'), ...base, type: 'epd', target: targetId, accountId: sourceId }
+              : { id: newId('t'), ...base, type: 'env', target: targetId };
       if (addTransaction(d, tx)) {
         batch.expenses++;
         imported.push(l);

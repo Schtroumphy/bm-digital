@@ -67,6 +67,8 @@ export function completeData(): BudgetData {
   d.transactions.push({ id: 't-envin', month: '2026-12', day: 9, label: 'Remboursement', amount: 40, type: 'envin', target: d.envelopes[0].id, accountId: d.envelopes[0].accountId, source: 'Garage', bankDate: '2026-12-09' });
   // Entrée d'argent sur un compte hors budget (spec 0042, CA12): sauvegardée puis rechargée à l'identique.
   d.transactions.push({ id: 't-accin', month: '2026-12', day: 10, label: 'Titres-restaurant', amount: 150, type: 'accin', target: 'acc-swile', accountId: 'acc-swile', source: 'Employeur', bankDate: '2026-12-10' });
+  // Spec 0035 : dépense financée par l'épargne (payeur = compte d'épargne, cible = clé de la ligne epa) et règle mémorisée vers une ligne d'épargne.
+  d.transactions.push({ id: 't-epd', month: '2026-12', day: 9, label: 'Billets avion', amount: 30, type: 'epd', target: 'line-key', accountId: 'acc-sav', importAccountId: 'acc-sav', fingerprint: '2026-12-09|30.00|billets avion', rank: 1, bankDate: '2026-12-09' });
   d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08', target: { kind: 'env', id: 'e-vc' } }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
@@ -76,6 +78,7 @@ export function completeData(): BudgetData {
     { id: 'r1', pattern: 'carrefour', nature: 'depense', target: { kind: 'var', key: 'courses' } },
     { id: 'r2', pattern: 'retrait', nature: 'retrait', target: { kind: 'account', id: 'acc-cash' } },
     { id: 'r-fix', pattern: 'edf', nature: 'depense', target: { kind: 'line', key: fixLine.key } },
+    { id: 'r-sav', pattern: 'billets', nature: 'depense', target: { kind: 'savings', key: 'line-key' } },
     { id: 'r-rev', pattern: 'acme', nature: 'revenu', target: { kind: 'line', key: revLine.key } },
   ];
   // Spec 0034 : deux simulations, la plus récente en tête, avec notes et lignes dans l'ordre (dont une ligne sans nom ni montant).

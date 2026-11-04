@@ -23,6 +23,8 @@ export interface DashboardKpis {
   /** Sum of the actuals of the revenue lines. */
   incomeActual: number;
   expenses: number;
+  /** Real expenses of the month, with the ones funded by savings (spec 0035, RG6). */
+  expensesReal: number;
   variableRemaining: number;
   /** Real savings rate, in %. */
   savingsRate: number;
@@ -294,6 +296,7 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
     income: s.income,
     incomeActual: blockTotals(lines, 'rev').actual,
     expenses: s.expenses,
+    expensesReal: s.expensesReal,
     variableRemaining: variableRemaining(d, month),
     savingsRate: s.savingsRate,
     savingsRateTarget: firstGoalOfKind(d, 'rate', todayMonth)?.target ?? null,

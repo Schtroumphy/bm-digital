@@ -70,9 +70,17 @@ const isCashExpense = (t: Transaction) => (t.type === 'env' || t.type === 'var')
 /** Debit of a transaction side: a withdrawal from savings and an entry of money are money in, the others money out. */
 const isMoneyIn = (type: string) => type === 'epa' || type === 'rev' || type === 'envin' || type === 'accin';
 
-/** Label of a transaction in a list of movements: a mark by nature; an entry on an envelope says so (spec 0036, RG12). */
-const movementLabel = (t: Transaction): string =>
-  t.type === 'envin' ? `${MOVE_MARK.entry} ${t.label} (entrée sur enveloppe)` : t.type === 'accin' ? `${MOVE_MARK.entry} ${t.label} (entrée sur compte hors budget)` : `${t.type === 'epa' ? MOVE_MARK.withdrawal : t.type === 'rev' ? MOVE_MARK.entry : MOVE_MARK.expense} ${t.label}`;
+/** Label of a transaction in a list of movements: a mark by nature; an entry on an envelope says so (spec 0036, RG12); an expense funded by savings says so (spec 0035, RG4). */
+const movementLabel = (d: BudgetData, t: Transaction): string => {
+  if (t.type === 'epd') return `${MOVE_MARK.expense} ${t.label} (${savingsExpenseWord(d, t)})`;
+  return t.type === 'envin' ? `${MOVE_MARK.entry} ${t.label} (entrée sur enveloppe)` : t.type === 'accin' ? `${MOVE_MARK.entry} ${t.label} (entrée sur compte hors budget)` : `${t.type === 'epa' ? MOVE_MARK.withdrawal : t.type === 'rev' ? MOVE_MARK.entry : MOVE_MARK.expense} ${t.label}`;
+};
+
+/** Qualifier of an expense funded by savings in the account's list (spec 0035, RG4): names the savings line it is categorised by. */
+const savingsExpenseWord = (d: BudgetData, t: Transaction): string => {
+  const name = (d.months[t.month]?.lines ?? []).find(l => l.key === t.target)?.name;
+  return name ? `dépense depuis l’épargne · ${name}` : 'dépense depuis l’épargne';
+};
 
 /** Name of the budget item an expense or an entry is attached to; empty when it was deleted. */
 function imputationOf(d: BudgetData, t: Transaction): { name: string; type: Transaction['type'] } {
@@ -122,7 +130,7 @@ export function realMovements(d: BudgetData, id: string, m: MonthKey): BankMovem
     }
     // An envelope expense paid in cash leaves the envelope's cash balance, never its account (spec 0026, RG6).
     if (isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: movementLabel(t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
   }
   // A transfer is real: both faces count, whatever the budget status of the accounts (RG2, RG12).
   out.push(...transferMovements(d, id, m));
@@ -143,7 +151,7 @@ export function beforeBudgetMovements(d: BudgetData, id: string): BankMovement[]
   for (const t of d.transactions) {
     const date = bankDateOf(t, d);
     if (date >= start || isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: movementLabel(t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, beforeBudget: true });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, beforeBudget: true });
   }
   for (const mv of d.accountMovements ?? []) {
     if (mv.amount === 0 || isEnvelopesPool(id)) continue;
@@ -163,7 +171,7 @@ export function attachedMovements(d: BudgetData, id: string, m: MonthKey): BankM
   for (const t of d.transactions) {
     const date = bankDateOf(t, d);
     if (t.month !== m || within(date) || isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: movementLabel(t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
   }
   return out;
 }
@@ -251,7 +259,7 @@ export function estimatedMovements(d: BudgetData, id: string, m: MonthKey): Bank
     }
     if (isCashExpense(t) || !mine(t.accountId)) continue;
     const attached = inPeriod(d, t.month, date) ? undefined : t.month;
-    out.push({ date, label: movementLabel(t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', ...(attached ? { attachedMonth: attached } : {}) });
   }
   // Transfers are real and also count here, on both faces (RG9, RG12).
   out.push(...transferMovements(d, id, m));

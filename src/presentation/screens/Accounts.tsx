@@ -87,7 +87,7 @@ const GROUPS: { id: Group; title: string; sub: string }[] = [
 ];
 const MOVE_KIND: Record<string, string> = { expense: 'Écriture', transfer: 'Transfert', adjustment: 'Régularisation' };
 /** Nature of an expense or an entry, read from the budget item it is attached to. */
-const IMPUTATION_KIND: Record<TxType, string> = { var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie d’épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent', envin: 'Entrée sur enveloppe', accin: 'Entrée sur compte hors budget' };
+const IMPUTATION_KIND: Record<TxType, string> = { var: 'Dépense variable', env: 'Enveloppe', epa: 'Sortie d’épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent', envin: 'Entrée sur enveloppe', accin: 'Entrée sur compte hors budget', epd: 'Dépense depuis l’épargne' };
 
 /** Emoji marks of the labels (legend of the account detail): left out of the export. */
 const MARKS = new RegExp(`(${MOVE_LEGEND.map(l => l.mark).join('|')})\\s*`, 'gu');
@@ -113,6 +113,8 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   // Account whose colour palette is open, and the account whose row menu is.
   const [hueFor, setHueFor] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  // Overview: also list the closed (archived) accounts, apart from the totals.
+  const [showClosed, setShowClosed] = useState(false);
   // Panel listing the accounts that seem counted twice (spec 0010, RG18).
   const [reviewing, setReviewing] = useState(false);
   const candidates = kindCandidates(data);
@@ -133,7 +135,8 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const withCash = envelopesGroupTotals(data, ledger, month);
   const current = active.filter(a => ['main', 'other'].includes(groupOf(a)));
   const wealth = active.filter(a => isSaving(groupOf(a)));
-  const open = active.find(a => a.id === selected) ?? null;
+  // Closed accounts open their panel too (read-only history).
+  const open = data.accounts.find(a => a.id === selected) ?? null;
 
   const archive = (a: BankAccount) => {
     const balance = ledger.bankMonth(a.id, lastMonth)?.balance ?? 0;
@@ -156,10 +159,11 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     const spent = round2(flow - sentOut);
     const on = selected === a.id;
     return (
-      <article key={a.id} className={`cpt-card${on ? ' is-on' : ''}`} style={toneVars(a.hue)}>
+      <article key={a.id} className={`cpt-card${on ? ' is-on' : ''}`} style={a.archived ? { ...toneVars(a.hue), opacity: 0.6, filter: 'grayscale(1)' } : toneVars(a.hue)}>
         <div className="cpt-card-head">
           <span className="dot is-10" style={{ background: tone(a.hue).base }} />
           <button className="cpt-open" aria-pressed={on} onClick={() => { setSelected(on ? null : a.id); setPanelTab('moves'); }}>{a.name}</button>
+          {a.archived && <span className="cpt-tag">Clôturé</span>}
           <span className="cpt-tag">{tagOf(a, g)}</span>
         </div>
         <div className={env ? 'cpt-pair' : undefined}>
@@ -215,6 +219,14 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           <div className="muted is-small">Solde réel · livrets, bourse, placements</div>
         </div>
       </section>
+      {archived.length > 0 && (
+        <div className="cpt-switches" style={{ alignItems: 'flex-end' }}>
+          <button className="cpt-switch" role="switch" aria-checked={showClosed} style={{ minHeight: 28, padding: '0 10px', gap: 8, borderRadius: 99, fontSize: 12 }} title="Les comptes clôturés restent hors des totaux" onClick={() => setShowClosed(o => !o)}>
+            Comptes clôturés ({archived.length})
+            <span className={`cpt-track${showClosed ? ' is-on' : ''}`} style={{ width: 28, height: 16 }}><span style={{ width: 12, height: 12, left: showClosed ? 14 : 2 }} /></span>
+          </button>
+        </div>
+      )}
       {GROUPS.map(g => {
         const list = byGroup(g.id);
         if (list.length === 0) return null;
@@ -239,6 +251,17 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </section>
         );
       })}
+      {showClosed && archived.length > 0 && (
+        <section className="cpt-group">
+          <div className="cpt-group-head">
+            <div>
+              <h2 className="cpt-group-title">Comptes clôturés</h2>
+              <span className="muted">Archivés : leur solde n’entre dans aucun total</span>
+            </div>
+          </div>
+          <div className="cpt-cards">{archived.map(card)}</div>
+        </section>
+      )}
     </>
   );
 

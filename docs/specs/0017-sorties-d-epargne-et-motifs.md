@@ -30,7 +30,7 @@ Inclus :
 - Règles mémorisées avec motif.
 - Schéma : migration additive.
 
-Exclus : « objectifs d'épargne » avec montant cible et progression, versements (entrées) sur un compte épargne, sortie externe sans ligne de budget (la dépense se rattache à une ligne `var` ou à une enveloppe), motif sur les écritures des autres comptes, double pointage (spec 0018), liaison des deux faces d'un virement (spec 0016), bilan annuel, revue comptes/objectifs.
+Exclus : « objectifs d'épargne » avec montant cible et progression, versements (entrées) sur un compte épargne, sortie externe sans ligne de budget (la dépense se rattache à une ligne `var` ou à une enveloppe ; à l'import, une dépense d'un compte dédié d'une ligne `epa` peut désormais se rattacher à cette ligne comme dépense financée par l'épargne, sans récepteur : voir la spec 0035), motif sur les écritures des autres comptes, double pointage (spec 0018), liaison des deux faces d'un virement (spec 0016), bilan annuel, revue comptes/objectifs.
 
 ## Règles de gestion
 

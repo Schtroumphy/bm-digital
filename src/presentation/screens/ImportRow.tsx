@@ -2,7 +2,7 @@ import { AccountDot } from '../components/AccountPicker';
 import { OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, chooseEnvelope, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
-import { assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, fixedTransactionAccountId, isEnvelopeAccount } from '../../domain/bank';
+import { assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, fixedTransactionAccountId, isEnvelopeAccount, savingsExpenseLines } from '../../domain/bank';
 import { CASH_LABEL, ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget, MovementTarget } from '../../domain/types';
@@ -19,12 +19,12 @@ const TRANSFER_HINT = 'Virement possible : vérifiez que ce n’est pas un virem
 
 const LOCKED_HELP = 'Déjà importée dans votre budget : elle ne peut pas être importée à nouveau. Pour une dépense réellement identique, la saisir à la main dans l’onglet Saisie.';
 
-export const targetValue = (t: ImportTarget | null) => (t ? `${t.kind}:${t.kind === 'var' || t.kind === 'line' ? t.key : t.id}` : '');
+export const targetValue = (t: ImportTarget | null) => (t ? `${t.kind}:${t.kind === 'var' || t.kind === 'line' || t.kind === 'savings' ? t.key : t.id}` : '');
 export function targetFrom(value: string): ImportTarget | null {
   const i = value.indexOf(':');
   if (i < 0) return null;
   const [kind, id] = [value.slice(0, i), value.slice(i + 1)];
-  return kind === 'var' ? { kind: 'var', key: id } : kind === 'line' ? { kind: 'line', key: id } : kind === 'env' ? { kind: 'env', id } : { kind: 'account', id };
+  return kind === 'var' ? { kind: 'var', key: id } : kind === 'line' ? { kind: 'line', key: id } : kind === 'savings' ? { kind: 'savings', key: id } : kind === 'env' ? { kind: 'env', id } : { kind: 'account', id };
 }
 
 /** The budget item a transfer is attached to, from a select value; null for « Aucun » (spec 0019). */
@@ -81,6 +81,8 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
   const revenueLines = fromEnvelope || !l.accountId ? [] : (data.months[l.month]?.lines ?? []).filter(x => x.block === 'rev' && expenseLineAccountId(data, x) === l.accountId);
   const entryEnvelopes = data.envelopes.filter(e => envelopeEntryAccount(data, e.id));
   const entryAccounts = offBudgetEntryAccounts(data);
+  // Savings lines of the month tied to the savings account of the imported line: an expense funded by savings (spec 0035, RG1); none for another kind of account.
+  const savingsLines = l.accountId ? savingsExpenseLines(data, l.month, l.accountId) : [];
   const envelopes = fromEnvelope ? data.envelopes.filter(e => e.accountId === l.accountId) : data.envelopes;
   const destinations = destinationAccounts(data, l.nature, l.accountId);
   const boxAccount = l.target?.kind === 'var' ? fixedTransactionAccountId(data, { type: 'var', month: l.month, target: l.target.key }) : undefined;
@@ -227,6 +229,15 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
                         ))}
                       </optgroup>
                     ))}
+                    {savingsLines.length > 0 && (
+                      <optgroup label="Sorties d’épargne du compte" title="Dépense financée par l’épargne : baisse l’épargne réelle, pas le disponible">
+                        {savingsLines.map(x => (
+                          <option key={x.key} value={`savings:${x.key}`} title="Dépense financée par l’épargne : baisse l’épargne réelle, pas le disponible">
+                            {x.name} (sortie d’épargne)
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                     <optgroup label="Enveloppes">
                       {envelopes.map(e => (
                         <option key={e.id} value={`env:${e.id}`}>
