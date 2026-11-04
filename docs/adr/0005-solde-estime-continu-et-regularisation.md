@@ -1,6 +1,6 @@
 # 0005 — Solde estimé continu, bascule réel / pointage et régularisation tracée
 
-- Statut : acceptée (validée par le développeur)
+- Statut : acceptée (validée par le développeur) ; amendée par l'[ADR 0037](0037-reste-a-sortir-remplace-le-solde-estime.md) (plus de solde estimé ni de pointage)
 - Date : 2026-10-21
 - Spec liée : [0009-pointage-des-lignes-du-budget](../specs/0009-pointage-des-lignes-du-budget.md)
 

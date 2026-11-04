@@ -1,6 +1,6 @@
 # 0017 — Deux soldes par compte : réel (écritures) et estimé (budget, toujours au pointage)
 
-- Statut : acceptée (décisions du développeur, spec 0019) ; amende l'[ADR 0005](0005-solde-estime-continu-et-regularisation.md)
+- Statut : acceptée (décisions du développeur, spec 0019) ; amende l'[ADR 0005](0005-solde-estime-continu-et-regularisation.md) ; amendée par l'[ADR 0037](0037-reste-a-sortir-remplace-le-solde-estime.md) (plus de solde estimé ni de pointage)
 - Date : 2026-10-23
 - Spec liée : [0019-pointage-fictif-et-soldes-reels](../specs/0019-pointage-fictif-et-soldes-reels.md)
 
