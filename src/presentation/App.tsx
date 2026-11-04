@@ -11,7 +11,7 @@ import { BudgetScreen, BudgetActions } from './screens/Budget';
 import { ClosingScreen } from './screens/Closing';
 import { DashboardScreen, type DashboardTarget } from './screens/Dashboard';
 import { EnvelopesBalanceTotal, EnvelopesScreen } from './screens/Envelopes';
-import { ExpensesScreen } from './screens/Expenses';
+import { ExpensesScreen, type OperationsFocus } from './screens/Expenses';
 import { GoalsScreen } from './screens/Goals';
 import { PlanningScreen } from './screens/Planning';
 import { ReleveScreen } from './screens/Releve';
@@ -95,7 +95,10 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   const idx = months.indexOf(month);
   // Simulation being edited (spec 0034, RG19): kept here so that changing tab does not lose it; never saved until « Enregistrer ».
   const [simDraft, setSimDraft] = useState<SimulationDraft | null>(null);
+  // Filter handed to the Opérations tab when a real amount is clicked elsewhere; the tab reads it when it opens.
+  const [focus, setFocus] = useState<OperationsFocus | null>(null);
   const go = (s: Screen) => {
+    if (s !== 'dep') setFocus(null);
     // First visit: a new simulation started from the budget model (RG20).
     if (s === 'simulation' && simDraft === null) setSimDraft(newSimulation('model', data, () => newId('sr')));
     setScreen(s);
@@ -234,8 +237,8 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             onOpen={(t: DashboardTarget) => go(t)}
           />
         )}
-        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenStatements={() => go('releve')} />}
-        {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} />}
+        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenStatements={() => go('releve')} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
+        {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} focus={focus} />}
         {screen === 'releve' && (
           <ReleveScreen
             key={month}

@@ -38,7 +38,14 @@ const signedAmount = (t: { type: TxType; amount: number }) => (t.type === 'rev' 
 
 const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', epa: 'Sortie épargne', fix: 'Ligne fixe / crédit', rev: 'Entrée d’argent', envin: 'Entrée sur enveloppe', accin: 'Entrée sur compte hors budget' };
 
-export function ExpensesScreen({ month, statementSource }: { month: MonthKey; statementSource: StatementSource }) {
+/** Filter an other tab asks the Opérations tab to open with: the entries of one budget line or envelope. */
+export interface OperationsFocus {
+  type: TxType;
+  target: string;
+  label: string;
+}
+
+export function ExpensesScreen({ month, statementSource, focus }: { month: MonthKey; statementSource: StatementSource; focus: OperationsFocus | null }) {
   const [importing, setImporting] = useState(false);
   if (importing) return <ImportWizard source={statementSource} onClose={() => setImporting(false)} />;
   return (
@@ -51,7 +58,7 @@ export function ExpensesScreen({ month, statementSource }: { month: MonthKey; st
           Importer
         </button>
       </div>
-      <EntryTab month={month} />
+      <EntryTab month={month} focus={focus} />
     </>
   );
 }
@@ -82,12 +89,12 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function EntryTab({ month }: { month: MonthKey }) {
+function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | null }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string }>({ q: '', type: 'all', accountId: 'all', pointedOnly: false, flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', pointedOnly: false, flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
   const [transfer, setTransfer] = useState(false);
@@ -149,13 +156,14 @@ function EntryTab({ month }: { month: MonthKey }) {
   const shown = txs
     .filter(t => filter.type === 'all' || t.type === filter.type)
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId || t.assignedAccountId === filter.accountId)
+    .filter(t => !filter.target || (t.target === filter.target && !isTransactionOffBudget(t)))
     .filter(t => matchesEntrySearch(t, filter.q))
     .filter(t => !filter.pointedOnly || isPointed(t))
     .filter(t => !filter.flaggedOnly || t.flagged === true)
     .filter(t => (!filter.from || bankDateOf(t, data) >= filter.from) && (!filter.to || bankDateOf(t, data) <= filter.to))
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
     .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
-  const isFiltered = !!(filter.q || filter.type !== 'all' || filter.accountId !== 'all' || filter.pointedOnly || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
+  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || filter.accountId !== 'all' || filter.pointedOnly || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
   const envelopeEntriesTotal = round2(txs.filter(t => t.type === 'envin').reduce((a, t) => a + t.amount, 0));
   const accountEntriesTotal = round2(txs.filter(t => t.type === 'accin').reduce((a, t) => a + t.amount, 0));
   const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
@@ -418,6 +426,14 @@ function EntryTab({ month }: { month: MonthKey }) {
               <span className="tx-f-label">Recherche</span>
               <input className="text-input" value={filter.q} placeholder="Libellé ou détail" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
             </div>
+            {focus && filter.target && (
+              <div className="tx-f">
+                <span className="tx-f-label">Ligne</span>
+                <span className="btn-outline tx-clear" title="Retirer le filtre sur la ligne" onClick={() => setFilter(f => ({ ...f, target: '', type: 'all' }))}>
+                  {focus.label} ✕
+                </span>
+              </div>
+            )}
             <div className="tx-f">
               <span className="tx-f-label">Type</span>
               <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>

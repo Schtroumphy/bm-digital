@@ -9,6 +9,7 @@ import { currentYear, firstGoalOfKind, goalView, summaryGoals } from '../../doma
 import { Icon, type IconName } from '../components/Icon';
 import { EnvelopeCheckBox } from '../components/EnvelopeCheck';
 import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
+import type { OperationsFocus } from './Expenses';
 import { lineEntriesNote } from '../../domain/lineActuals';
 import { LineQuickEntry } from '../components/LineQuickEntry';
 import { LineCheckBox, LineCheckMeta } from '../components/LineCheck';
@@ -102,7 +103,7 @@ export function BudgetActions({ month }: { month: MonthKey }) {
   );
 }
 
-export function BudgetScreen({ month, onOpenGoals, onOpenStatements }: { month: MonthKey; onOpenGoals: () => void; onOpenStatements: () => void }) {
+export function BudgetScreen({ month, onOpenGoals, onOpenStatements, onOpenOperations }: { month: MonthKey; onOpenGoals: () => void; onOpenStatements: () => void; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, ledger, update } = useStore();
   const uninit = !data.months[month]?.initialized;
   const locked = isMonthLocked(data, month);
@@ -195,17 +196,17 @@ export function BudgetScreen({ month, onOpenGoals, onOpenStatements }: { month: 
 
         <div className="budget-grid">
           <div className="budget-col">
-            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} />
-            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} />
+            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
+            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
             <GoalsCard onOpenGoals={onOpenGoals} />
           </div>
           <div className="budget-col">
-            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} />
-            <BlockCard block="var" month={month} locked={locked || uninit} today={today} />
+            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
+            <BlockCard block="var" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
           </div>
           <div className="budget-col">
-            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} />
-            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
+            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
           </div>
           <div className="budget-col">
             <EnvelopesCompact month={month} locked={locked || !data.months[month]?.initialized} />
@@ -286,7 +287,7 @@ function DetailsBubble({ title, text, rect, onClose }: { title: string; text: st
   );
 }
 
-function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; month: MonthKey; locked: boolean; today: string; strip?: { label: string; value: string; color: string } }) {
+function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { block: BlockKey; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
@@ -402,7 +403,13 @@ function BlockCard({ block, month, locked, today, strip }: { block: BlockKey; mo
                 <div className="rel">
                   {/* Read only (spec 0019, RG19, RG24): the actual is the sum of the entries of the line. Its count is in the tooltip of the row;
                       screen readers get the same text through a visually hidden span (no layout effect). */}
-                  <div className={`cell is-readonly${l.actual !== null ? ' has-actual' : ''}`} style={{ color: l.actual === null ? MUTED : undefined }} aria-describedby={`entries:${l.key}`}>
+                  {/* Clicking an actual opens the Opérations tab filtered on the entries of the line (savings blocks are transfers, not operations). */}
+                  <div
+                    className={`cell is-readonly${l.actual !== null ? ' has-actual' : ''}`}
+                    style={{ color: l.actual === null ? MUTED : undefined, cursor: l.actual !== null && !isSavings ? 'pointer' : undefined }}
+                    aria-describedby={`entries:${l.key}`}
+                    onClick={l.actual !== null && !isSavings ? () => onOpenOperations({ type: block === 'var' ? 'var' : block === 'rev' ? 'rev' : 'fix', target: l.key, label: l.name }) : undefined}
+                  >
                     {l.actual === null ? '—' : money(l.actual)}
                   </div>
                   <span className="sr-only" id={`entries:${l.key}`}>{lineEntriesNote(data, month, l)}</span>
