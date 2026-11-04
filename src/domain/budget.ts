@@ -1,3 +1,4 @@
+import { assignedToSavingsNet } from './lineActuals';
 import { isLineInBudget, isOnMainAccount, isSavingsBlock, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, isYearClosed, Ledger, monthAlloc, monthLines } from './ledger';
@@ -201,7 +202,8 @@ export function monthSummary(d: BudgetData, ledger: Ledger, m: MonthKey): MonthS
   const expensesReal = round2(blockTotals(lines, 'cre').actual + blockTotals(lines, 'fix').actual + blockTotals(lines, 'var').actual + fundedBySavings);
   const rate = (v: number) => (income ? (v / income) * 100 : 0);
   const grossSavings = round2(savings + allocSum);
-  const realSavings = round2(grossSavings - envelopeSpent - savingsOut - fundedBySavings);
+  // Operations paid by another account on behalf of a savings account lower the real savings, like an expense funded by savings (spec 0028, RG26).
+  const realSavings = round2(grossSavings - envelopeSpent - savingsOut - fundedBySavings - assignedToSavingsNet(d, m));
   const bal = (key: string) => ledger.accMonth(key, m)?.balance ?? 0;
   return {
     expenseGap: expenseGap(d, m),
