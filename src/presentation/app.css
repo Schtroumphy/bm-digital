@@ -767,6 +767,10 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cpt-group-title { margin: 0; font-family: var(--font-heading), system-ui, sans-serif; font-weight: 400; font-size: 20px; }
 .cpt-group-total-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .cpt-group-total { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+.cpt-subgroup { display: flex; flex-direction: column; gap: 8px; }
+.cpt-subgroup + .cpt-subgroup { margin-top: 6px; }
+.cpt-subgroup-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.cpt-subgroup-head .num { font-size: 13px; letter-spacing: 0; color: var(--ink); }
 .cpt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
 .cpt-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 14px; background: #fff; border-radius: 16px; border: 1.5px solid var(--hairline); box-shadow: 0 1px 2px rgba(32, 30, 29, 0.05); transition: box-shadow 0.15s, transform 0.15s; }
 .cpt-card:hover { box-shadow: 0 6px 18px rgba(32, 30, 29, 0.1); transform: translateY(-1px); }
