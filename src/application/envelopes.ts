@@ -110,6 +110,11 @@ export function deleteEnvelope(d: BudgetData, id: string, today = currentMonthKe
   if (account) account.archived = true;
   d.envelopes = d.envelopes.filter(x => x.id !== id);
   delete d.template.envAlloc[id];
+  // Its cash adjustments leave with it (spec 0026, RG27): they belong to no other envelope.
+  if (d.cashAdjustments?.some(a => a.envelopeId === id)) {
+    d.cashAdjustments = d.cashAdjustments.filter(a => a.envelopeId !== id);
+    if (d.cashAdjustments.length === 0) delete d.cashAdjustments;
+  }
   for (const [m, md] of Object.entries(d.months)) if (compareMonths(m, today) > 0 && !isMonthLocked(d, m)) delete md.alloc[id];
   return 'ok';
 }

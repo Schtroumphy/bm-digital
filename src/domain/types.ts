@@ -324,6 +324,19 @@ export interface Adjustment {
   cancelledOn?: string;
 }
 
+/**
+ * A correction of the cash balance of an envelope (spec 0026, RG28): the cash is informative and not traced, so the user types the balance he
+ * really has and the application records the difference, dated the day it is typed. It touches neither the virtual balance nor any account.
+ */
+export interface CashAdjustment {
+  id: string;
+  envelopeId: string;
+  /** Day of the adjustment (the day it was made), `YYYY-MM-DD`. */
+  date: string;
+  /** Signed: positive adds cash, negative removes some. Never 0. */
+  amount: number;
+}
+
 export interface Settings {
   emergencyAccounts: string[];
   emergencyTarget: number;
@@ -419,6 +432,8 @@ export interface BudgetData {
   importAccountLinks?: ImportAccountLink[];
   /** Corrections of bank accounts (spec 0009). Absent = none. */
   adjustments?: Adjustment[];
+  /** Corrections of the cash balance of an envelope (spec 0026, RG27 to RG34). Absent = none. */
+  cashAdjustments?: CashAdjustment[];
   /** Annual goals (spec 0032). Absent = none (or data saved before the goals existed, see `Settings.goalsMigrated`). */
   goals?: Goal[];
   /** Saved simulations, most recent first (spec 0034). Absent = none. */

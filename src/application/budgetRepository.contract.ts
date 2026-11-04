@@ -221,6 +221,24 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect((await open().load())!.months['2026-12']).not.toHaveProperty('cashPart');
     });
 
+    it('spec 0026 : les ajustements du solde espèces d’une enveloppe sont conservés dans l’ordre, sans trace une fois supprimés (CA32)', async () => {
+      const repo = open();
+      const data = completeData();
+      const env = data.envelopes[0].id;
+      data.cashAdjustments = [
+        { id: 'ca1', envelopeId: env, date: '2026-12-05', amount: -15.5 },
+        { id: 'ca2', envelopeId: env, date: '2026-12-05', amount: 30 },
+      ];
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.cashAdjustments).toEqual(data.cashAdjustments);
+      expect(loaded).toEqual(data);
+      // Deleting them all leaves no trace; data saved without any adjustment is loaded as it is.
+      delete data.cashAdjustments;
+      await repo.save(data);
+      expect(await open().load()).not.toHaveProperty('cashAdjustments');
+    });
+
     it('spec 0019 : la cible d’un transfert est conservée, les transferts sans cible restent sans cible', async () => {
       const repo = open();
       const data = completeData();

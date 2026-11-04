@@ -282,6 +282,33 @@ export type Database = {
           },
         ]
       }
+      cash_adjustments: {
+        Row: {
+          amount: number
+          date: string
+          envelope_id: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          date: string
+          envelope_id: string
+          id: string
+          position?: number
+          user_id?: string
+        }
+        Update: {
+          amount?: number
+          date?: string
+          envelope_id?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       envelope_allocations: {
         Row: {
           amount: number

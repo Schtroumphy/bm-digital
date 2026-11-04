@@ -1,5 +1,5 @@
 import type {
-  AccountBalanceEntry, AccountMovement, Adjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
+  AccountBalanceEntry, AccountMovement, Adjustment, CashAdjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
   MonthData, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
@@ -238,6 +238,10 @@ export function toRows(d: BudgetData): TableRows {
     }),
   );
 
+  (d.cashAdjustments ?? []).forEach((a, position) =>
+    rows.cash_adjustments.push({ id: a.id, envelope_id: a.envelopeId, date: a.date, amount: a.amount, position }),
+  );
+
   d.planned.forEach((p, position) =>
     rows.planned_items.push({ id: p.id, year: p.year, month: p.month, label: p.label, amount: p.amount, envelope_id: p.envelopeId, position }),
   );
@@ -426,6 +430,8 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     }),
   );
 
+  const cashAdjustments: CashAdjustment[] = byPosition(rows.cash_adjustments).map(r => ({ id: r.id, envelopeId: r.envelope_id, date: r.date, amount: r.amount }));
+
   const planned: PlannedItem[] = byPosition(rows.planned_items).map(r => ({
     id: r.id,
     year: r.year,
@@ -474,6 +480,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     ...(importRules.length ? { importRules } : {}),
     ...(importAccountLinks.length ? { importAccountLinks } : {}),
     ...(adjustments.length ? { adjustments } : {}),
+    ...(cashAdjustments.length ? { cashAdjustments } : {}),
     ...(goals.length ? { goals } : {}),
     ...(simulations.length ? { simulations } : {}),
     planned,
