@@ -22,10 +22,10 @@ import { CashMonthBlock } from '../components/CashMonthBlock';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { envelopeTooltip, isoDate, lineTooltip } from '../../domain/checkoff';
 import { envelopeCash, envelopeConsumption } from '../../domain/envelopeCash';
-import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
+import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber } from '../../domain/format';
 import { isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
-import type { BlockKey, Line, MonthKey } from '../../domain/types';
+import type { BlockKey, BudgetData, Line, MonthKey } from '../../domain/types';
 import { EnvelopesTotal } from './Envelopes';
 import { PointageCard } from './PointageCard';
 import { newId, useStore } from '../state/store';
@@ -108,6 +108,7 @@ export function BudgetScreen({ month, onOpenGoals, onOpenStatements }: { month: 
   const locked = isMonthLocked(data, month);
   const today = isoDate();
   const s = monthSummary(data, ledger, month);
+  const [availableInfo, setAvailableInfo] = useState<DOMRect | null>(null);
   // « Fond de secours »: the first `amount` goal of the current year (spec 0032, Q2); nothing to show without one.
   const emergencyGoal = firstGoalOfKind(data, 'amount');
   const emergency = emergencyGoal ? goalView(data, ledger, emergencyGoal) : null;
@@ -141,9 +142,17 @@ export function BudgetScreen({ month, onOpenGoals, onOpenStatements }: { month: 
             <div className="kpi-label">Reste à placer</div>
             <div className="kpi-hero-value">{money(s.remaining)}</div>
             {s.availableReal !== null && (
-              <div className="kpi-sub" style={{ color: s.availableReal < 0 ? BAD : undefined }}>
+              <div
+                className="kpi-sub"
+                style={{ color: s.availableReal < 0 ? BAD : undefined, cursor: 'pointer' }}
+                title="Cliquer pour voir le détail du calcul"
+                onClick={e => setAvailableInfo(e.currentTarget.getBoundingClientRect())}
+              >
                 Disponible (réel) {money(s.availableReal)}
               </div>
+            )}
+            {availableInfo && (
+              <DetailsBubble title="Disponible (réel)" text={availableRealText(data, month)} rect={availableInfo} onClose={() => setAvailableInfo(null)} />
             )}
           </div>
           <GapKpi
@@ -231,6 +240,19 @@ function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: st
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
+}
+
+/** Explanation of the « Disponible (réel) » figure: the terms of its formula with the month's values. */
+function availableRealText(d: BudgetData, m: MonthKey): string {
+  const b = availableRealBreakdown(d, m);
+  if (!b) return '';
+  const lines = [`Reste à placer prévu : ${money(b.remaining)}`];
+  if (b.elsewhere !== 0) lines.push(`− revenus budgétés hors compte principal : ${money(b.elsewhere)}`);
+  lines.push(`+ écarts des revenus du compte principal (réel − budget) : ${money(b.mainGaps, true)}`);
+  lines.push(`− écarts épargne et placements (réel − budget) : ${money(b.paidIn, true)}`);
+  lines.push(`= Disponible (réel) : ${money(b.total)}`);
+  lines.push('', b.total < 0 ? 'Négatif : vous avez placé plus que ce que le mois permet, ou perçu moins que prévu.' : 'C’est ce que vous pouvez encore placer maintenant.');
+  return lines.join('\n');
 }
 
 const BUBBLE_WIDTH = 300;

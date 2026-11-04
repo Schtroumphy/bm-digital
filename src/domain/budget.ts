@@ -51,13 +51,19 @@ function remainingToPlace(d: BudgetData, m: MonthKey): number {
  * beyond (or short of) their budget. Null for a month that is not initialized (RG9).
  */
 export function availableReal(d: BudgetData, m: MonthKey): number | null {
+  return availableRealBreakdown(d, m)?.total ?? null;
+}
+
+/** The four terms of `availableReal` (shown in its explanation); null for a month that is not initialized. */
+export function availableRealBreakdown(d: BudgetData, m: MonthKey): { remaining: number; elsewhere: number; mainGaps: number; paidIn: number; total: number } | null {
   if (!d.months[m]?.initialized) return null;
   const lines = budgetLines(d, m);
   const income = lines.filter(l => l.block === 'rev');
+  const remaining = remainingToPlace(d, m);
   const elsewhere = sum(income.filter(l => !isOnMainAccount(d, l.accountId)).map(l => l.budget));
   const mainGaps = sum(income.filter(l => isOnMainAccount(d, l.accountId)).map(l => lineGap(l) ?? 0));
   const paidIn = sum(lines.filter(l => l.block === 'epa' || l.block === 'inv').map(l => lineGap(l) ?? 0));
-  return round2(remainingToPlace(d, m) - elsewhere + mainGaps - paidIn);
+  return { remaining, elsewhere, mainGaps, paidIn, total: round2(remaining - elsewhere + mainGaps - paidIn) };
 }
 
 /**
