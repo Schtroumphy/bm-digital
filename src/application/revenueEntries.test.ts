@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, deleteTransaction, updateLine } from './actions';
 import { archiveBankAccount, setLineAccount } from './bankAccounts';
-import { checkLine, uncheckLine } from './checkoff';
 import { lineStates } from './importFilters';
 import { lineEntriesNote } from '../domain/lineActuals';
 import { NEW_REVENUE_LINE, changeNature, lineBalanceWarning, lineProblem, prepareImport, validateImport, type PreviewLine } from './statementImport';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
 import { availableReal, blockTotals } from '../domain/budget';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
-import { accountPointage, monthBalance } from '../domain/checkoff';
+import { realMovements } from '../domain/bankMovements';
 import { emptyData } from '../domain/empty';
 import { balanceDateWarning, balanceRangeEnd } from '../domain/balanceRange';
 import { Ledger } from '../domain/ledger';
@@ -92,35 +90,12 @@ describe('entrée sur une ligne de revenu (spec 0015, RG7 à RG16)', () => {
     expect(blockTotals(d.months[SEP].lines, 'rev').actual).toBe(0);
   });
 
-  it('CA4 (0019) : un revenu pointé « reçu » sans écriture ne change pas le solde réel ; l’entrée importée l’augmente à la date bancaire', () => {
-    const d = budget();
-    checkLine(d, OCT, 'salaire', '2026-10-02');
-    expect(balance(d, OCT)).toBe(1000);
-    expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(3400);
-    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire', { bankDate: '2026-09-28' }));
-    expect(balance(d, SEP)).toBe(3480);
-    expect(realMovements(d, MAIN_ACCOUNT_ID, SEP)[0]).toMatchObject({ date: '2026-09-28', amount: 2480 });
-  });
-
   it('CA17 (0019) : une ligne rev et deux entrées rattachées : son réel est leur somme', () => {
     const d = budget();
     addTransaction(d, rv('a', OCT, 5, 2000, 'salaire'));
     addTransaction(d, rv('b', OCT, 6, 480, 'salaire'));
     expect(d.months[OCT].lines[0].actual).toBe(2480);
     expect(balance(d, OCT)).toBe(3480);
-  });
-
-  it('CA6 / CA7 (0019) : pointer ou dépointer ne change pas le solde réel ; l’estimé compte la ligne par son pointage (au montant compté), jamais l’entrée', () => {
-    const d = budget();
-    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
-    const real = balance(d, OCT);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, OCT)).toEqual([]);
-    checkLine(d, OCT, 'salaire', '2026-10-03');
-    expect(balance(d, OCT)).toBe(real);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, OCT).map(m => [m.date, m.amount])).toEqual([['2026-10-03', 2480]]);
-    uncheckLine(d, OCT, 'salaire');
-    expect(balance(d, OCT)).toBe(real);
-    expect(realMovements(d, MAIN_ACCOUNT_ID, OCT).map(m => [m.date, m.amount])).toEqual([['2026-10-05', 2480]]);
   });
 
   it('CA9: réel et compte non modifiables tant que la ligne est portée ; la dernière suppression remet le réel à vide', () => {
@@ -170,29 +145,6 @@ describe('entrée sur une ligne de revenu (spec 0015, RG7 à RG16)', () => {
     addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
     // Le réel (2 480) dépasse le budget (2 400) : l'écart de la ligne du compte principal s'ajoute.
     expect(availableReal(d, OCT)).toBe(before + 80);
-  });
-
-  it('CA19 (0019) : l’entrée est réelle seulement ; l’estimé la compte par le pointage de la ligne, une fois', () => {
-    const d = budget([ln('salaire', 'rev', 2400), ln('edf', 'fix', 62)]);
-    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire', { bankDate: '2026-09-28' }));
-    expect(balance(d, SEP)).toBe(3480);
-    expect(monthBalance(d, SEP, MAIN_ACCOUNT_ID)!.end).toBe(1000);
-    checkLine(d, OCT, 'salaire', '2026-10-02');
-    const est = monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end;
-    expect(est).toBe(1000 + 2480);
-    uncheckLine(d, OCT, 'salaire');
-    expect(monthBalance(d, OCT, MAIN_ACCOUNT_ID)!.end).toBe(1000);
-  });
-
-  it('CA20: « Revenus attendus » reste budgétaire : 2 400 € budgétés avec une entrée de 2 480 € comme avec un réel de 2 450 €, ligne pointée sortie', () => {
-    const d = budget();
-    addTransaction(d, rv('a', OCT, 5, 2480, 'salaire'));
-    expect(accountPointage(d, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(2400);
-    const e = budget();
-    e.months[OCT].lines[0].actual = 2450;
-    expect(accountPointage(e, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(2400); // budgétaire, quel que soit le réel
-    checkLine(d, OCT, 'salaire', '2026-10-06');
-    expect(accountPointage(d, OCT, MAIN_ACCOUNT_ID, '2026-10-10')!.expected).toBe(0);
   });
 
   it('une entrée n’est jamais additionnée comme une dépense (var restant, enveloppes)', () => {

@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { addTransfer } from './accountMovements';
 import { addTransaction, deleteTransaction, updateTransaction } from './actions';
-import { checkEnvelope } from './checkoff';
 import { setEnvelopeCashPart } from './cash';
 import { addEnvelope, openingBalanceRefusal, openingCashRefusal, setEnvelopeOpeningBalance, setEnvelopeOpeningCash } from './envelopes';
 import { loadBudget } from './loadBudget';
 import type { BudgetRepository } from './ports';
 import { availableReal, monthSummary } from '../domain/budget';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { emptyData } from '../domain/empty';
 import { cashHistory, lowestCashBalance, virtualHistory } from '../domain/envelopeHistory';
 import { envelopesGroupTotals, envelopeAccountTotal, envelopeCash, envelopeTotal, exceedsEnvelopeCash } from '../domain/envelopeCash';
@@ -23,7 +21,6 @@ const envAccount = (d: BudgetData) => d.envelopes[0].accountId;
 const bank = (d: BudgetData, id: string) => ledger(d).bankMonth(id, M)!.balance;
 const virtual = (d: BudgetData) => ledger(d).envMonth('loisirs', M)!.balance;
 const cashOf = (d: BudgetData) => envelopeCash(d, 'loisirs', M);
-const net = (movements: { amount: number }[]) => movements.reduce((s, x) => s + x.amount, 0);
 const spend = (d: BudgetData, amount: number, payMode?: 'especes' | 'virtuel', id = `t${d.transactions.length + 1}`): boolean => {
   const t: Transaction = { id, month: M, day: 10, label: 'Sortie', amount, type: 'env', target: 'loisirs', ...(payMode ? { payMode } : {}) };
   return addTransaction(d, t);
@@ -58,20 +55,6 @@ describe('solde espèces d’une enveloppe, à part du virtuel (spec 0026)', () 
     expect([virtual(d), bank(d, envAccount(d)), cashOf(d)]).toEqual([100, 100, 40]);
   });
 
-  it('CA5 (0037): une part en espèces de 40 € sur 100 € alloués : le virtuel prend 60, les espèces 40 (plus l’ouverture), le total est inchangé ; aucun compte ne bouge', () => {
-    const d = started();
-    const totalBefore = envelopeTotal(virtual(d) + 100, cashOf(d));
-    expect(allocate(d, 100, 40)).toBe('ok');
-    expect(virtual(d)).toBe(100 + 60);
-    expect(cashOf(d)).toBe(40 + 40);
-    expect(envelopeTotal(virtual(d), cashOf(d))).toBe(totalBefore);
-    expect([bank(d, CASH_ACCOUNT_ID), bank(d, envAccount(d)), bank(d, MAIN_ACCOUNT_ID)]).toEqual([50, 100, 1000]);
-    for (const id of [CASH_ACCOUNT_ID, envAccount(d), MAIN_ACCOUNT_ID]) {
-      expect(net(estimatedMovements(d, id, M))).toBe(0);
-      expect(net(realMovements(d, id, M))).toBe(0);
-    }
-  });
-
   it('CA7 (0037): une part non dépensée reste au solde espèces le mois suivant ; aucune réconciliation n’est proposée pour une enveloppe', () => {
     const d = started();
     d.months['2027-01'] = { initialized: true, lines: [], alloc: { loisirs: 0 }, transfersDone: {} };
@@ -93,15 +76,6 @@ describe('solde espèces d’une enveloppe, à part du virtuel (spec 0026)', () 
     expect(spend(d, 10, 'virtuel')).toBe(true);
     expect([cashOf(d), bank(d, envAccount(d)), virtual(d)]).toEqual([25, 90, 90]);
     expect(d.transactions.map(t => t.payMode)).toEqual(['especes', undefined]);
-  });
-
-  it('une dépense en espèces ne bouge aucun compte (ni l’enveloppe, ni Espèces, ni le principal), dans le réel comme dans l’estimé', () => {
-    const d = started();
-    spend(d, 15, 'especes');
-    for (const id of [envAccount(d), CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID]) {
-      expect(net(realMovements(d, id, M))).toBe(0);
-      expect(net(estimatedMovements(d, id, M))).toBe(0);
-    }
   });
 
   it('D4: une dépense en espèces compte dans le « dépensé » de l’enveloppe et du bilan, sans toucher à son virtuel', () => {
@@ -209,14 +183,6 @@ describe('solde espèces d’une enveloppe, à part du virtuel (spec 0026)', () 
     const withAlloc = figures();
     setEnvelopeCashPart(d, M, 'loisirs', 20);
     expect(figures()).toEqual(withAlloc);
-  });
-
-  it('CA5 (0037, RG12): le virement d’allocation pointé ne porte que allocation − part ; les 20 € en espèces passent par le retrait', () => {
-    const d = started();
-    allocate(d, 50, 20);
-    checkEnvelope(d, M, 'loisirs', '2026-12-02');
-    expect(net(estimatedMovements(d, MAIN_ACCOUNT_ID, M))).toBe(-30);
-    expect(net(estimatedMovements(d, envAccount(d), M))).toBe(30);
   });
 
   it('les espèces sont hors « Envelope.cash » du mois d’avant l’ouverture du compte', () => {
@@ -464,13 +430,6 @@ describe('historique par enveloppe (spec 0026, RG16 à RG19)', () => {
     expect(virtualHistory(d, 'loisirs', M).map(r => r.label)).toEqual(['Ouverture', '💸 Tôt', '💸 Sortie']);
     expect(virtualHistory(d, 'loisirs', '2027-01').map(r => r.label)).toEqual(['Ouverture', '💸 Tôt', '💸 Sortie', '💸 Plus tard']);
     expect(virtualHistory(d, 'loisirs', '2026-11')).toEqual([]);
-  });
-
-  it('D16: une allocation pointée (fictive) n’est pas dans la liste Virtuel', () => {
-    const d = started();
-    d.months[M].alloc = { loisirs: 50 };
-    checkEnvelope(d, M, 'loisirs', '2026-12-02');
-    expect(virtualHistory(d, 'loisirs', M).map(r => r.label)).toEqual(['Ouverture']);
   });
 
   it('CA19: supprimer une part ou une dépense la retire des listes ; enveloppe inconnue : listes vides', () => {

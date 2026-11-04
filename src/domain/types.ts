@@ -13,7 +13,7 @@ export interface PaymentSetting {
   payMode?: PayMode;
 }
 
-/** How an outgoing line is executed (spec 0009, RG18). Absent = not specified. `informatif`: no checkbox, no late badge, left out of « Reste à sortir ». */
+/** How an outgoing line is executed (spec 0009, RG18). Absent = not specified. `informatif`: no late badge, left out of « Reste à sortir ». */
 export type ExecMode = 'prelevement' | 'virement_auto' | 'virement_manuel' | 'retrait' | 'informatif';
 
 /** A budget line as it exists in one month. `key` is stable across months. */
@@ -47,9 +47,9 @@ export interface Template {
   envAlloc: Record<string, number>;
 }
 
-/** « The money has moved » for one line in one month. The actual is never touched by it (spec 0009, RG2). */
+/** Old pointage (« the money has moved ») of one line in one month. Inert since spec 0043: no calculation reads it. */
 export interface LineCheck {
-  /** Day the money moved, `YYYY-MM-DD`. The amount counted is never stored: see `countedAmount` (spec 0009, RG76, RG77). */
+  /** Day the money moved, `YYYY-MM-DD`. */
   doneOn: string;
   /**
    * Pointage of an envelope's allocation only. Written before spec 0011 (the account it was sent to, spec 0009, RG90):
@@ -58,7 +58,7 @@ export interface LineCheck {
   accountId?: string;
 }
 
-/** Bank statement of an account for a month: the balance its bank shows, at a date. Compared with the estimate, never part of it (spec 0009, RG62). */
+/** Bank statement of an account for a month: the balance its bank shows, at a date. Compared with the real balance, never part of it (spec 0009, RG62). */
 export interface AccountBalanceEntry {
   amount: number;
   /** Date of the entry, `YYYY-MM-DD`. */
@@ -74,7 +74,7 @@ export interface MonthData {
   transfersDone: Record<string, boolean>;
   /** The month was closed by the user (« Clôturer le mois »): read-only. Absent = open. */
   closed?: boolean;
-  /** Line key → check (pointage). Absent or missing key = not checked. Never copied to another month. */
+  /** Old pointages (line key → check). Inert since spec 0043: loaded and saved as they are, never read by a calculation nor shown. Kept until a cleanup spec. */
   checks?: Record<string, LineCheck>;
   /** Bank account id → statement of this month (one per account and month; spec 0009, RG62). */
   accountBalances?: Record<string, AccountBalanceEntry>;
@@ -190,7 +190,7 @@ export type MovementTarget = { kind: 'line'; key: string } | { kind: 'env'; id: 
 /**
  * « Transfert » (spec 0019): money that moves from one of the user's accounts to another (withdrawal, internal transfer, savings
  * payment, envelope funding), created by the CSV import (spec 0013, RG10a) or typed in the Saisie screen. A real entry: it debits
- * the source account and credits the destination on its day, in the real balance AND in the estimated one. Not a `Transaction`.
+ * the source account and credits the destination on its day, in the real balance. Not a `Transaction`.
  */
 export interface AccountMovement {
   id: string;
@@ -214,7 +214,7 @@ export interface AccountMovement {
   detail?: string;
   /** Real date at the bank (spec 0015, RG1); absent = `month`/`day`. */
   bankDate?: string;
-  /** Budget item this transfer stands for, in `month` (spec 0019, RG10): it then replaces the item's pointed counterpart in the estimated balance. */
+  /** Budget item this transfer stands for, in `month` (spec 0019, RG10): the rest of the item (spec 0043) counts what it already sent. */
   target?: MovementTarget;
   /**
    * Trace of the CREDIT face of an internal transfer imported from the file (spec 0016, RG11). The flat fields above (`importAccountId`, `fingerprint`,
@@ -307,7 +307,7 @@ export interface YearClose {
 }
 
 /**
- * A traced correction of a bank account: « écart constaté » between its bank statement and the estimated balance
+ * A traced correction of a bank account: « écart constaté » between its bank statement and the real balance
  * (spec 0009, RG65, RG66). Never deleted nor edited: it is cancelled (`cancelledOn`) and a cancelled one never counts again.
  */
 export interface Adjustment {

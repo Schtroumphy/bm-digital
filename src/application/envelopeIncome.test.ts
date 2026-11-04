@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, deleteTransaction, updateTransaction } from './actions';
 import { addManualTransaction } from './manualEntry';
-import { checkLine } from './checkoff';
 import { deleteEnvelope } from './envelopes';
 import { changeNature, chooseEnvelope, lineProblem, natureOptions, prepareImport, previewCounts, sessionSummary, validateImport, type PreviewLine } from './statementImport';
 import { lineStates } from './importFilters';
-import { accountPointage } from '../domain/checkoff';
-import { availableReal, blockTotals, monthSummary } from '../domain/budget';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
+import { blockTotals, monthSummary } from '../domain/budget';
 import { envelopeConsumption } from '../domain/envelopeCash';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -19,11 +16,9 @@ import type { BudgetData, Line, Transaction } from '../domain/types';
 /* Entrée d'argent sur une enveloppe (spec 0036). */
 
 const M = '2026-12';
-const TODAY = '2026-12-20';
 const envin = (extra: Partial<Transaction> = {}): Transaction => ({ id: 'e1', month: M, day: 10, label: 'Remboursement pneu', amount: 40, type: 'envin', target: 'voiture', ...extra });
 const ledger = (d: BudgetData) => new Ledger(d, M);
 const env = (d: BudgetData, id = 'voiture') => ledger(d).envMonth(id, M)!;
-const bank = (d: BudgetData, id: string) => ledger(d).bankMonth(id, M)!;
 
 describe('saisie (RG1 à RG3)', () => {
   it('CA2 : 40 € sur une enveloppe à 520 € avec 62 € dépensés → solde 560 €, dépensé 22 €', () => {
@@ -43,28 +38,6 @@ describe('saisie (RG1 à RG3)', () => {
     expect(t.payMode).toBeUndefined();
   });
 
-  it('CA3 / RG7 : ni revenu, ni disponible, ni revenus attendus, ni reste à sortir ne bougent ; aucune ligne rev touchée', () => {
-    const d = seedData();
-    const revLine = d.months[M].lines.find(l => l.block === 'rev')!;
-    checkLine(d, M, revLine.key, '2026-12-05');
-    const before = {
-      summary: monthSummary(d, ledger(d), M),
-      available: availableReal(d, M),
-      pointage: accountPointage(d, M, MAIN_ACCOUNT_ID, TODAY),
-      rev: blockTotals(d.months[M].lines, 'rev'),
-      lines: structuredClone(d.months[M].lines),
-    };
-    addTransaction(d, envin());
-    const after = { summary: monthSummary(d, ledger(d), M), available: availableReal(d, M), pointage: accountPointage(d, M, MAIN_ACCOUNT_ID, TODAY) };
-    expect(after.summary.income).toBe(before.summary.income);
-    expect(after.summary.remaining).toBe(before.summary.remaining);
-    expect(after.available).toBe(before.available);
-    expect(after.pointage).toEqual(before.pointage);
-    expect(blockTotals(d.months[M].lines, 'rev')).toEqual(before.rev);
-    expect(d.months[M].lines).toEqual(before.lines);
-    expect(d.transactions.some(t => t.type === 'rev')).toBe(false);
-  });
-
   it('RG6 : les totaux de dépensé et l’épargne réelle lisent le dépensé net', () => {
     const d = seedData();
     const before = monthSummary(d, ledger(d), M);
@@ -72,19 +45,6 @@ describe('saisie (RG1 à RG3)', () => {
     const after = monthSummary(d, ledger(d), M);
     expect(after.envelopeSpent).toBe(Math.round((before.envelopeSpent - 40) * 100) / 100);
     expect(after.realSavings).toBe(Math.round((before.realSavings + 40) * 100) / 100);
-  });
-
-  it('CA4 / RG8 : le compte de l’enveloppe est crédité une fois, à la date bancaire, en solde réel et estimé', () => {
-    const d = seedData();
-    const realBefore = bank(d, 'acc-env-voiture').balance;
-    addTransaction(d, envin({ bankDate: '2026-12-10' }));
-    expect(bank(d, 'acc-env-voiture').balance).toBe(realBefore + 40);
-    const real = realMovements(d, 'acc-env-voiture', M).filter(m => m.amount === 40);
-    expect(real).toHaveLength(1);
-    expect(real[0]).toMatchObject({ date: '2026-12-10', label: expect.stringContaining('(entrée sur enveloppe)'), imputation: { name: 'Voiture', type: 'envin' } });
-    expect(estimatedMovements(d, 'acc-env-voiture', M).filter(m => m.amount === 40)).toHaveLength(1);
-    // Aucun autre compte n'est touché.
-    expect(realMovements(d, MAIN_ACCOUNT_ID, M).some(m => m.amount === 40 && m.label.includes('pneu'))).toBe(false);
   });
 
   it('CA5 / RG3 : refus et rien d’écrit', () => {

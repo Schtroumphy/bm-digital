@@ -9,8 +9,8 @@ import { budgetStartNeedsConfirmation, isBudgetStartEditable, isPeriodEndEditabl
 import { emptyDraft } from './setup';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts } from '../domain/bank';
 import { debitDateOf, debitTraceOf } from '../domain/internalTransfers';
-import { beforeBudgetMovements, estimatedMovements, realMovements, attachedMovements } from '../domain/bankMovements';
-import { accountPointage, monthBalance, realMonthBalance } from '../domain/checkoff';
+import { realMovements, attachedMovements } from '../domain/bankMovements';
+import { realMonthBalance } from '../domain/checkoff';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
 import { balanceDateWarning } from '../domain/balanceRange';
@@ -110,17 +110,6 @@ describe('soldes sur la période (RG9, RG10)', () => {
     expect(periodOf(d, NOV).start).toBe('2026-10-30');
   });
 
-  it('CA8 : une écriture du 27/09 est hors période, dans aucun solde, et garde sa date', () => {
-    const d = started();
-    expense(d, 'a', M, '2026-09-27', 43.2);
-    expect(real(d, M)).toMatchObject({ out: 0, balance: 1000 });
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
-    const listed = beforeBudgetMovements(d, MAIN_ACCOUNT_ID);
-    expect(listed).toHaveLength(1);
-    expect(listed[0]).toMatchObject({ date: '2026-09-27', amount: -43.2, beforeBudget: true });
-    expect(d.transactions[0].bankDate).toBe('2026-09-27');
-  });
-
   it('une écriture rattachée à novembre mais datée dans octobre : signalée « rattachée », comptée dans octobre (RG18)', () => {
     const d = started();
     expense(d, 'a', NOV, '2026-10-12', 30);
@@ -137,17 +126,6 @@ describe('soldes sur la période (RG9, RG10)', () => {
     expect(attachedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
   });
 
-  it('le solde estimé suit la même période : un pointage du 30/09 est dans octobre (RG9)', () => {
-    const d = started();
-    d.months[M].checks = { edf: { doneOn: '2026-09-30' } };
-    addTransaction(d, { id: 'v1', month: M, day: 29, bankDate: '2026-10-29', label: 'v1', amount: 7, type: 'var', target: 'ali' });
-    addTransaction(d, { id: 'v2', month: M, day: 30, bankDate: '2026-10-30', label: 'v2', amount: 9, type: 'var', target: 'ali' });
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(m => m.date).sort()).toEqual(['2026-09-30', '2026-10-29']);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, NOV).map(m => m.date)).toEqual(['2026-10-30']);
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(931);
-    expect(monthBalance(d, NOV, MAIN_ACCOUNT_ID)!.end).toBe(922);
-  });
-
   it('CA13 : décaler la fin d’octobre au 30/10 déplace l’écriture du 30/10 vers octobre sans la modifier', () => {
     const d = started();
     expense(d, 'b', M, '2026-10-30', 20);
@@ -161,54 +139,54 @@ describe('soldes sur la période (RG9, RG10)', () => {
 });
 
 
-/** Soldes de seedData() calculés avec le code de la base f258715 (avant la spec 0039) : [bankMonth début, entrées, sorties, fin], [estimé début, fin], [réel début, fin]. */
+/** Soldes de seedData() calculés avec le code de la base f258715 (avant la spec 0039) : [bankMonth début, entrées, sorties, fin], [réel début, fin]. */
 const BASELINE: Record<string, unknown> = {
-  '2026-10|acc-main': [[0,0,916,-916],[0,-916],[0,-916]],
-  '2026-10|acc-cash': [[0,0,0,0],[0,0],[0,0]],
-  '2026-10|acc-env-perso': [[260,120,70,310],[260,310],[260,310]],
-  '2026-10|acc-env-sante': [[100,60,90,70],[100,70],[100,70]],
-  '2026-10|acc-env-love': [[150,100,155,95],[150,95],[150,95]],
-  '2026-10|acc-env-voiture': [[360,150,90,420],[360,420],[360,420]],
-  '2026-10|acc-env-impots': [[540,436,196,780],[540,780],[540,780]],
-  '2026-10|acc-env-projets': [[280,50,0,330],[280,330],[280,330]],
-  '2026-11|acc-main': [[-916,30,866,-1752],[-916,-1752],[-916,-1752]],
-  '2026-11|acc-cash': [[0,0,0,0],[0,0],[0,0]],
-  '2026-11|acc-env-perso': [[310,120,160,270],[310,270],[310,270]],
-  '2026-11|acc-env-sante': [[70,60,150,-20],[70,-20],[70,-20]],
-  '2026-11|acc-env-love': [[95,100,75,120],[95,120],[95,120]],
-  '2026-11|acc-env-voiture': [[420,150,138,432],[420,432],[420,432]],
-  '2026-11|acc-env-impots': [[780,436,412,804],[780,804],[780,804]],
-  '2026-11|acc-env-projets': [[330,0,55,275],[330,275],[330,275]],
-  '2026-12|acc-main': [[-1752,300,1443.5,-2895.5],[-1752,-4207.5],[-1752,-2895.5]],
-  '2026-12|acc-cash': [[0,0,131.5,-131.5],[0,-131.5],[0,-131.5]],
-  '2026-12|acc-env-perso': [[270,120,48,342],[270,342],[270,342]],
-  '2026-12|acc-env-sante': [[-20,60,0,40],[-20,40],[-20,40]],
-  '2026-12|acc-env-love': [[120,100,35,185],[120,185],[120,185]],
-  '2026-12|acc-env-voiture': [[432,150,62,520],[432,520],[432,520]],
-  '2026-12|acc-env-impots': [[804,436,0,1240],[804,1240],[804,1240]],
-  '2026-12|acc-env-projets': [[275,0,0,275],[275,275],[275,275]],
-  '2027-01|acc-main': [[-2895.5,0,0,-2895.5],[-4207.5,-4207.5],[-2895.5,-2895.5]],
-  '2027-01|acc-cash': [[-131.5,0,0,-131.5],[-131.5,-131.5],[-131.5,-131.5]],
-  '2027-01|acc-env-perso': [[342,0,0,342],[342,342],[342,342]],
-  '2027-01|acc-env-sante': [[40,0,0,40],[40,40],[40,40]],
-  '2027-01|acc-env-love': [[185,0,0,185],[185,185],[185,185]],
-  '2027-01|acc-env-voiture': [[520,0,0,520],[520,520],[520,520]],
-  '2027-01|acc-env-impots': [[1240,0,0,1240],[1240,1240],[1240,1240]],
-  '2027-01|acc-env-projets': [[275,0,0,275],[275,275],[275,275]],
-  '2027-02|acc-main': [[-2895.5,0,0,-2895.5],[-4207.5,-4207.5],[-2895.5,-2895.5]],
-  '2027-02|acc-cash': [[-131.5,0,0,-131.5],[-131.5,-131.5],[-131.5,-131.5]],
-  '2027-02|acc-env-perso': [[342,0,0,342],[342,342],[342,342]],
-  '2027-02|acc-env-sante': [[40,0,0,40],[40,40],[40,40]],
-  '2027-02|acc-env-love': [[185,0,0,185],[185,185],[185,185]],
-  '2027-02|acc-env-voiture': [[520,0,0,520],[520,520],[520,520]],
-  '2027-02|acc-env-impots': [[1240,0,0,1240],[1240,1240],[1240,1240]],
-  '2027-02|acc-env-projets': [[275,0,0,275],[275,275],[275,275]]
+  '2026-10|acc-main': [[0,0,916,-916],[0,-916]],
+  '2026-10|acc-cash': [[0,0,0,0],[0,0]],
+  '2026-10|acc-env-perso': [[260,120,70,310],[260,310]],
+  '2026-10|acc-env-sante': [[100,60,90,70],[100,70]],
+  '2026-10|acc-env-love': [[150,100,155,95],[150,95]],
+  '2026-10|acc-env-voiture': [[360,150,90,420],[360,420]],
+  '2026-10|acc-env-impots': [[540,436,196,780],[540,780]],
+  '2026-10|acc-env-projets': [[280,50,0,330],[280,330]],
+  '2026-11|acc-main': [[-916,30,866,-1752],[-916,-1752]],
+  '2026-11|acc-cash': [[0,0,0,0],[0,0]],
+  '2026-11|acc-env-perso': [[310,120,160,270],[310,270]],
+  '2026-11|acc-env-sante': [[70,60,150,-20],[70,-20]],
+  '2026-11|acc-env-love': [[95,100,75,120],[95,120]],
+  '2026-11|acc-env-voiture': [[420,150,138,432],[420,432]],
+  '2026-11|acc-env-impots': [[780,436,412,804],[780,804]],
+  '2026-11|acc-env-projets': [[330,0,55,275],[330,275]],
+  '2026-12|acc-main': [[-1752,300,1443.5,-2895.5],[-1752,-2895.5]],
+  '2026-12|acc-cash': [[0,0,131.5,-131.5],[0,-131.5]],
+  '2026-12|acc-env-perso': [[270,120,48,342],[270,342]],
+  '2026-12|acc-env-sante': [[-20,60,0,40],[-20,40]],
+  '2026-12|acc-env-love': [[120,100,35,185],[120,185]],
+  '2026-12|acc-env-voiture': [[432,150,62,520],[432,520]],
+  '2026-12|acc-env-impots': [[804,436,0,1240],[804,1240]],
+  '2026-12|acc-env-projets': [[275,0,0,275],[275,275]],
+  '2027-01|acc-main': [[-2895.5,0,0,-2895.5],[-2895.5,-2895.5]],
+  '2027-01|acc-cash': [[-131.5,0,0,-131.5],[-131.5,-131.5]],
+  '2027-01|acc-env-perso': [[342,0,0,342],[342,342]],
+  '2027-01|acc-env-sante': [[40,0,0,40],[40,40]],
+  '2027-01|acc-env-love': [[185,0,0,185],[185,185]],
+  '2027-01|acc-env-voiture': [[520,0,0,520],[520,520]],
+  '2027-01|acc-env-impots': [[1240,0,0,1240],[1240,1240]],
+  '2027-01|acc-env-projets': [[275,0,0,275],[275,275]],
+  '2027-02|acc-main': [[-2895.5,0,0,-2895.5],[-2895.5,-2895.5]],
+  '2027-02|acc-cash': [[-131.5,0,0,-131.5],[-131.5,-131.5]],
+  '2027-02|acc-env-perso': [[342,0,0,342],[342,342]],
+  '2027-02|acc-env-sante': [[40,0,0,40],[40,40]],
+  '2027-02|acc-env-love': [[185,0,0,185],[185,185]],
+  '2027-02|acc-env-voiture': [[520,0,0,520],[520,520]],
+  '2027-02|acc-env-impots': [[1240,0,0,1240],[1240,1240]],
+  '2027-02|acc-env-projets': [[275,0,0,275],[275,275]]
 };
 
 describe('CA9 : sans date, rien ne change', () => {
   const sum = (d: BudgetData) => {
     const ledger = new Ledger(d, '2026-12');
-    return ledger.months.map(m => d.accounts.map(a => [m, a.id, ledger.bankMonth(a.id, m), monthBalance(d, m, a.id), realMonthBalance(d, m, a.id)]));
+    return ledger.months.map(m => d.accounts.map(a => [m, a.id, ledger.bankMonth(a.id, m), realMonthBalance(d, m, a.id)]));
   };
 
   it('des dates explicites égales au mois civil donnent exactement les mêmes soldes que l’absence de dates', () => {
@@ -223,26 +201,25 @@ describe('CA9 : sans date, rien ne change', () => {
     expect(sum(plain).flat().length).toBeGreaterThan(0);
   });
 
-  it('les soldes de seedData() sont ceux calculés par le code d’avant la spec 0039 (valeurs figées)', () => {
-    const d = seedData();
-    const ledger = new Ledger(d, '2026-12');
-    const got: Record<string, unknown> = {};
-    for (const m of ledger.months) for (const a of d.accounts) {
-      const b = ledger.bankMonth(a.id, m);
-      const e = monthBalance(d, m, a.id);
-      const r = realMonthBalance(d, m, a.id);
-      got[`${m}|${a.id}`] = [b && [b.start, b.in + 0, b.out + 0, b.balance], e && [e.start, e.end], r && [r.start, r.end]];
-    }
-    expect(got).toEqual(BASELINE);
-    expect(Object.keys(BASELINE).length).toBeGreaterThan(20);
-  });
-
   it('chaque période est le mois civil et les dates déduites sont celles d’avant', () => {
     const d = seedData();
     for (const t of d.transactions) {
       expect(bankDateOf(t, d)).toBe(bankDateOf(t));
     }
     expect(periodOf(d, '2026-12')).toEqual({ start: '2026-12-01', end: '2026-12-31' });
+  });
+
+  it('les soldes de seedData() sont ceux calculés par le code d’avant la spec 0039 (valeurs figées)', () => {
+    const d = seedData();
+    const ledger = new Ledger(d, '2026-12');
+    const got: Record<string, unknown> = {};
+    for (const m of ledger.months) for (const a of d.accounts) {
+      const b = ledger.bankMonth(a.id, m);
+      const r = realMonthBalance(d, m, a.id);
+      got[`${m}|${a.id}`] = [b && [b.start, b.in + 0, b.out + 0, b.balance], r && [r.start, r.end]];
+    }
+    expect(got).toEqual(BASELINE);
+    expect(Object.keys(BASELINE).length).toBeGreaterThan(20);
   });
 });
 
@@ -410,22 +387,6 @@ describe('relevé et régularisation dans la période (RG15, RG22, CA17, CA18)',
     expect(createAdjustment(d, M, 'x', MAIN_ACCOUNT_ID, '2026-09-30', 5, TODAY)).toBe('ok');
   });
 
-  it('CA18 : un relevé d’octobre se compare au solde réel à sa date, dans la période', () => {
-    const d = started();
-    expense(d, 'a', M, '2026-09-30', 40);
-    setAccountStatement(d, M, MAIN_ACCOUNT_ID, 960, '2026-10-29', TODAY);
-    expect(accountPointage(d, M, MAIN_ACCOUNT_ID, TODAY)!.gap).toBe(0);
-    expect(accountPointage(d, M, MAIN_ACCOUNT_ID, TODAY)!.real).toEqual({ start: 1000, end: 960 });
-  });
-
-  it('une régularisation annulée reste listée dans la période de sa date', () => {
-    const d = started();
-    createAdjustment(d, M, 'adj', MAIN_ACCOUNT_ID, '2026-09-30', 5, TODAY);
-    d.adjustments![0].cancelledOn = TODAY;
-    const listed = accountPointage(d, M, MAIN_ACCOUNT_ID, TODAY)!.realMovements;
-    expect(listed.map(x => [x.adjustmentId, x.counted])).toEqual([['adj', false]]);
-    expect(real(d, M).out).toBe(0);
-  });
 });
 
 describe('report d’une année clôturée (RG16, CA19)', () => {

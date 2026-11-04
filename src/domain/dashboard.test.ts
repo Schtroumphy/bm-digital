@@ -194,10 +194,10 @@ describe('à faire : alertes (CA7)', () => {
   });
 });
 
-describe('à faire : virements (CA8)', () => {
-  it('à effectuer = non pointés, triés par jour (sans jour en dernier), total et faits / total', () => {
+describe('à faire : virements (CA8, spec 0043 CA11)', () => {
+  it('à effectuer = reste > 0, triés par jour (sans jour en dernier), total et faits / total', () => {
     const d = started();
-    d.months[M].checks = { lt: { doneOn: '2027-03-05' } };
+    d.months[M].lines.find(l => l.key === 'lt')!.actual = 300; // fully sent: nothing left
     const t = todo(d);
     expect(t.transfers.map(x => [x.id, x.day, x.amount])).toEqual([
       ['etf', 28, 140],
@@ -209,9 +209,9 @@ describe('à faire : virements (CA8)', () => {
     expect([t.transfersDone, t.transfersAll]).toEqual([1, 4]);
   });
 
-  it('une allocation pointée n’est plus à faire mais compte dans les faits', () => {
+  it('une allocation dont le transfert est fait n’est plus à faire mais compte dans les faits', () => {
     const d = started();
-    d.months[M].checks = { 'env:vac': { doneOn: '2027-03-01' } };
+    d.accountMovements = [{ id: 'a', month: M, day: 1, label: 'Allocation', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-vac', target: { kind: 'env', id: 'vac' } }];
     const t = todo(d);
     expect(t.transfers.map(x => x.id)).toEqual(['lt', 'etf', 'mt']);
     expect([t.transfersDone, t.transfersAll]).toEqual([1, 4]);
@@ -224,10 +224,10 @@ describe('à faire : virements (CA8)', () => {
     expect(ids).not.toContain('cou');
   });
 
-  it('le montant compté est le réel s’il existe', () => {
+  it('le montant à faire est le reste : le budget moins le réel déjà viré', () => {
     const d = started();
     d.months[M].lines.find(l => l.key === 'lt')!.actual = 250;
-    expect(todo(d).transfers.find(x => x.id === 'lt')!.amount).toBe(250);
+    expect(todo(d).transfers.find(x => x.id === 'lt')!.amount).toBe(50);
   });
 
   it('mode informatif, montant ou allocation à 0 : absents des virements et du total', () => {

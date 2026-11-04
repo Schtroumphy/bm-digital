@@ -10,12 +10,12 @@ import { addManualTransaction, addManualTransfer } from '../../application/manua
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
-import { defaultTransferTarget, similarPointedItem, transferItems } from '../../domain/transfers';
-import { deleteAccountMovement, setAccountMovementDetail, setTransferTarget, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
+import { defaultTransferTarget, transferItems } from '../../domain/transfers';
+import { deleteAccountMovement, setAccountMovementDetail, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget, transactionBox, savingsExpenseLines } from '../../domain/bank';
-import { isoDate, lineCheck } from '../../domain/checkoff';
+import { isoDate } from '../../domain/checkoff';
 import { defaultEntryDate, isRealDate } from '../../domain/periods';
 import { matchesEntrySearch } from '../../domain/detail';
 import { monthSummary, variableRemaining } from '../../domain/budget';
@@ -146,7 +146,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; pointedOnly: boolean; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', pointedOnly: false, flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // The list below the form is split in two tabs: the transactions and the transfers (account movements); the filters apply to both.
   const [view, setView] = useState<'ops' | 'transferts'>('ops');
@@ -201,8 +201,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const cashRefused = form.type === 'env' && form.payMode === 'especes' && !!target && amount > 0 && exceedsEnvelopeCash(data, target, month, amount);
 
   const s = monthSummary(data, ledger, month);
-  // An entry is « rattachée à un pointage » when its line is checked off this month (envelopes have no pointage).
-  const isPointed = (t: { type: TxType; target: string }) => t.type !== 'env' && t.type !== 'epd' && t.type !== 'envin' && t.type !== 'accin' && !!lineCheck(data, month, t.target);
   const minAmount = parseAmount(filter.min) ?? null;
   const maxAmount = parseAmount(filter.max) ?? null;
   const txs = data.transactions.filter(t => t.month === month);
@@ -212,12 +210,11 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId || t.assignedAccountId === filter.accountId)
     .filter(t => !filter.target || (t.target === filter.target && !isTransactionOffBudget(t)))
     .filter(t => matchesEntrySearch(t, filter.q))
-    .filter(t => !filter.pointedOnly || isPointed(t))
     .filter(t => !filter.flaggedOnly || t.flagged === true)
     .filter(t => (!filter.from || bankDateOf(t, data) >= filter.from) && (!filter.to || bankDateOf(t, data) <= filter.to))
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
     .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
-  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || filter.accountId !== 'all' || filter.pointedOnly || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
+  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || filter.accountId !== 'all' || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
   const envelopeEntriesTotal = round2(txs.filter(t => t.type === 'envin').reduce((a, t) => a + t.amount, 0));
   const accountEntriesTotal = round2(txs.filter(t => t.type === 'accin').reduce((a, t) => a + t.amount, 0));
   const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
@@ -226,7 +223,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const shownMovements = allMovements
     .filter(m => filter.accountId === 'all' || m.fromAccountId === filter.accountId || m.toAccountId === filter.accountId)
     .filter(m => matchesEntrySearch(m, filter.q))
-    .filter(m => !filter.pointedOnly || (m.target?.kind === 'line' && !!lineCheck(data, month, m.target.key)))
     .filter(m => inRange(bankDateOf(m, data), m.amount));
   // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
   const picked = shown.filter(t => selected.has(t.id));
@@ -543,10 +539,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
             <div className="tx-f">
               <span className="tx-f-label">Affichage</span>
               <div className="tx-f-pair">
-                <label className="tx-pointed-filter" title={'Opérations rattachées à une ligne de budget pointée ce mois-ci.\nPointer = cocher la case d’une ligne du Budget pour dire que l’argent a bougé (prélèvement passé, revenu reçu). Le pointage sert au « Reste à sortir » et au « Solde estimé » de chaque compte : c’est une estimation de budget, qui n’affecte pas les soldes réels.\nL’état est celui de la ligne : toutes ses opérations sont donc marquées. Les enveloppes n’ont pas de pointage.'}>
-                  <input type="checkbox" checked={filter.pointedOnly} onChange={e => setFilter(f => ({ ...f, pointedOnly: e.target.checked }))} />
-                  Pointées
-                </label>
                 <label className="tx-pointed-filter" title="N’afficher que les opérations marquées d’un drapeau">
                   <input type="checkbox" checked={filter.flaggedOnly} onChange={e => setFilter(f => ({ ...f, flaggedOnly: e.target.checked }))} />
                   Marquées
@@ -555,8 +547,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                   <input type="checkbox" checked={filter.showDetail} onChange={e => setFilter(f => ({ ...f, showDetail: e.target.checked }))} />
                   Détails
                 </label>
-                {(filter.from || filter.to || filter.min || filter.max || filter.pointedOnly || filter.flaggedOnly) && (
-                  <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '', pointedOnly: false, flaggedOnly: false }))}>
+                {(filter.from || filter.to || filter.min || filter.max || filter.flaggedOnly) && (
+                  <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '', flaggedOnly: false }))}>
                     Effacer
                   </span>
                 )}
@@ -600,7 +592,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           </div>
           {shown.map(t => (
             <Fragment key={t.id}>
-              <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}${isPointed(t) ? ' is-pointed' : ''}`}>
+              <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
                 <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                 <EntryDate entry={t} attachedWord="Rattachée" />
                 <EntryLabel entry={t} hideDetail={!filter.showDetail} onOpen={openDetail} />
@@ -791,7 +783,7 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
             </Fragment>
           ) : (
             <Fragment key={m.id}>
-              <div className={`mv-grid tx-row${m.target?.kind === 'line' && lineCheck(data, month, m.target.key) ? ' is-pointed' : ''}`}>
+              <div className="mv-grid tx-row">
                 <EntryDate entry={m} attachedWord="Rattaché" />
                 <EntryLabel entry={m} hideDetail={!showDetail} attach={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join(' · ')} onOpen={openDetail} />
                 <span className="muted ellipsis" title={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join('\n')}>
@@ -828,18 +820,6 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
                   <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: m.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />
                 </div>
               )}
-              {/* A transfer without target that looks like a checked item: possible double count (spec 0019, RG11). */}
-              {(() => {
-                const similar = similarPointedItem(data, m);
-                return similar && !locked ? (
-                  <div className="sim-signal">
-                    Semblable à un pointage : {similar.label}.{' '}
-                    <button type="button" className="link-btn" onClick={() => update(d => void setTransferTarget(d, m.id, similar.target))}>
-                      Rattacher
-                    </button>
-                  </div>
-                ) : null;
-              })()}
             </Fragment>
           ),
         )}
@@ -918,7 +898,6 @@ function TransferFields({ month, locked, label, detail, amount, date, onDone }: 
           </label>
         )}
       </div>
-      {item?.pointedOn && <div className="impact">Cette ligne est pointée : le transfert remplacera sa contrepartie fictive dans le solde estimé.</div>}
       {locked && <div className="alert-box">Ce mois est clôturé : aucun transfert ne peut y être créé.</div>}
       <div className={`btn-dark is-block${ready ? '' : ' is-disabled'}`} onClick={add}>
         <Icon name="plus" size={15} stroke={3} />

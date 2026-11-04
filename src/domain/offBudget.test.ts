@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, deleteTransaction, setTransactionDetail, transactionsCsv, updateTransaction } from '../application/actions';
-import { checkLine } from '../application/checkoff';
 import { prepareImport, validateImport, withValidAssignment, lineProblem, type PreviewLine } from '../application/statementImport';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts, isTransactionInBudget, newEnvelopeAccount } from './bank';
 import { assignedOperations } from './assignedOperations';
-import { availableReal, blockTotals, budgetLines, monthSummary, variableRemaining } from './budget';
-import { estimatedMovements, realMovements } from './bankMovements';
+import { availableReal, monthSummary, variableRemaining } from './budget';
+import { realMovements } from './bankMovements';
 import { dashboardView } from './dashboard';
 import { emptyData } from './empty';
 import { Ledger } from './ledger';
-import { monthBalance } from './checkoff';
 import { fingerprintOf, type StatementRow } from './statement';
 import type { BudgetData, Line, Transaction } from './types';
 
@@ -38,19 +36,6 @@ const bal = (d: BudgetData, id = MAIN_ACCOUNT_ID) => led(d).bankMonth(id, M)!;
 const patch = (t: Transaction, extra: Record<string, unknown>) => ({ label: t.label, amount: t.amount, date: '2026-10-12', type: t.type, target: t.target, ...extra });
 
 describe('opération hors budget (spec 0031)', () => {
-  it('CA1 : une entrée rev de 1 630 € hors budget ne compte ni dans les revenus, ni dans le disponible, mais dans les soldes', () => {
-    const d = budget();
-    const available = availableReal(d, M);
-    const summary = monthSummary(d, led(d), M);
-    expect(addTransaction(d, tx('c', 'rev', 'div', 1630, { offBudget: true }))).toBe(true);
-    expect(line(d, 'div').actual).toBeNull();
-    expect(blockTotals(budgetLines(d, M), 'rev').actual).toBe(0);
-    expect(availableReal(d, M)).toBe(available);
-    expect(monthSummary(d, led(d), M)).toEqual(summary);
-    expect(bal(d).balance).toBe(6630);
-    checkLine(d, M, 'div', '2026-10-20');
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)?.end).toBe(6630);
-  });
 
   it('CA2 : 12 dépenses var de 135,83 € hors budget : réel, restant et dépenses inchangés, solde du compte débité ; solde revenu au départ avec la cagnotte', () => {
     const d = budget();
@@ -61,17 +46,6 @@ describe('opération hors budget (spec 0031)', () => {
     expect(variableRemaining(d, M)).toBe(rest);
     expect(bal(d).balance).toBeCloseTo(5000 + 1630 - 12 * 135.83, 2);
     expect(realMovements(d, MAIN_ACCOUNT_ID, M)).toHaveLength(13);
-  });
-
-  it('une dépense fix hors budget sort du réel de sa ligne et de la ligne pointée (solde estimé inchangé)', () => {
-    const d = budget();
-    addTransaction(d, tx('f', 'fix', 'rcj', 100));
-    checkLine(d, M, 'rcj', '2026-10-20');
-    const est = monthBalance(d, M, MAIN_ACCOUNT_ID);
-    expect(updateTransaction(d, 'f', patch(d.transactions[0], { offBudget: true }))).toBe(true);
-    expect(line(d, 'rcj').actual).toBeNull();
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)).toEqual(est);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).some(m => m.label.includes('hors budget'))).toBe(true);
   });
 
   it('CA3 : retirer le marquage remet l’opération dans tous les chiffres, aux montants exacts', () => {

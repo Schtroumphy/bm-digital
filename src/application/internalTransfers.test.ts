@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { deleteAccountMovement, unlinkMovementFace, updateAccountMovement } from './accountMovements';
-import { checkEnvelope } from './checkoff';
 import { setChecked } from './importFilters';
 import { importableIds, withLinkedPartners, changeNature, completionOf, linkCandidates, linkLines, prepareImport, previewCounts, sessionSummary, syncLinked, targetIsValid, unlinkLine, validateImport, type ImportPreview, type PreviewLine } from './statementImport';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
+import { realMovements } from '../domain/bankMovements';
 import { emptyData } from '../domain/empty';
 import { ENVELOPES_ID, envelopeSplit, findCompletable, linkStateOf, pairFaces } from '../domain/internalTransfers';
 import { Ledger } from '../domain/ledger';
@@ -404,22 +403,6 @@ describe('Enveloppes (global) (RG24 à RG32)', () => {
     expect(targetIsValid(d, MAIN_ACCOUNT_ID, 'interne', { kind: 'account', id: ENVELOPES_ID }, M)).toBe(true);
     expect(targetIsValid(d, MAIN_ACCOUNT_ID, 'recu', { kind: 'account', id: ENVELOPES_ID }, M)).toBe(false);
     expect(targetIsValid(d, ENV, 'recu', { kind: 'account', id: ENVELOPES_ID }, M)).toBe(true);
-  });
-
-  it('CA23 / RG28 : avec un débit « vers enveloppes », l’allocation pointée du mois n’est plus comptée ; supprimé, elle revient', () => {
-    const d = budget();
-    expect(checkEnvelope(d, M, 'sante', '2026-10-01')).toBe(true);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.amount)).toEqual([-50]);
-    validateImport(d, globalDebit(d), newId);
-    // Le principal n'est débité qu'une fois (le virement global), en estimé comme en réel.
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.amount)).toEqual([-300]);
-    expect(estimatedMovements(d, ENV, M)).toEqual([]);
-    expect(realMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.amount)).toEqual([-300]);
-    // Un autre mois n'est pas touché.
-    checkEnvelope(d, '2026-11', 'sante', '2026-11-01');
-    expect(deleteAccountMovement(d, d.accountMovements![0].id)).toBe(true);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(x => x.amount)).toEqual([-50]);
-    expect(estimatedMovements(d, ENV, M).map(x => x.amount)).toEqual([50]);
   });
 
   it('CA24 : un crédit sur le compte d’une enveloppe vient de « Enveloppes (global) » : l’enveloppe est créditée, aucun compte réel débité, allocation inchangée', () => {

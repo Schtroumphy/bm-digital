@@ -4,6 +4,8 @@
 - Date : 2026-10-21
 - Branche prévue : feat/budget_line_checkoff
 
+> Amendement spec 0043 : le pointage (case, Solde estimé, Marge sur pointages, « Reste à sortir » fondé sur les pointages) est retiré ; il est remplacé par l'encart « À venir ce mois-ci ». Le jour prévu, le mode d'exécution, le relevé et les régularisations restent.
+
 Complète les specs 0002 (comptes bancaires), 0006 (mode de paiement par box) et 0008 (restant des variables). Remplace le bloc « Virements à effectuer » de l'écran Budget.
 
 ## Contexte et objectif

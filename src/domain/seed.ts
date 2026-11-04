@@ -1,6 +1,6 @@
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, newEnvelopeAccount } from './bank';
 import { addMonths, monthKey, round2 } from './format';
-import type { AccountMovement, BlockKey, BudgetData, EnvHistory, Line, LineCheck, MonthKey, Transaction, TxType } from './types';
+import type { AccountMovement, BlockKey, BudgetData, EnvHistory, Line, MonthKey, Transaction, TxType } from './types';
 
 /*
  * Sample data from the design prototype. December 2026 is the showcase month:
@@ -119,16 +119,12 @@ export function seedData(): BudgetData {
   }
   months['2026-12'] = { initialized: true, lines: decLines, alloc: { ...template.envAlloc }, transfersDone: { bou: true, ce: true, lyd: true } };
 
-  // Pointage examples (spec 0009): planned days and modes on a few lines, in the model and in December (Oct/Nov stay without, they would all read « en retard »); a few lines of December checked.
+  // Schedule examples (spec 0009): planned days and modes on a few lines, in the model and in December (Oct/Nov stay without, they would all read « en retard »).
   const SCHEDULE: Record<string, { dueDay: number; execMode: Line['execMode'] }> = {
     'r-sal': { dueDay: 28, execMode: 'virement_auto' }, 'c-108': { dueDay: 5, execMode: 'prelevement' }, 'f-nf': { dueDay: 8, execMode: 'prelevement' }, 'f-tan': { dueDay: 10, execMode: 'prelevement' },
     'f-cj': { dueDay: 2, execMode: 'virement_auto' }, 'e-la': { dueDay: 3, execMode: 'virement_auto' }, 'i-pea': { dueDay: 15, execMode: 'virement_manuel' },
   };
   for (const l of [...template.lines, ...months['2026-12'].lines]) Object.assign(l, SCHEDULE[l.key]);
-  const decChecks: Record<string, LineCheck> = { 'c-108': { doneOn: '2026-12-05' }, 'f-cj': { doneOn: '2026-12-02' }, 'e-la': { doneOn: '2026-12-03' } };
-  // December is counted at the checks: the allocations of the envelopes are checked, so they reach their accounts (spec 0011, RG6).
-  for (const e of ENVELOPES) decChecks[`env:${e.id}`] = { doneOn: '2026-12-01' };
-  months['2026-12'].checks = decChecks;
 
   // Envelope spending of Oct/Nov, so balances land on the Dec figures.
   for (const e of ENVELOPES) {

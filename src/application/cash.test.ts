@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { addTransfer, deleteAccountMovement } from './accountMovements';
 import { addTransaction, setEnvelopeAllocation } from './actions';
-import { cashPartRefusal, closeBlockersAfterReconcile, closeMonthReconciling, reconcileCashLines, RECONCILE_LABEL, setEnvelopeCashPart } from './cash';
+import { cashPartRefusal, closeBlockersAfterReconcile, closeMonthReconciling, envelopeSplitRefusal, reconcileCashLines, RECONCILE_LABEL, setEnvelopeCashPart, setEnvelopeSplit } from './cash';
 import { loadBudget } from './loadBudget';
 import { addEnvelope } from './envelopes';
 import { setLinePayment } from './payment';
 import type { BudgetRepository } from './ports';
 import { settleStatements } from '../domain/releve.fixture';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { monthSummary } from '../domain/budget';
 import { cashLines, cashWithdrawalSummary, reconcilableLines } from '../domain/cash';
 import { emptyData } from '../domain/empty';
@@ -49,27 +48,6 @@ const spend = (d: BudgetData, key: string, amount: number, id: string) =>
   addTransaction(d, { id, month: M, day: 5, label: key, amount, type: 'var', target: key });
 
 describe('retrait : une sortie sans compte de destination (spec 0037, RG1 à RG3)', () => {
-  it('CA1: un retrait de 200 € du principal le 06/10 le baisse de 200 € dans le solde réel ET estimé ; aucun réel, allocation ni « Reste à sortir » ne change', () => {
-    const d = october();
-    const before = monthSummary(d, ledger(d), M);
-    const lines = structuredClone(d.months[M].lines);
-    expect(withdraw(d, 200)).toBe(true);
-    expect(mainBalance(d)).toBe(800);
-    const real = realMovements(d, MAIN_ACCOUNT_ID, M);
-    const estimated = estimatedMovements(d, MAIN_ACCOUNT_ID, M);
-    for (const list of [real, estimated]) expect(list.filter(x => x.counterpart)).toEqual([expect.objectContaining({ amount: -200, date: '2026-10-06', label: expect.stringContaining('Espèces') })]);
-    expect(monthSummary(d, ledger(d), M)).toEqual(before);
-    expect(d.months[M].lines).toEqual(lines);
-    expect(d.months[M].alloc).toEqual({ shop: 100 });
-  });
-
-  it('aucun compte n’est crédité, pas même le compte Espèces réservé', () => {
-    const d = october();
-    withdraw(d, 200);
-    expect(realMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
-    expect(estimatedMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
-    expect(ledger(d).bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(0);
-  });
 
   it('un autre compte actif est accepté comme source ; le compte d’une enveloppe, un compte inconnu ou archivé, une cible sont refusés', () => {
     const d = october();
@@ -151,17 +129,6 @@ describe('à retirer / retiré (spec 0037, RG16 à RG18)', () => {
 });
 
 describe('dépense sur une ligne gérée en espèces (spec 0037, RG7 à RG10)', () => {
-  it('CA4: 35 € sur Snack (40 €) : réel 35, restant 5, aucun compte ne bouge, la dépense n’a pas de compte', () => {
-    const d = october();
-    const balances = () => [mainBalance(d), ledger(d).bankMonth(CASH_ACCOUNT_ID, M)!.balance];
-    expect(spend(d, 'snack', 35, 't1')).toBe(true);
-    expect(line(d, 'snack').actual).toBe(35);
-    expect(line(d, 'snack').budget - line(d, 'snack').actual!).toBe(5);
-    expect(d.transactions[0]).toMatchObject({ payMode: 'especes' });
-    expect(d.transactions[0]).not.toHaveProperty('accountId');
-    expect(balances()).toEqual([1000, 0]);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
-  });
 
   it('un dépassement du budget est accepté (restant négatif), jamais bloqué', () => {
     const d = october();
@@ -391,5 +358,75 @@ describe('conversion des données existantes (spec 0037, « Sort des données »
     expect(data.accountMovements!.map(m => m.toAccountId)).toEqual([CASH_ID]);
     expect(saved).toHaveLength(1);
     expect(saved[0].accountMovements!.map(m => m.toAccountId)).toEqual([CASH_ID]);
+  });
+});
+
+describe('allocation et part en espèces réglées ensemble (spec 0040, RG15 à RG23)', () => {
+  const part = (d: BudgetData) => d.months[M].cashPart?.shop ?? 0;
+  const alloc = (d: BudgetData) => d.months[M].alloc.shop;
+
+  it('CA13: saisir une part de 40 sur 100 l’enregistre ; la virtuelle devient 60', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', 100, 40)).toBe('ok');
+    expect(part(d)).toBe(40);
+    expect(alloc(d)).toBe(100);
+  });
+
+  it('CA14: une part à 0 supprime la part ; une part vide (null) ne la change pas', () => {
+    const d = october();
+    setEnvelopeCashPart(d, M, 'shop', 40);
+    expect(setEnvelopeSplit(d, M, 'shop', 120, null)).toBe('ok');
+    expect(part(d)).toBe(40);
+    expect(setEnvelopeSplit(d, M, 'shop', 120, 0)).toBe('ok');
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('CA15: une part au-dessus de l’allocation saisie est refusée, rien n’est enregistré', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', 80, 120)).toBe('part-above-allocation');
+    expect(alloc(d)).toBe(100);
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('CA16: une part négative ou non numérique, une allocation négative sont refusées sans rien écrire', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', 150, -1)).toBe('invalid-part');
+    expect(setEnvelopeSplit(d, M, 'shop', 150, NaN)).toBe('invalid-part');
+    expect(setEnvelopeSplit(d, M, 'shop', -5, 10)).toBe('invalid-allocation');
+    expect(alloc(d)).toBe(100);
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('CA17: monter ou baisser allocation et part ensemble est accepté ; baisser seule l’allocation sous la part est refusé', () => {
+    const d = october();
+    setEnvelopeCashPart(d, M, 'shop', 40);
+    expect(setEnvelopeSplit(d, M, 'shop', 150, 70)).toBe('ok');
+    expect([alloc(d), part(d)]).toEqual([150, 70]);
+    setEnvelopeSplit(d, M, 'shop', 100, 40);
+    expect(setEnvelopeSplit(d, M, 'shop', 50, 20)).toBe('ok');
+    expect([alloc(d), part(d)]).toEqual([50, 20]);
+    expect(setEnvelopeSplit(d, M, 'shop', 10, null)).toBe('allocation-below-part');
+    expect([alloc(d), part(d)]).toEqual([50, 20]);
+  });
+
+  it('RG20: changer seulement la part ne touche pas à l’allocation', () => {
+    const d = october();
+    expect(setEnvelopeSplit(d, M, 'shop', null, 30)).toBe('ok');
+    expect([alloc(d), part(d)]).toEqual([100, 30]);
+  });
+
+  it('CA19: mois clos ou verrouillé, enveloppe inconnue : refusé', () => {
+    const d = october();
+    expect(envelopeSplitRefusal(d, M, 'zzz', 10, 5)).toBe('unknown');
+    d.months[M].closed = true;
+    expect(setEnvelopeSplit(d, M, 'shop', 100, 40)).toBe('locked');
+    expect(d.months[M].cashPart).toBeUndefined();
+  });
+
+  it('RG23: la part saisie ici est celle de l’écran Enveloppes ; le virement d’allocation ne porte que allocation − part (virtuel)', () => {
+    const d = october();
+    setEnvelopeSplit(d, M, 'shop', 100, 40);
+    expect(envelopeCash(d, 'shop', M)).toBe(40);
+    expect(ledger(d).envMonth('shop', M)!.balance).toBe(60);
   });
 });

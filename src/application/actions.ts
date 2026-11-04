@@ -17,8 +17,9 @@ function initMonth(d: BudgetData, m: MonthKey, lines: Line[], alloc: Record<stri
     lines: lines.map(l => ({ ...l, actual: null })),
     alloc: { ...alloc },
     transfersDone: d.months[m]?.transfersDone ?? {},
-    // The pointages belong to the lines just replaced and are not copied (spec 0009, RG17); the balances typed by hand stay.
+    // The balances typed by hand stay; so do the old pointages, inert data nothing reads any more (spec 0043, RG16, RG17).
     ...(d.months[m]?.accountBalances ? { accountBalances: d.months[m].accountBalances } : {}),
+    ...(d.months[m]?.checks ? { checks: d.months[m].checks } : {}),
   };
   for (const l of d.months[m].lines) syncLineActual(d, m, l.key);
 }
@@ -255,8 +256,6 @@ export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Parti
 export function deleteLine(d: BudgetData, m: MonthKey, key: string): boolean {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return false;
   d.months[m].lines = d.months[m].lines.filter(l => l.key !== key);
-  // The line's pointage goes with it (spec 0009), so it cannot reappear on a new line with the same key.
-  delete d.months[m].checks?.[key];
   return true;
 }
 

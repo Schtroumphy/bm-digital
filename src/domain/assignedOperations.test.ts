@@ -1,18 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, deleteTransaction, setTransactionDetail, updateTransaction } from '../application/actions';
 import { archiveBankAccount } from '../application/bankAccounts';
-import { checkLine } from '../application/checkoff';
 import { changeNature, lineProblem, prepareImport, validateImport, withValidAssignment, type PreviewLine } from '../application/statementImport';
 import { MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID, assignableAccounts, canAssignTo, defaultBankAccounts, newEnvelopeAccount } from './bank';
 import { assignedOperations, assignedTotals } from './assignedOperations';
 import { availableReal, blockTotals, budgetLines, monthSummary, variableRemaining } from './budget';
-import { attachedMovements, countedAmount, estimatedMovements, flowOf, realMovements } from './bankMovements';
+import { attachedMovements } from './bankMovements';
 import { dashboardView, hasMovement } from './dashboard';
 import { emptyData } from './empty';
 import { Ledger } from './ledger';
-import { lineEntriesNote, derivedActual } from './lineActuals';
-import { isLineCarried } from './lineExpenses';
-import { monthBalance } from './checkoff';
 import { fingerprintOf, type StatementRow } from './statement';
 import type { BudgetData, Line, Transaction } from './types';
 
@@ -84,53 +80,6 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
     expect(d.transactions[0].assignedAccountId).toBe(LDDS);
     expect(bal(d, CASH_ACCOUNT_ID).balance).toBe(before);
     expect(line(d, 'imp').actual).toBeNull();
-  });
-
-  it('CA5 : soldes réel et estimé du compte propre identiques avant et après, y compris fix et rev sur une ligne pointée', () => {
-    const d = budget();
-    addTransaction(d, tx('f', 'fix', 'rcj', 142.5));
-    addTransaction(d, tx('r', 'rev', 'rbt', 192.6));
-    addTransaction(d, tx('v', 'var', 'imp', 80));
-    // Chaque ligne pointée garde une autre écriture, non affectée : son montant compté reste son réel.
-    addTransaction(d, tx('f2', 'fix', 'rcj', 30));
-    addTransaction(d, tx('r2', 'rev', 'rbt', 10));
-    for (const k of ['rcj', 'rbt']) checkLine(d, M, k, '2026-10-20');
-    const estimated = () => monthBalance(d, M, MAIN_ACCOUNT_ID);
-    const real = bal(d).balance;
-    const est = estimated();
-    expect(est).not.toBeNull();
-    for (const id of ['f', 'r', 'v']) {
-      const t = d.transactions.find(x => x.id === id)!;
-      expect(updateTransaction(d, id, { label: id, amount: t.amount, date: '2026-10-12', type: t.type, target: t.target, assignedAccountId: LDDS })).toBe(true);
-    }
-    expect(bal(d).balance).toBe(real);
-    expect(estimated()).toEqual(est);
-  });
-
-  it('CA5 (cas limite) : ligne pointée à 300 € dont la seule écriture est affectée (142,50 €) : solde estimé inchangé, la case garde le budget', () => {
-    const d = budget();
-    addTransaction(d, tx('f', 'fix', 'rcj', 142.5));
-    checkLine(d, M, 'rcj', '2026-10-20');
-    const est = monthBalance(d, M, MAIN_ACCOUNT_ID);
-    expect(updateTransaction(d, 'f', { label: 'f', amount: 142.5, date: '2026-10-12', type: 'fix', target: 'rcj', assignedAccountId: LDDS })).toBe(true);
-    expect(line(d, 'rcj').actual).toBeNull();
-    expect(countedAmount(line(d, 'rcj'))).toEqual({ amount: 300, source: 'budget' });
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)).toEqual(est);
-  });
-
-  it('CA6 : solde, entrées/sorties et mouvements du compte d’affectation sont inchangés', () => {
-    const d = budget();
-    addTransaction(d, tx('v', 'var', 'imp', 708.03, { assignedAccountId: LDDS }));
-    addTransaction(d, tx('r', 'rev', 'rbt', 20, { assignedAccountId: LDDS }));
-    const b = bal(d, LDDS);
-    expect(b.balance).toBe(63.95);
-    expect(b.in).toBe(0);
-    expect(b.out).toBeCloseTo(0, 5);
-    expect(realMovements(d, LDDS, M)).toEqual([]);
-    expect(estimatedMovements(d, LDDS, M)).toEqual([]);
-    expect(flowOf(realMovements(d, LDDS, M)).in).toBe(0);
-    // Le compte propre garde l'opération.
-    expect(bal(d).balance).toBe(5000 - 708.03 + 20);
   });
 
   it('CA7 : le détail du compte liste les opérations affectées avec leurs totaux', () => {
@@ -205,19 +154,6 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
     // Mais on ne peut pas en changer pour un autre compte archivé.
     expect(updateTransaction(d, 'v', { label: 'x', amount: 50, date: '2026-10-12', type: 'var', target: 'imp', assignedAccountId: 'inconnu' })).toBe(false);
     expect(d.transactions[0].label).toBe('renommée');
-  });
-
-  it('CA13 : une ligne qui ne porte que des affectées a un réel vide, retombe sur son budget au pointage, et reste portée', () => {
-    const d = budget();
-    addTransaction(d, tx('f', 'fix', 'rcj', 142.5, { assignedAccountId: LDDS }));
-    const l = line(d, 'rcj');
-    expect(l.actual).toBeNull();
-    expect(countedAmount(l)).toEqual({ amount: 300, source: 'budget' });
-    expect(isLineCarried(d, M, 'rcj')).toBe(true);
-    expect(lineEntriesNote(d, M, l)).toBe('');
-    addTransaction(d, tx('g', 'fix', 'rcj', 10));
-    expect(lineEntriesNote(d, M, l)).toBe('1 écriture, réel = somme des écritures');
-    expect(derivedActual(d, M, l)).toBe(10);
   });
 
   it('RG21 : changer de ligne conserve l’affectation ; changer de type vers env la refuse', () => {

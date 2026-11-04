@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cancelAdjustment, createAdjustment, setAccountStatement } from '../../application/checkoff';
 import { closeBlockers } from '../../application/monthClosing';
-import { accountPointage, isoDate, shortDate, validateBalanceDate, balanceDateBounds, type BalanceDateError } from '../../domain/checkoff';
+import { accountRealDetail, isoDate, shortDate, validateBalanceDate, balanceDateBounds, type BalanceDateError } from '../../domain/checkoff';
 import { addMonths, money, monthLabel, monthName, parseMonth } from '../../domain/format';
 import { isMonthLocked, isYearClosed } from '../../domain/ledger';
 import { RELEVE_KINDS, canRegularise, releveCount, releveRows, type ReleveRow, type ReleveStatus } from '../../domain/releve';
@@ -270,8 +270,7 @@ function ReleveLine({ row: r, month, locked, today, flash, spark }: { row: Relev
 function ReleveDetail({ row: r, month, locked, today }: { row: ReleveRow; month: MonthKey; locked: boolean; today: string }) {
   const { data, update } = useStore();
   const [cancelling, setCancelling] = useState<string | null>(null);
-  const p = accountPointage(data, month, r.account.id, today);
-  if (!p) return null;
+  const movements = accountRealDetail(data, month, r.account.id);
   const prevMonth = monthName(parseMonth(addMonths(month, -1)).month).toLowerCase();
   return (
     <div className="pt-body rel-detail">
@@ -280,7 +279,7 @@ function ReleveDetail({ row: r, month, locked, today }: { row: ReleveRow; month:
         <span>Début de mois (fin {prevMonth})</span>
         <span>{money(r.real.start)}</span>
       </div>
-      {p.realMovements.map((x, i) => (
+      {movements.map((x, i) => (
         <div key={i} className={`pt-row${x.counted ? '' : ' is-grey'}`} title={x.attachedMonth ? `Rattachée à ${monthLabel(x.attachedMonth).toLowerCase()}` : undefined}>
           <span style={x.cancelledOn ? { textDecoration: 'line-through' } : undefined}>
             {shortDate(x.date)} {x.label}

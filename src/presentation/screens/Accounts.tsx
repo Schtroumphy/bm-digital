@@ -20,6 +20,7 @@ import {
   unarchiveBankAccount,
 } from '../../application/bankAccounts';
 import { decideAccountKind, linkLineToAccount } from '../../application/accountKinds';
+import { SAVINGS_SECTIONS } from '../../application/actions';
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
 import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
 import { assignedOperations, assignedTotals } from '../../domain/assignedOperations';
@@ -135,6 +136,16 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
   const withCash = envelopesGroupTotals(data, ledger, month);
   const current = active.filter(a => ['main', 'other'].includes(groupOf(a)));
   const wealth = active.filter(a => isSaving(groupOf(a)));
+  // Horizon of a savings account: the section of the savings line it is tied to (long / moyen terme).
+  const horizonOf = (id: string): 'LT' | 'MT' | 'none' => {
+    const line = monthLines(data, month).find(l => l.block === 'epa' && l.linkedAccountId === id);
+    return line?.section === SAVINGS_SECTIONS.LT ? 'LT' : line?.section === SAVINGS_SECTIONS.MT ? 'MT' : 'none';
+  };
+  const horizons = [
+    { id: 'LT', title: 'Long terme' },
+    { id: 'MT', title: 'Moyen terme' },
+    { id: 'none', title: 'Sans horizon (non lié à une ligne d’épargne)' },
+  ];
   // Closed accounts open their panel too (read-only history).
   const open = data.accounts.find(a => a.id === selected) ?? null;
 
@@ -247,7 +258,23 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
                 )}
               </div>
             </div>
-            <div className="cpt-cards">{list.map(card)}</div>
+            {g.id === 'sav' ? (
+              horizons.map(h => {
+                const part = list.filter(a => horizonOf(a.id) === h.id);
+                if (part.length === 0) return null;
+                return (
+                  <div key={h.id} className="cpt-subgroup">
+                    <div className="cpt-subgroup-head">
+                      <span>{h.title}</span>
+                      <b className="num">{money(totalOf(part))}</b>
+                    </div>
+                    <div className="cpt-cards">{part.map(card)}</div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="cpt-cards">{list.map(card)}</div>
+            )}
           </section>
         );
       })}

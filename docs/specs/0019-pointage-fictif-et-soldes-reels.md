@@ -3,6 +3,8 @@
 - Statut : implémentée (revue en attente). Implémentation faite APRÈS la 0014 et la 0015 (voir « Ordre »). Amendements des specs 0004, 0007, 0009, 0010, 0011, 0013, 0014 et 0015 écrits ; ceux des specs 0016 et 0017 restent à faire (fichiers non suivis, hors périmètre de cette implémentation).
 - Date : 2026-10-23
 - Branche prévue : feat/soldes_reels_pointage_fictif
+
+> Amendement spec 0043 : le pointage fictif et le solde estimé sont retirés. Le solde réel (écritures seulement), les transferts rattachés et le réel dérivé des écritures restent inchangés.
 - Numéro : 0019 (premier numéro libre ; la 0018 est réservée au double pointage, non rédigé). Aucune spec existante n'est renumérotée ni modifiée par cette spec ; la section « Specs à amender » liste ce qu'il faudra y changer.
 
 ## Contexte et objectif
