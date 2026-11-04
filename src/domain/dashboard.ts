@@ -1,8 +1,9 @@
 import { blockTotals, budgetLines, envelopeAlerts, lineRemaining, monthSummary, variableRemaining, type MonthSummary } from './budget';
 import { assignedOperations, assignedTotals, monthAssignedSummary, type AssignedSummary } from './assignedOperations';
-import { isLineInBudget, kindOf } from './bank';
+import { envelopeAccountAt, isLineInBudget, kindOf } from './bank';
 import { envelopeConsumption } from './envelopeCash';
-import { effectiveDueDay, envelopeCheck, isEnvelopePointable, isLate, lineCheck, lineCounted } from './checkoff';
+import { effectiveDueDay } from './checkoff';
+import { isLate, leftOfAllocation, leftOfLine } from './comingUp';
 import { currentYear, firstGoalOfKind, goalView, referenceMonth, summaryGoals, type GoalView } from './goals';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, isMonthLocked, monthAlloc, monthLines, type Ledger } from './ledger';
@@ -10,7 +11,7 @@ import { releveFailures } from './releve';
 import type { BudgetData, MonthKey, MonthNote } from './types';
 
 /*
- * Tableau de bord (spec 0027). Pure assembly of existing calculations (`monthSummary`, `goalView`, `envelopeAlerts`, `lineCounted`, `lineCheck`,
+ * Tableau de bord (spec 0027). Pure assembly of existing calculations (`monthSummary`, `goalView`, `envelopeAlerts`, `leftOfLine`,
  * `isLate`, `variableRemaining`): nothing is recomputed here, the screen only displays what `dashboardView` returns.
  */
 
@@ -228,16 +229,16 @@ export function monthTransfers(d: BudgetData, month: MonthKey, today: string): D
   const out: DashboardTransfer[] = [];
   for (const l of monthLines(d, month)) {
     if ((l.block !== 'epa' && l.block !== 'inv') || l.execMode === 'informatif' || !isLineInBudget(d, l)) continue;
-    const { amount } = lineCounted(d, l);
-    if (amount === 0) continue;
-    out.push({ kind: 'line', id: l.key, name: l.name, ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, month) } : {}), amount, done: !!lineCheck(d, month, l.key), late: isLate(d, month, l, today) });
+    if (l.budget === 0) continue;
+    // A transfer is « faite » when nothing is left of the line (spec 0043, RG13): the amount shown is what is left, or the budget once done.
+    const left = leftOfLine(l);
+    out.push({ kind: 'line', id: l.key, name: l.name, ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, month) } : {}), amount: left || l.budget, done: left === 0, late: isLate(d, month, l, today) });
   }
   const alloc = monthAlloc(d, month);
   for (const e of d.envelopes) {
-    const done = !!envelopeCheck(d, month, e.id);
-    if (!done && !isEnvelopePointable(d, month, e)) continue;
-    if ((alloc[e.id] ?? 0) <= 0) continue;
-    out.push({ kind: 'envelope', id: e.id, name: `Alloc. ${e.name}`, amount: alloc[e.id], done, late: false });
+    if (!envelopeAccountAt(d, e, month) || (alloc[e.id] ?? 0) <= 0) continue;
+    const left = leftOfAllocation(d, month, e.id);
+    out.push({ kind: 'envelope', id: e.id, name: `Alloc. ${e.name}`, amount: left || alloc[e.id], done: left === 0, late: false });
   }
   // Array.sort is stable: transfers with the same day keep their order.
   return out.sort((a, b) => (a.day ?? Infinity) - (b.day ?? Infinity));

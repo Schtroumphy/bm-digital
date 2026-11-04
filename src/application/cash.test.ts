@@ -8,7 +8,6 @@ import { setLinePayment } from './payment';
 import type { BudgetRepository } from './ports';
 import { settleStatements } from '../domain/releve.fixture';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { monthSummary } from '../domain/budget';
 import { cashLines, cashWithdrawalSummary, reconcilableLines } from '../domain/cash';
 import { emptyData } from '../domain/empty';
@@ -49,27 +48,6 @@ const spend = (d: BudgetData, key: string, amount: number, id: string) =>
   addTransaction(d, { id, month: M, day: 5, label: key, amount, type: 'var', target: key });
 
 describe('retrait : une sortie sans compte de destination (spec 0037, RG1 à RG3)', () => {
-  it('CA1: un retrait de 200 € du principal le 06/10 le baisse de 200 € dans le solde réel ET estimé ; aucun réel, allocation ni « Reste à sortir » ne change', () => {
-    const d = october();
-    const before = monthSummary(d, ledger(d), M);
-    const lines = structuredClone(d.months[M].lines);
-    expect(withdraw(d, 200)).toBe(true);
-    expect(mainBalance(d)).toBe(800);
-    const real = realMovements(d, MAIN_ACCOUNT_ID, M);
-    const estimated = estimatedMovements(d, MAIN_ACCOUNT_ID, M);
-    for (const list of [real, estimated]) expect(list.filter(x => x.counterpart)).toEqual([expect.objectContaining({ amount: -200, date: '2026-10-06', label: expect.stringContaining('Espèces') })]);
-    expect(monthSummary(d, ledger(d), M)).toEqual(before);
-    expect(d.months[M].lines).toEqual(lines);
-    expect(d.months[M].alloc).toEqual({ shop: 100 });
-  });
-
-  it('aucun compte n’est crédité, pas même le compte Espèces réservé', () => {
-    const d = october();
-    withdraw(d, 200);
-    expect(realMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
-    expect(estimatedMovements(d, CASH_ACCOUNT_ID, M)).toEqual([]);
-    expect(ledger(d).bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(0);
-  });
 
   it('un autre compte actif est accepté comme source ; le compte d’une enveloppe, un compte inconnu ou archivé, une cible sont refusés', () => {
     const d = october();
@@ -151,17 +129,6 @@ describe('à retirer / retiré (spec 0037, RG16 à RG18)', () => {
 });
 
 describe('dépense sur une ligne gérée en espèces (spec 0037, RG7 à RG10)', () => {
-  it('CA4: 35 € sur Snack (40 €) : réel 35, restant 5, aucun compte ne bouge, la dépense n’a pas de compte', () => {
-    const d = october();
-    const balances = () => [mainBalance(d), ledger(d).bankMonth(CASH_ACCOUNT_ID, M)!.balance];
-    expect(spend(d, 'snack', 35, 't1')).toBe(true);
-    expect(line(d, 'snack').actual).toBe(35);
-    expect(line(d, 'snack').budget - line(d, 'snack').actual!).toBe(5);
-    expect(d.transactions[0]).toMatchObject({ payMode: 'especes' });
-    expect(d.transactions[0]).not.toHaveProperty('accountId');
-    expect(balances()).toEqual([1000, 0]);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
-  });
 
   it('un dépassement du budget est accepté (restant négatif), jamais bloqué', () => {
     const d = october();

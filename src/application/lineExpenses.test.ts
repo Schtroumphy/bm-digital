@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, deleteTransaction, updateLine, updateTransaction } from './actions';
-import { checkLine, uncheckLine } from './checkoff';
 import { addBankAccount, archiveBankAccount, setLineAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
-import { accountPointage, lineTooltip, monthBalance } from '../domain/checkoff';
+import { lineTooltip } from '../domain/comingUp';
 import { blockTotals } from '../domain/budget';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -65,38 +63,6 @@ describe('dépense sur ligne fixe ou crédit (spec 0014, 0019)', () => {
     expect(actual(d, 'edf')).toBe(62);
   });
 
-  it('CA8: non pointée, seule la dépense baisse le solde réel, à sa date ; le solde estimé ne la compte pas (la ligne y entre par son pointage)', () => {
-    const d = started([ln('edf', 'fix', 62)]);
-    addTransaction(d, fx('a', 5, 60, 'edf'));
-    expect(main(d)).toBe(940);
-    expect(realMovements(d, MAIN_ACCOUNT_ID, M).map(m => [m.date, m.amount])).toEqual([['2027-01-05', -60]]);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(1000);
-  });
-
-  it('CA9 / RG6: pointée et dépensée, le solde réel ne change pas au pointage ; l’estimé compte la ligne une fois, au montant compté (la somme des dépenses)', () => {
-    const d = started([ln('edf', 'fix', 62)]);
-    addTransaction(d, fx('a', 5, 60, 'edf'));
-    const before = main(d);
-    checkLine(d, M, 'edf', '2027-01-03');
-    expect(main(d)).toBe(before);
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(m => [m.date, m.amount])).toEqual([['2027-01-03', -60]]);
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(940);
-    uncheckLine(d, M, 'edf');
-    expect(main(d)).toBe(before);
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(1000);
-  });
-
-  it('CA11 / RG20: supprimer la dernière dépense vide le réel ; pointée sans réel, la ligne compte son budget dans l’estimé', () => {
-    const d = started([ln('edf', 'fix', 62)]);
-    addTransaction(d, fx('a', 5, 62, 'edf'));
-    checkLine(d, M, 'edf', '2027-01-03');
-    expect(deleteTransaction(d, 'a')).toBe(true);
-    expect(actual(d, 'edf')).toBeNull();
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M).map(m => [m.date, m.amount])).toEqual([['2027-01-03', -62]]);
-    expect(main(d)).toBe(1000);
-  });
-
   it('CA12: avec deux dépenses, en supprimer une fait baisser le réel', () => {
     const d = started([ln('edf', 'fix', 62)]);
     addTransaction(d, fx('a', 5, 60, 'edf'));
@@ -104,22 +70,6 @@ describe('dépense sur ligne fixe ou crédit (spec 0014, 0019)', () => {
     deleteTransaction(d, 'b');
     expect(actual(d, 'edf')).toBe(60);
     expect(main(d)).toBe(940);
-  });
-
-  it('CA13: « Reste à sortir » est inchangé par la dépense (budgétaire) ; pointer fait sortir la ligne', () => {
-    const d = started([ln('edf', 'fix', 62)]);
-    const rest = () => accountPointage(d, M, MAIN_ACCOUNT_ID, '2027-01-10')!;
-    expect(rest().remaining).toBe(62);
-    addTransaction(d, fx('a', 5, 62, 'edf'));
-    expect(rest().remaining).toBe(62);
-    expect(d.months[M].checks).toBeUndefined();
-    // Le solde réel baisse, l'estimé attend le pointage : marge = estimé − reste à sortir.
-    expect(rest().real!.end).toBe(938);
-    expect(rest().margin).toBe(1000 - 62);
-    checkLine(d, M, 'edf', '2027-01-06');
-    expect(rest().remaining).toBe(0);
-    expect(rest().estimated).toBe(938);
-    expect(rest().margin).toBe(938);
   });
 
   it('CA15: mois clos, ajout et suppression refusés ; la dépense existante garde son effet', () => {
@@ -145,16 +95,6 @@ describe('dépense sur ligne fixe ou crédit (spec 0014, 0019)', () => {
     expect(new Ledger(d, M).bankMonth(CASH_ACCOUNT_ID, M)!.balance).toBe(0);
   });
 
-  it('RG7: « Reste à sortir » ne pèse que le budget, quel que soit le montant des dépenses (60 ou 80 sur 62)', () => {
-    for (const amount of [60, 80]) {
-      const d = started([ln('edf', 'fix', 62)]);
-      addTransaction(d, fx('a', 5, amount, 'edf'));
-      const p = accountPointage(d, M, MAIN_ACCOUNT_ID, '2027-01-10')!;
-      expect(p.remaining).toBe(62);
-      expect(p.pending[0]).toMatchObject({ amount: 62, source: 'budget' });
-    }
-  });
-
   it('RG2: le compte d’une ligne qui porte des dépenses ne peut pas changer ; sans dépense il peut', () => {
     const d = started([ln('edf', 'fix', 62)]);
     expect(setLineAccount(d, M, 'edf', SWILE)).toBe(true);
@@ -175,17 +115,6 @@ describe('dépense sur ligne fixe ou crédit (spec 0014, 0019)', () => {
     expect(addTransaction(d, fx('a', 5, 20, 'cant'))).toBe(false);
     expect(expenseLineBlocker(d, M, 'cant')).toMatch(/Swile.*archivé/);
     expect(expenseLineBlocker(d, M, 'inconnue')).toBeNull();
-  });
-
-  it('CA3 (0019) : la ligne pointée sans écriture ne change pas le solde réel et baisse l’estimé ; l’écriture seule baisse le réel', () => {
-    const d = started([ln('edf', 'fix', 62), ln('sal', 'rev', 2000)]);
-    checkLine(d, M, 'sal', '2027-01-02');
-    checkLine(d, M, 'edf', '2027-01-03');
-    expect(main(d)).toBe(1000);
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(1000 + 2000 - 62);
-    addTransaction(d, fx('a', 5, 60, 'edf'));
-    expect(main(d)).toBe(940);
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(1000 + 2000 - 60);
   });
 
   it('l’information d’une ligne qui porte des dépenses est dans l’infobulle de la ligne (nombre d’écritures, réel = somme)', () => {

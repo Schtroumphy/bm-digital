@@ -1,76 +1,19 @@
-import { envelopeCheckKey } from '../domain/bankMovements';
-import { envelopeCheck, isEnvelopePointable, isoDate, isIsoDate, isPointable, isValidDueDay, lineCheck, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
+import { isoDate, isValidDueDay, validateBalanceDate, type BalanceDateError } from '../domain/checkoff';
 import { round2 } from '../domain/format';
 import { isMonthLocked } from '../domain/ledger';
 import { monthOfDate } from '../domain/periods';
-import type { BudgetData, ExecMode, Line, LineCheck, MonthKey } from '../domain/types';
+import type { BudgetData, ExecMode, Line, MonthKey } from '../domain/types';
 
 /*
- * Use cases of the pointage (spec 0009). Each one changes the data it is given and returns
- * false (changing nothing) when a rule forbids it: month not initialized or locked (RG7),
- * line without checkbox (RG3, RG4), invalid value (RG8). None of them touches an actual (RG2) or a real balance (spec 0019, RG6).
+ * Use cases of the schedule (planned day, execution mode), the statements and the adjustments (spec 0009, 0041). Each one changes the data it is given
+ * and returns false (changing nothing) when a rule forbids it: month not initialized or locked, invalid value.
+ * The pointage of lines and allocations was removed by spec 0043.
  */
 
 function editableLine(d: BudgetData, m: MonthKey, key: string): Line | undefined {
   const md = d.months[m];
   if (!md?.initialized || isMonthLocked(d, m)) return undefined;
   return md.lines.find(l => l.key === key);
-}
-
-export interface CheckPatch {
-  /** `YYYY-MM-DD`. */
-  doneOn?: string;
-}
-
-const isValidPatch = (p: CheckPatch) => p.doneOn === undefined || isIsoDate(p.doneOn);
-
-/**
- * Checks a line: date = `today` unless given (RG1, RG77). No amount is stored: the amount counted is computed on reading (RG76).
- * Refused when the line is already checked or has no checkbox.
- */
-export function checkLine(d: BudgetData, m: MonthKey, key: string, today = isoDate(), patch: CheckPatch = {}): boolean {
-  const l = editableLine(d, m, key);
-  if (!l || !isPointable(d, l) || lineCheck(d, m, key) || !isValidPatch(patch)) return false;
-  const md = d.months[m];
-  (md.checks ??= {})[key] = { doneOn: patch.doneOn ?? today };
-  return true;
-}
-
-/**
- * Checks the allocation of an envelope: « the allocation was sent to its account » (spec 0011, RG6). Writes the date
- * only; the amount is the month's allocation, read each time (spec 0009, RG91).
- * Refused on a locked or not initialized month, an unknown envelope and an allocation at 0.
- */
-export function checkEnvelope(d: BudgetData, m: MonthKey, envelopeId: string, today = isoDate(), patch: CheckPatch = {}): boolean {
-  const e = d.envelopes.find(x => x.id === envelopeId);
-  const md = d.months[m];
-  if (!e || !md?.initialized || isMonthLocked(d, m) || !isEnvelopePointable(d, m, e) || envelopeCheck(d, m, envelopeId) || !isValidPatch(patch)) return false;
-  (md.checks ??= {})[envelopeCheckKey(envelopeId)] = { doneOn: patch.doneOn ?? today };
-  return true;
-}
-
-/** Unchecks the allocation of an envelope: the movement is cancelled. */
-export function uncheckEnvelope(d: BudgetData, m: MonthKey, envelopeId: string): boolean {
-  const md = d.months[m];
-  if (!md?.initialized || isMonthLocked(d, m) || !envelopeCheck(d, m, envelopeId)) return false;
-  delete md.checks![envelopeCheckKey(envelopeId)];
-  return true;
-}
-
-/** Unchecks a line: its date is erased (RG1). */
-export function uncheckLine(d: BudgetData, m: MonthKey, key: string): boolean {
-  if (!editableLine(d, m, key) || !lineCheck(d, m, key)) return false;
-  delete d.months[m].checks![key];
-  return true;
-}
-
-/** Changes the date of a checked line. */
-export function updateCheck(d: BudgetData, m: MonthKey, key: string, patch: CheckPatch): boolean {
-  if (!editableLine(d, m, key) || !isValidPatch(patch)) return false;
-  const c: LineCheck | undefined = lineCheck(d, m, key);
-  if (!c) return false;
-  if (patch.doneOn !== undefined) c.doneOn = patch.doneOn;
-  return true;
 }
 
 /** `null` clears the value. */

@@ -3,7 +3,6 @@ import { addTransaction, deleteTransaction, updateTransaction } from './actions'
 import { addBankAccount } from './bankAccounts';
 import { lineProblem, prepareImport, rememberRule, targetIsValid, validateImport, type PreviewLine } from './statementImport';
 import { MAIN_ACCOUNT_ID, savingsExpenseLines } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
 import { availableReal, monthSummary, variableRemaining } from '../domain/budget';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -104,20 +103,6 @@ describe('création et effets (RG4 à RG9)', () => {
     const t = importOne(d);
     expect(t).toMatchObject({ type: 'epd', target: 'ly', accountId: LYDIA, importAccountId: LYDIA, amount: 30, rank: 1 });
     expect(d.accountMovements ?? []).toEqual([]);
-  });
-
-  it('CA4: le solde réel et estimé de Lydia baisse de 30 € à la date bancaire, aucun autre compte ne change', () => {
-    const d = budget();
-    const before = { main: bank(d, MAIN_ACCOUNT_ID).balance, lydia: bank(d, LYDIA).balance, vm: bank(d, VM).balance };
-    importOne(d);
-    expect(bank(d, LYDIA).balance).toBe(before.lydia - 30);
-    expect(bank(d, MAIN_ACCOUNT_ID).balance).toBe(before.main);
-    expect(bank(d, VM).balance).toBe(before.vm);
-    const real = realMovements(d, LYDIA, M).filter(m => m.kind === 'expense');
-    expect(real).toHaveLength(1);
-    expect(real[0]).toMatchObject({ date: '2026-10-12', amount: -30, label: '💸 BILLETS AVION (dépense depuis l’épargne · Lydia Holidays)' });
-    expect(estimatedMovements(d, LYDIA, M).filter(m => m.kind === 'expense')).toEqual([expect.objectContaining({ date: '2026-10-12', amount: -30 })]);
-    expect(realMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
   });
 
   it('CA5/RG6: les dépenses réelles montent de 30 €, aucune ligne ni « Restant des variables » ne bouge, les budgets non plus', () => {

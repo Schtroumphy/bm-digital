@@ -3,7 +3,7 @@ import { budgetStart, fullDate, monthOfDate } from './periods';
 import type { BankAccount, BudgetData, MonthKey } from './types';
 
 /*
- * What the balances of an account cover. The Ledger (écran Comptes) and `monthBalance` (solde estimé) both use `isMonthInBalanceRange`
+ * What the balances of an account cover. The Ledger (écran Comptes) and `realMonthBalance` both use `isMonthInBalanceRange`
  * to decide which months they compute, and the import uses `balanceDateWarning` to say that an entry will not show in them: one
  * rule, so the warning and the balances never differ (spec 0015, RG6).
  */

@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { addTransaction, deleteTransaction, updateTransaction } from './actions';
 import { addManualTransaction } from './manualEntry';
-import { checkLine } from './checkoff';
 import { changeNature, chooseEnvelope, lineProblem, natureOptions, prepareImport, previewCounts, sessionSummary, validateImport, type PreviewLine } from './statementImport';
-import { accountPointage } from '../domain/checkoff';
-import { availableReal, blockTotals, monthSummary } from '../domain/budget';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
+import { monthSummary } from '../domain/budget';
+import { realMovements } from '../domain/bankMovements';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount, offBudgetEntryAccounts } from '../domain/bank';
@@ -27,19 +25,6 @@ const seedWithSwile = (extra: Partial<BankAccount> = {}): BudgetData => {
 const bank = (d: BudgetData, id: string) => new Ledger(d, M).bankMonth(id, M)!;
 
 describe('saisie (RG1 à RG3, RG5, RG6)', () => {
-  it('CA2 : Swile à 20 €, +150 € → 170 € en réel et en estimé, crédité une seule fois', () => {
-    const d = seedWithSwile();
-    expect(bank(d, SWILE).balance).toBe(20);
-    expect(addTransaction(d, accin({ bankDate: '2026-12-10' }))).toBe(true);
-    expect(d.transactions.at(-1)).toMatchObject({ type: 'accin', accountId: SWILE, target: SWILE });
-    expect(bank(d, SWILE).balance).toBe(170);
-    const real = realMovements(d, SWILE, M).filter(m => m.amount === 150);
-    expect(real).toHaveLength(1);
-    expect(real[0]).toMatchObject({ date: '2026-12-10', label: expect.stringContaining('(entrée sur compte hors budget)'), imputation: { name: 'Swile', type: 'accin' } });
-    expect(estimatedMovements(d, SWILE, M).filter(m => m.amount === 150)).toHaveLength(1);
-    // Aucun autre compte n'est touché.
-    expect(realMovements(d, MAIN_ACCOUNT_ID, M).some(m => m.amount === 150)).toBe(false);
-  });
 
   it('le compte donné est ignoré (celui du compte cible) ; source et détail gardés, mode de paiement retiré', () => {
     const d = seedWithSwile();
@@ -47,29 +32,6 @@ describe('saisie (RG1 à RG3, RG5, RG6)', () => {
     const t = d.transactions.at(-1)!;
     expect(t).toMatchObject({ accountId: SWILE, source: 'Employeur', detail: 'Novembre' });
     expect(t.payMode).toBeUndefined();
-  });
-
-  it('CA3 : revenus, disponible, pointage, enveloppes et lignes inchangés ; aucune ligne rev créée', () => {
-    const d = seedWithSwile();
-    const revLine = d.months[M].lines.find(l => l.block === 'rev')!;
-    checkLine(d, M, revLine.key, '2026-12-05');
-    const ledger = () => new Ledger(d, M);
-    const before = {
-      summary: monthSummary(d, ledger(), M),
-      available: availableReal(d, M),
-      pointage: accountPointage(d, M, MAIN_ACCOUNT_ID, '2026-12-20'),
-      rev: blockTotals(d.months[M].lines, 'rev'),
-      lines: structuredClone(d.months[M].lines),
-      env: d.envelopes.map(e => ledger().envMonth(e.id, M)),
-    };
-    addTransaction(d, accin());
-    expect(monthSummary(d, ledger(), M)).toEqual(before.summary);
-    expect(availableReal(d, M)).toBe(before.available);
-    expect(accountPointage(d, M, MAIN_ACCOUNT_ID, '2026-12-20')).toEqual(before.pointage);
-    expect(blockTotals(d.months[M].lines, 'rev')).toEqual(before.rev);
-    expect(d.months[M].lines).toEqual(before.lines);
-    expect(d.envelopes.map(e => ledger().envMonth(e.id, M))).toEqual(before.env);
-    expect(d.transactions.some(t => t.type === 'rev')).toBe(false);
   });
 
   it('précision du développeur : aucune ligne de revenu n’existe dans le budget, l’entrée sur Swile est possible', () => {

@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { addTransaction } from './actions';
 import { addTransfer } from './accountMovements';
 import { addBankAccount, archiveBankAccount, archiveBlocker, renameBankAccount, setBankAccountInBudget, setBankAccountKind, setLineAccount, setTransactionAccount, unarchiveBankAccount } from './bankAccounts';
-import { checkEnvelope, uncheckEnvelope } from './checkoff';
 import { addEnvelope, deleteEnvelope, renameEnvelope } from './envelopes';
 import { activeBankAccounts, defaultBankAccounts, fixedTransactionAccountId, MAIN_ACCOUNT_ID } from '../domain/bank';
-import { estimatedMovements, realMovements } from '../domain/bankMovements';
-import { envelopeTooltip, isEnvelopePointable, monthBalance } from '../domain/checkoff';
 import { closingView } from '../domain/closing';
 import { emptyData } from '../domain/empty';
 import { Ledger } from '../domain/ledger';
@@ -50,15 +47,6 @@ describe('l’allocation est un débit fictif ; l’alimentation réelle est un 
     expect(bank(d, accountOf(d, 'sante'))).toBe(0);
   });
 
-  it('CA1bis: le transfert d’alimentation fait baisser le principal et monter le compte de l’enveloppe, dans les deux soldes', () => {
-    const d = started();
-    d.months[M].alloc = { sante: 50 };
-    expect(fund(d, 50)).toBe(true);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(950);
-    expect(bank(d, accountOf(d, 'sante'))).toBe(50);
-    expect([monthBalance(d, M, MAIN_ACCOUNT_ID)!.end, monthBalance(d, M, accountOf(d, 'sante'))!.end]).toEqual([950, 50]);
-  });
-
   it('CA2: le total des comptes ne varie pas par une allocation ni par un transfert', () => {
     const d = started();
     const before = total(d);
@@ -90,54 +78,6 @@ describe('l’allocation est un débit fictif ; l’alimentation réelle est un 
     expect(ledger(d).envMonth('sante', M)!.balance).toBe(bank(d, accountOf(d, 'sante')));
   });
 
-  it('CA5: pointer l’allocation est fictif (estimé seulement), à la date du pointage; décocher annule', () => {
-    const d = started();
-    d.months[M].alloc = { sante: 50 };
-    const e = accountOf(d, 'sante');
-    const balances = () => [bank(d, MAIN_ACCOUNT_ID), bank(d, e), monthBalance(d, M, MAIN_ACCOUNT_ID)!.end, monthBalance(d, M, e)!.end];
-    expect(balances()).toEqual([1000, 0, 1000, 0]);
-    expect(isEnvelopePointable(d, M, d.envelopes[0])).toBe(true);
-    expect(checkEnvelope(d, M, 'sante', '2026-12-05')).toBe(true);
-    expect(balances()).toEqual([1000, 0, 950, 50]);
-    expect(estimatedMovements(d, e, M).map(x => [x.date, x.amount])).toEqual([['2026-12-05', 50]]);
-    expect(realMovements(d, e, M)).toEqual([]);
-    expect(uncheckEnvelope(d, M, 'sante')).toBe(true);
-    expect(balances()).toEqual([1000, 0, 1000, 0]);
-  });
-
-  it('CA6 (0019): allocation pointée puis transfert rattaché : le solde estimé baisse une seule fois, pointer ou dépointer ne le change pas', () => {
-    const d = started();
-    d.months[M].alloc = { sante: 50 };
-    checkEnvelope(d, M, 'sante', '2026-12-05');
-    fund(d, 50);
-    const e = accountOf(d, 'sante');
-    const estimated = () => [monthBalance(d, M, MAIN_ACCOUNT_ID)!.end, monthBalance(d, M, e)!.end];
-    expect(estimated()).toEqual([950, 50]);
-    uncheckEnvelope(d, M, 'sante');
-    expect(estimated()).toEqual([950, 50]);
-    checkEnvelope(d, M, 'sante', '2026-12-06');
-    expect(estimated()).toEqual([950, 50]);
-    expect([bank(d, MAIN_ACCOUNT_ID), bank(d, e)]).toEqual([950, 50]);
-  });
-
-  it('CA6bis: une allocation de 0 ne crée aucun mouvement fictif; elle suit l’allocation à la lecture', () => {
-    const d = started();
-    d.months[M].alloc = { sante: 0 };
-    checkEnvelope(d, M, 'sante', '2026-12-05');
-    expect(estimatedMovements(d, MAIN_ACCOUNT_ID, M)).toEqual([]);
-    d.months[M].alloc.sante = 80;
-    checkEnvelope(d, M, 'sante', '2026-12-05');
-    expect(estimatedMovements(d, accountOf(d, 'sante'), M).map(x => x.amount)).toEqual([80]);
-    d.months[M].alloc.sante = 20;
-    expect(monthBalance(d, M, MAIN_ACCOUNT_ID)!.end).toBe(980);
-    expect(bank(d, MAIN_ACCOUNT_ID)).toBe(1000);
-  });
-
-  it('sans pointage ni transfert, le solde estimé est le solde réel', () => {
-    const d = started();
-    d.months[M].alloc = { sante: 50 };
-    for (const a of d.accounts) expect(monthBalance(d, M, a.id)?.end).toBe(bank(d, a.id));
-  });
 });
 
 describe('clôture', () => {
@@ -302,16 +242,6 @@ describe('supprimer une enveloppe garde l’historique du principal', () => {
   });
 });
 
-describe('infobulle de la case de pointage de l’allocation', () => {
-  it('elle existe avant et après le pointage, et dit que le débit est fictif', () => {
-    const d = started();
-    d.months[M].alloc = { sante: 50 };
-    expect(envelopeTooltip(d, M, d.envelopes[0])).toContain('Débit fictif');
-    checkEnvelope(d, M, 'sante', '2026-12-05');
-    expect(envelopeTooltip(d, M, d.envelopes[0])).toContain('Allocation pointée le 05/12');
-    expect(envelopeTooltip(d, M, d.envelopes[0])).toContain('Débit fictif');
-  });
-});
 
 describe('« Payé avec » figé sur le compte attribué à la ligne', () => {
   const varDepense = (accountId?: string): Transaction => ({ id: 'v1', month: M, day: 3, label: 'Courses', amount: 40, type: 'var', target: 'courses', ...(accountId ? { accountId } : {}) });
