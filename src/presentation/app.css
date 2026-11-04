@@ -630,6 +630,14 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .acc-stack .acc-picker + .acc-picker { margin-left: -12px; }
 .acc-stack .acc-picker + .acc-picker .dot { box-shadow: 0 0 0 1.5px #fff; }
 .line-grid.is-balance { grid-template-columns: minmax(0, 1fr) 62px 70px 88px; }
+.line-grid.no-actual { grid-template-columns: minmax(0, 1fr) 62px 66px; }
+.line-grid.is-balance.no-actual { grid-template-columns: minmax(0, 1fr) 62px 88px; }
+.cash-month-extra { margin-left: auto; }
+.switch { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.switch-track { width: 30px; height: 18px; border-radius: 99px; background: rgba(32, 30, 29, 0.2); position: relative; transition: background 0.15s; }
+.switch-thumb { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.switch.is-on .switch-track { background: var(--violet-ink); }
+.switch.is-on .switch-thumb { transform: translateX(12px); }
 .history-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(4, 110px); column-gap: 10px; padding: 0 22px; }
 .history-row { align-items: center; min-height: 34px; border-top: 1px solid rgba(32, 30, 29, 0.05); }
 .mention .link { cursor: pointer; text-decoration: underline; }
