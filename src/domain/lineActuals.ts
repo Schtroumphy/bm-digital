@@ -1,5 +1,6 @@
 import { round2 } from './format';
 import { isSavingsBlock, isTransactionOffBudget } from './bank';
+import { ENVELOPES_ID } from './internalTransfers';
 import type { BudgetData, Line, MonthKey } from './types';
 
 /*
@@ -12,17 +13,32 @@ import type { BudgetData, Line, MonthKey } from './types';
  * A line with no entry has no actual (null). `Line.actual` is only a cache of this sum, rewritten by `syncLineActuals`.
  */
 
+/** Operations of a month assigned to an account (spec 0028, RG26), signed as a payment into it: an expense in positive, an entry of money in negative. */
+const assignedAmounts = (d: BudgetData, m: MonthKey, accountId: string): number[] =>
+  d.transactions.filter(t => t.month === m && t.assignedAccountId === accountId && (t.type === 'var' || t.type === 'fix' || t.type === 'rev')).map(t => (t.type === 'rev' ? -t.amount : t.amount));
+
+/** Net of the operations assigned to the dedicated account of a savings/investment line of the month: what other accounts paid on behalf of the savings (RG26). */
+export function assignedToSavingsNet(d: BudgetData, m: MonthKey): number {
+  const accounts = new Set((d.months[m]?.lines ?? []).filter(l => isSavingsBlock(l.block) && l.linkedAccountId).map(l => l.linkedAccountId as string));
+  return round2([...accounts].reduce((n, id) => n + assignedAmounts(d, m, id).reduce((s, a) => s + a, 0), 0));
+}
+
 /** The entries recorded on a line in a month: amounts and nothing else. */
 export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number[] {
   if (isSavingsBlock(l.block)) {
     const movements = d.accountMovements ?? [];
     const lines = d.months[m]?.lines ?? [];
     const toThisLine = movements.filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key).map(mv => mv.amount);
-    // Money the line's account passes on to another savings line is no longer on this line: it leaves its actual (it is in the other line's).
+    // Money the line's account passes on leaves this line: to another savings line (it is in that line's actual), or to a plain transfer with no budget item
+    // (main account, another account, cash). A transfer to an envelope is excluded: envelopes are counted by their allocations.
+    const isOtherSavingsLine = (mv: { target?: { kind: string; key?: string } }) => lines.some(o => o.key === mv.target?.key && isSavingsBlock(o.block));
     const passedOn = l.linkedAccountId
-      ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && mv.target?.kind === 'line' && mv.target.key !== l.key && lines.some(o => o.key === (mv.target as { key: string }).key && isSavingsBlock(o.block))).map(mv => -mv.amount)
+      ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && mv.toAccountId !== ENVELOPES_ID && (mv.target ? mv.target.kind === 'line' && mv.target.key !== l.key && isOtherSavingsLine(mv) : true)).map(mv => -mv.amount)
       : [];
-    return [...toThisLine, ...passedOn];
+    // Operations paid by another account but assigned to this line's account (spec 0028, RG26): the money came from outside the line, so they count as a payment into it
+    // (an expense in positive, an entry of money such as a refund in negative). They stay out of the expenses and of the other budget figures.
+    const assigned = l.linkedAccountId ? assignedAmounts(d, m, l.linkedAccountId) : [];
+    return [...toThisLine, ...passedOn, ...assigned];
   }
   const type = l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix';
   // An operation assigned to a savings account is not counted: the actual is the sum of the entries that stay in the budget (spec 0028, RG5).

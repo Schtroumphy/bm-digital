@@ -163,3 +163,8 @@ Panneau « Mouvements » du LDDS Travaux :
 Décisions du développeur déjà intégrées : vocabulaire « Affecter à » ; comptes affectables = épargne seulement ; types `var`/`fix`/`rev` ; total de liste brut + infobulle ; récapitulatif dans le panneau ; pas de règle d'import ; mois verrouillé = refus (sauf `detail`) ; solde estimé inchangé ; colonne CSV « Affectée à » ; pas de fractionnement.
 
 Aucune. Découpage décidé : la carte « Épargne » du tableau de bord fait l'objet de la spec 0029.
+
+## Amendement (2026-11-04) — RG26
+
+- RG26. Réel de la ligne d'épargne du compte d'affectation. Quand le compte d'affectation est le compte dédié (`linkedAccountId`) d'une ligne `epa` ou `inv` du mois, les opérations affectées de ce mois s'ajoutent à son réel comme un versement payé par un autre compte : une dépense en positif, une entrée d'argent (remboursement) en négatif. Elles restent hors des dépenses, du reste à placer et des autres chiffres de RG5, et ne changent aucun solde (RG9, RG11). Raison : le virement qui rembourse le compte (ex. 800 − 354,30 = 445,70) ne contient pas ce que le principal a déjà avancé ; sans RG26 le total des lignes d'épargne diffère de l'argent réellement sorti et le disponible monte à tort. Exemple : LDDS −800, Travaux 445,70 + 354,30 = 800, total 0, disponible inchangé. Amende RG5 pour ce seul cas.
+  L'épargne réelle et le taux d'épargne du mois baissent du net de ces opérations, comme pour une dépense financée par l'épargne (0035, RG7).

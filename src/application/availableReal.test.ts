@@ -168,4 +168,22 @@ describe('disponible à placer (réel)', () => {
     expect(d.months[M].lines.map(l => l.actual)).toEqual([0, 180, 120]);
     expect(avail(d)).toBe(remaining(d));
   });
+  it('un virement interne sans ligne du compte d’une ligne d’épargne vers le principal sort du réel de la ligne', () => {
+    const d = started([{ ...ln('ldds', 'epa', 0, null), linkedAccountId: 'acc-ldds' }]);
+    const mv = (id: string, from: string, to: string, amount: number, key?: string) => ({ id, month: M, day: 2, label: id, amount, fromAccountId: from, toAccountId: to, ...(key ? { target: { kind: 'line' as const, key } } : {}) });
+    d.accountMovements = [mv('in', MAIN_ACCOUNT_ID, 'acc-ldds', 800, 'ldds'), mv('out', 'acc-ldds', MAIN_ACCOUNT_ID, 800)];
+    syncLineActuals(d);
+    expect(d.months[M].lines[0].actual).toBe(0);
+    expect(avail(d)).toBe(remaining(d));
+  });
+  it('les opérations affectées au compte d’une ligne d’épargne comptent dans son réel : le disponible ne bouge pas (virement de 800, 354,30 net dépensé)', () => {
+    const d = started([{ ...ln('ldds', 'epa', 0, null), linkedAccountId: 'acc-ldds' }, { ...ln('travaux', 'epa', 0, null), linkedAccountId: 'acc-trav' }, ln('imp', 'var', 0, null)]);
+    const mv = (id: string, from: string, to: string, amount: number, key?: string) => ({ id, month: M, day: 2, label: id, amount, fromAccountId: from, toAccountId: to, ...(key ? { target: { kind: 'line' as const, key } } : {}) });
+    d.accountMovements = [mv('out', 'acc-ldds', MAIN_ACCOUNT_ID, 800), mv('in', MAIN_ACCOUNT_ID, 'acc-trav', 445.7, 'travaux')];
+    const tx = (id: string, type: 'var' | 'rev', amount: number) => ({ id, month: M, day: 3, label: id, amount, type, target: type === 'rev' ? 'imp' : 'imp', accountId: MAIN_ACCOUNT_ID, assignedAccountId: 'acc-trav' }) as unknown as BudgetData['transactions'][number];
+    d.transactions = [tx('a', 'var', 333.78), tx('b', 'var', 29.9), tx('c', 'rev', 9.38)];
+    syncLineActuals(d);
+    expect(d.months[M].lines.slice(0, 2).map(l => l.actual)).toEqual([-800, 800]);
+    expect(avail(d)).toBe(remaining(d));
+  });
 });
