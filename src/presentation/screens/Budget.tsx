@@ -160,14 +160,14 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
           </div>
           <GapKpi
             label="Écart dépenses"
-            title="Budget − réel des crédits, dépenses fixes et variables. Une ligne sans réel compte à son budget. Positif : vous dépensez moins que prévu."
+            text={`Budget − réel, sur les crédits, les dépenses fixes et les dépenses variables.\n\nUne ligne sans réel compte à son budget (écart nul), comme à la validation du mois. Les revenus ne sont pas concernés.\n\nPositif : vous dépensez moins que prévu. Négatif : vous dépensez plus que prévu.`}
             value={s.expenseGap}
             positive="Moins dépensé que prévu"
             negative="Plus dépensé que prévu"
           />
           <GapKpi
             label="Écart épargne"
-            title="Réel − budget des épargnes et placements (les allocations d’enveloppes comptent à leur budget). Une ligne sans réel compte à son budget. Positif : vous épargnez plus que prévu."
+            text={`Réel − budget, sur les épargnes et les placements.\n\nUne ligne sans réel compte à son budget (écart nul). Les allocations d’enveloppes comptent à leur budget : elles n’ajoutent aucun écart.\n\nPositif : vous épargnez plus que prévu. Négatif : vous épargnez moins que prévu.`}
             value={s.savingsGap}
             positive="Plus épargné que prévu"
             negative="Moins épargné que prévu"
@@ -221,11 +221,13 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
 }
 
 /** KPI of a gap against the budget: signed amount, red when negative, neutral and without caption at 0 (spec 0038, RG8-RG9). */
-function GapKpi({ label, title, value, positive, negative }: { label: string; title: string; value: number; positive: string; negative: string }) {
+function GapKpi({ label, text, value, positive, negative }: { label: string; text: string; value: number; positive: string; negative: string }) {
   const color = value > 0 ? GOOD : value < 0 ? BAD : undefined;
+  const [info, setInfo] = useState<DOMRect | null>(null);
   return (
     <div className="panel kpi">
-      <div className="kpi-label" title={title}>{label}</div>
+      <div className="kpi-label" style={{ cursor: 'pointer' }} title="Cliquer pour voir l’explication" onClick={e => setInfo(e.currentTarget.getBoundingClientRect())}>{label}</div>
+      {info && <DetailsBubble title={label} text={text} rect={info} onClose={() => setInfo(null)} />}
       <div className="kpi-value" style={{ color }}>{money(value, true)}</div>
       {value !== 0 && <div className="kpi-sub" style={{ color }}>{value > 0 ? positive : negative}</div>}
     </div>
