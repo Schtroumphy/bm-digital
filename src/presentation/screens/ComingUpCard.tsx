@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { accountComingUp, comingUpAccounts, lateCount, type AccountComingUp, type LeftItem } from '../../domain/comingUp';
+import { accountComingUp, comingUpAccounts, lateCount, type AccountComingUp, type LeftGroup, type LeftItem } from '../../domain/comingUp';
 import { money } from '../../domain/format';
 import type { MonthKey } from '../../domain/types';
 import { AccountDot } from '../components/AccountPicker';
+import { DetailsBubble } from '../components/DetailsBubble';
 import { Icon } from '../components/Icon';
 import { HUE, gapColor, toneVars } from '../components/tone';
 import { useStore } from '../state/store';
@@ -54,16 +55,49 @@ export function ComingUpCard({ month, today }: { month: MonthKey; today: string 
   );
 }
 
+/** Title of a heading as shown: the cash one carries a banknote mark (display only, the data keep the plain label). */
+const groupTitle = (g: LeftGroup) => (g.id === 'retrait' ? `💵 ${g.label}` : g.label);
+
+/** One line per movement already passed (« JJ/MM  libellé : +/−montant »), then the total. */
+function passedText(p: AccountComingUp): string {
+  if (p.passedMovements.length === 0) return 'Aucun mouvement.';
+  const lines = p.passedMovements.map(x => `${dayMonth(x.date)}  ${x.label} : ${money(x.amount, true)}`);
+  return [...lines, '', `Total : ${money(p.passed ?? 0, true)}`].join('\n');
+}
+
+/** `YYYY-MM-DD` as `JJ/MM`. */
+const dayMonth = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+
 const plural = (n: number) => (n > 1 ? 'lignes' : 'ligne');
 
 /** A negative amount is red and carries its « − » sign, so the colour is never the only signal (RG19). */
 function AccountSummary({ p }: { p: AccountComingUp }) {
+  const [info, setInfo] = useState<DOMRect | null>(null);
   return (
     <div className="pt-body">
+      {p.start && (
+        <div className="pt-line">
+          <span>Solde de départ ({dayMonth(p.start.date)})</span>
+          <span>{money(p.start.amount, true)}</span>
+        </div>
+      )}
+      {p.passed !== null && p.reference !== null && (
+        <>
+          <div className="pt-line" style={{ cursor: 'pointer' }} title="Cliquer pour voir le détail" onClick={e => setInfo(e.currentTarget.getBoundingClientRect())}>
+            <span>Mouvements déjà passés</span>
+            <span>{money(p.passed, true)}</span>
+          </div>
+          {info && <DetailsBubble title="Mouvements déjà passés" text={passedText(p)} rect={info} onClose={() => setInfo(null)} />}
+          <div className="pt-line">
+            <span>= Solde réel</span>
+            <b>{money(p.reference, true)}</b>
+          </div>
+        </>
+      )}
       {p.groups.every(g => g.items.length === 0) && <div className="pt-line"><span>Rien à sortir</span></div>}
       {p.groups.filter(g => g.items.length > 0).map(g => (
         <div key={g.id} className="pt-line">
-          <span>{g.label} ({g.items.length} {plural(g.items.length)})</span>
+          <span>{groupTitle(g)} ({g.items.length} {plural(g.items.length)})</span>
           <span>{money(-g.total, true)}</span>
         </div>
       ))}
@@ -77,11 +111,49 @@ function AccountSummary({ p }: { p: AccountComingUp }) {
           <span>{money(p.expected, true)}</span>
         </div>
       )}
+      {p.expected > 0 && (
+        <div className="pt-line">
+          <span>Marge après les revenus attendus</span>
+          <b style={{ color: gapColor(p.marginWithExpected) }}>{p.marginWithExpected === null ? '—' : money(p.marginWithExpected, true)}</b>
+        </div>
+      )}
     </div>
   );
 }
 
+/** A transfer to a dedicated account (spec 0045, RG14, RG15): unfolds to the lines it is attached to and their real expenses, which are indicative (in no total). */
+function TransferRow({ x }: { x: LeftItem }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="pt-row is-grey" style={{ cursor: 'pointer' }} onClick={() => setOpen(!open)}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
+          {x.name}
+          {x.day !== undefined && <span className="pt-maj"> le {x.day}</span>}
+        </span>
+        <span>{money(x.amount)}</span>
+      </div>
+      {open && (x.lines ?? []).map(l => (
+        <div key={l.key} style={{ paddingLeft: 20 }}>
+          <div className="pt-row is-grey">
+            <span>{l.name}</span>
+            <span>{money(l.spent)} dépensés</span>
+          </div>
+          {l.expenses.map(e => (
+            <div key={e.id} className="pt-row is-grey" style={{ paddingLeft: 12, fontSize: '0.9em' }}>
+              <span>{e.label}<span className="pt-maj"> le {e.day}</span></span>
+              <span>{money(e.amount)}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function ItemRow({ x, done }: { x: LeftItem; done?: boolean }) {
+  if (x.kind === 'transfer') return <TransferRow x={x} />;
   return (
     <div className={done ? 'pt-row is-grey' : 'pt-row'}>
       <span>
@@ -104,18 +176,25 @@ function SubHead({ label, total }: { label: string; total: number }) {
 }
 
 function AccountDetail({ p }: { p: AccountComingUp }) {
+  const left = p.groups.filter(g => g.items.length > 0);
+  const done = p.groups.flatMap(g => g.done).sort((a, b) => (a.day ?? Infinity) - (b.day ?? Infinity));
   return (
     <div className="pt-body">
       <div className="pt-detail">
-        {p.groups.length === 0 && <div className="pt-row is-grey"><span>Rien à sortir</span></div>}
-        {p.groups.map(g => (
+        {left.length === 0 && <div className="pt-row is-grey"><span>Rien à sortir</span></div>}
+        {left.map(g => (
           <div key={g.id}>
-            <SubHead label={g.label} total={g.total} />
+            <SubHead label={groupTitle(g)} total={g.total} />
             {g.items.map(x => <ItemRow key={`${x.kind}:${x.id}`} x={x} />)}
-            {g.done.length > 0 && <SubHead label="Déjà sorti" total={g.done.reduce((t, x) => t + x.amount, 0)} />}
-            {g.done.map(x => <ItemRow key={`done:${x.kind}:${x.id}`} x={x} done />)}
+            {g.withdrawn !== undefined && <div className="pt-row is-grey"><span>Déjà retiré</span><span>{money(-g.withdrawn, true)}</span></div>}
           </div>
         ))}
+        {done.length > 0 && (
+          <div>
+            <SubHead label="Déjà sorti" total={done.reduce((t, x) => t + x.amount, 0)} />
+            {done.map(x => <ItemRow key={`done:${x.kind}:${x.id}`} x={x} done />)}
+          </div>
+        )}
         {p.expectedItems.length > 0 && (
           <>
             <div className="pt-detail-sub">Revenus attendus</div>

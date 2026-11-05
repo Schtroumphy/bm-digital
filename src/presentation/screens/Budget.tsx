@@ -23,7 +23,8 @@ import { envelopeAllocationFigures } from '../../domain/envelopeAllocation';
 import { CashMonthBlock } from '../components/CashMonthBlock';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { isoDate } from '../../domain/checkoff';
-import { lineTooltip } from '../../domain/comingUp';
+import { budgetLockReason } from '../../domain/movementLines';
+import { leftLineKeys, lineTooltip } from '../../domain/comingUp';
 import { envelopeCash } from '../../domain/envelopeCash';
 import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber, round2 } from '../../domain/format';
@@ -119,6 +120,14 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
       localStorage.setItem('budget.hideActual', v ? '0' : '1');
       return !v;
     });
+  // « Surligner le reste à sortir »: highlights the lines still to leave an account (« À venir ce mois-ci »); display only, remembered on this device.
+  const [highlightLeft, setHighlightLeft] = useState(() => localStorage.getItem('budget.highlightLeft') === '1');
+  const toggleHighlightLeft = () =>
+    setHighlightLeft(v => {
+      localStorage.setItem('budget.highlightLeft', v ? '0' : '1');
+      return !v;
+    });
+  const leftKeys = highlightLeft && !uninit ? leftLineKeys(data, month, today) : undefined;
   // « Fond de secours »: the first `amount` goal of the current year (spec 0032, Q2); nothing to show without one.
   const emergencyGoal = firstGoalOfKind(data, 'amount');
   const emergency = emergencyGoal ? goalView(data, ledger, emergencyGoal) : null;
@@ -152,6 +161,12 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
               <span className="switch-thumb" />
             </span>
             Masquer le réel
+          </button>
+          <button type="button" role="switch" aria-checked={highlightLeft} className={`switch${highlightLeft ? ' is-on' : ''}`} onClick={toggleHighlightLeft}>
+            <span className="switch-track">
+              <span className="switch-thumb" />
+            </span>
+            Surligner le reste à sortir
           </button>
         </CashMonthBlock>
         <div className="summary">
@@ -212,17 +227,17 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
 
         <div className="budget-grid">
           <div className="budget-col">
-            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} hideActual={hideActual} onOpenOperations={onOpenOperations} />
-            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} hideActual={hideActual} onOpenOperations={onOpenOperations} />
+            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
             <GoalsCard onOpenGoals={onOpenGoals} />
           </div>
           <div className="budget-col">
-            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} hideActual={hideActual} onOpenOperations={onOpenOperations} />
-            <BlockCard block="var" month={month} locked={locked || uninit} today={today} hideActual={hideActual} onOpenOperations={onOpenOperations} />
+            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="var" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
           </div>
           <div className="budget-col">
-            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} hideActual={hideActual} onOpenOperations={onOpenOperations} />
-            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} hideActual={hideActual} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
           </div>
           <div className="budget-col">
             <EnvelopesCompact month={month} locked={locked || !data.months[month]?.initialized} />
@@ -274,7 +289,7 @@ function availableRealText(d: BudgetData, m: MonthKey): string {
   return lines.join('\n');
 }
 
-function BlockCard({ block, month, locked, today, strip, hideActual, onOpenOperations }: { block: BlockKey; hideActual: boolean; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
+function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, onOpenOperations }: { block: BlockKey; hideActual: boolean; leftKeys?: Set<string>; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
@@ -353,7 +368,7 @@ function BlockCard({ block, month, locked, today, strip, hideActual, onOpenOpera
             return (
               <div
                 key={l.key}
-                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}`}
+                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}${leftKeys?.has(l.key) ? ' is-left' : ''}`}
                 onMouseEnter={() => setHover(l.key)}
                 onMouseLeave={() => setHover(null)}
                 onContextMenu={e => {
@@ -378,11 +393,17 @@ function BlockCard({ block, month, locked, today, strip, hideActual, onOpenOpera
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={[l.name, lineTooltip(data, month, l, today)].filter(Boolean).join('\n')} disabled={locked}>
                     {l.name}
                   </EditableText>
+                  {budgetLockReason(data, month, l) && (
+                    <span title={budgetLockReason(data, month, l) ?? undefined} style={{ display: 'inline-flex', alignItems: 'center', flex: 'none', marginLeft: 4, opacity: 0.6 }}>
+                      <Icon name="lock" size={11} />
+                    </span>
+                  )}
                   {block !== 'var' && <LineScheduleMeta month={month} line={l} locked={locked} today={today} />}
                   <LineQuickEntry month={month} line={l} locked={locked || !data.months[month]?.initialized} />
                 </div>
                 <div className="rel">
-                  <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked}>
+                  {/* A line attached to a transfer has its budget locked until it is detached (spec 0045, RG9). */}
+                  <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked || !!budgetLockReason(data, month, l)} title={budgetLockReason(data, month, l) ?? undefined}>
                     {money(l.budget)}
                   </EditableAmount>
                 </div>

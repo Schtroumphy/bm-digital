@@ -1,16 +1,19 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { DetailInput } from '../components/DetailInput';
 import { EntryDate } from '../components/EntryDate';
 import { Icon } from '../components/Icon';
+import { MovementGap, MovementLines } from '../components/MovementLines';
 import { GOOD, HUE, tone } from '../components/tone';
 import { deleteTransaction, deleteTransactions, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
 import { addManualTransaction, addManualTransfer } from '../../application/manualEntry';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
-import { defaultTransferTarget, transferItems } from '../../domain/transfers';
+import { transferItems } from '../../domain/transfers';
+import { amountForLines, budgetGap, budgetOf, isManualMovement, proposableLines } from '../../domain/movementLines';
+import { lineKeysOf, targetsOf } from '../../domain/movementTargets';
 import { deleteAccountMovement, setAccountMovementDetail, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
@@ -191,7 +194,10 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   // Savings accounts the operation can be assigned to (spec 0028, RG2, RG16): none for an envelope expense or a savings withdrawal.
   const assignOptions = isAssignableType(txType) ? assignableAccounts(data, accountId) : [];
   const assignedId = form.assignedAccountId === OFF_BUDGET_CHOICE && isAssignableType(txType) ? OFF_BUDGET_CHOICE : assignOptions.some(a => a.id === form.assignedAccountId) ? form.assignedAccountId : '';
-  const amount = parseAmount(form.amount) ?? 0;
+  // A transfer typed by hand with variable lines takes the sum of their budgets as its amount, read only (spec 0045, RG4).
+  const [linkedSum, setLinkedSum] = useState<number | null>(null);
+  const fixedAmount = transfer ? linkedSum : null;
+  const amount = fixedAmount ?? parseAmount(form.amount) ?? 0;
   // The real date of the new entry is always explicit (spec 0039, RG11): today when it is in the period of the month, else the nearest end of the period.
   const entryDate = form.date || defaultEntryDate(data, month, isoDate());
   // Envelope and savings expenses paid from an account out of the budget leave the budget figures alone; a variable expense always counts in its line (spec 0008, RG15, RG16).
@@ -358,7 +364,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           </label>
           <label className="field-w">
             <span className="field-label">Montant</span>
-            <input className="text-input is-amount" value={form.amount} placeholder="0,00 €" inputMode="decimal" onChange={e => setForm(f => ({ ...f, amount: sanitizeAmountInput(e.target.value) }))} onKeyDown={e => e.key === 'Enter' && add()} />
+            <input className="text-input is-amount" value={fixedAmount !== null ? String(fixedAmount).replace('.', ',') : form.amount} readOnly={fixedAmount !== null} title={fixedAmount !== null ? 'Somme des budgets des lignes associées. Décoche toutes les lignes pour saisir un montant.' : undefined} placeholder="0,00 €" inputMode="decimal" onChange={e => setForm(f => ({ ...f, amount: sanitizeAmountInput(e.target.value) }))} onKeyDown={e => e.key === 'Enter' && add()} />
           </label>
         </div>
         <label className="field-w">
@@ -389,7 +395,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           </div>
         </div>
         {transfer ? (
-          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} date={entryDate} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '', date: '' }))} />
+          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} date={entryDate} onLinkedAmount={setLinkedSum} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '', date: '' }))} />
         ) : (
           <>
         <div>
@@ -709,7 +715,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
 /** Transfers of the month (spec 0013, RG10d; spec 0019): created by the import or by the « Transfert » form, edited (label, amount) or deleted here. */
 function MovementsBlock({ month, locked, showDetail, movements, total }: { month: MonthKey; locked: boolean; showDetail: boolean; movements: AccountMovement[]; total: number }) {
   const { data, update } = useStore();
-  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string; date: string; from: string; to: string } | null>(null);
+  // `keys`: the variable lines checked (spec 0045); `initial`: the ones the transfer had when the edit began (RG5: only an added line recomputes the amount).
+  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string; date: string; from: string; to: string; keys: string[]; initial: string[] } | null>(null);
   // Detail-only editing, also on a locked month (spec 0020, RG6, RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
   if (movements.length === 0) return <div className="empty">{total === 0 ? 'Aucun transfert ce mois-ci.' : 'Aucun transfert ne correspond aux filtres.'}</div>;
@@ -721,6 +728,7 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
     setEditingDetail(null);
   };
   const nameOf = (id: string) => movementAccountName(data, id);
+  const gapOf = (m: AccountMovement) => budgetGap(data, m);
   // Accounts offered when editing a transfer: active ones, plus the current ones (possibly archived); never the reserved cash account.
   const editableAccounts = data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID && (!a.archived || a.id === editing?.from || a.id === editing?.to));
   // « Réparti dans les enveloppes » next to a debit « vers enveloppes » (spec 0016, RG29): calculated, never typed, no balance.
@@ -737,13 +745,40 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
     return null;
   };
   // Tooltip of a transfer: the budget item it stands for, if any (list lines carry their extra information in the tooltip, spec 0019).
-  const targetLabel = (target?: MovementTarget) => {
-    if (!target) return 'Transfert libre : sans ligne de budget';
-    return transferItems(data, month).find(i => (target.kind === 'line' ? i.target.kind === 'line' && i.target.key === target.key : i.target.kind === 'env' && i.target.id === target.id))?.label ?? 'Poste de budget supprimé';
+  const targetLabel = (targets: MovementTarget[]) => {
+    if (targets.length === 0) return 'Transfert libre : sans ligne de budget';
+    const items = transferItems(data, month);
+    return targets.map(target => items.find(i => (target.kind === 'line' ? i.target.kind === 'line' && i.target.key === target.key : i.target.kind === 'env' && i.target.id === target.id))?.label ?? 'Poste de budget supprimé').join(', ');
+  };
+  // Variable lines (spec 0045): checkboxes when the transfer has no target or only variable lines; an envelope / savings target keeps its single link (RG2).
+  const isVarKey = (m: AccountMovement, key: string) => !!data.months[m.month]?.lines.some(l => l.key === key && l.block === 'var');
+  const linksLines = (m: AccountMovement) => targetsOf(m).every(t => t.kind === 'line' && isVarKey(m, t.key));
+  const linkedKeys = (m: AccountMovement) => proposableLines(data, m.month, m.toAccountId).filter(l => lineKeysOf(m).includes(l.key)).map(l => l.key);
+  const asText = (n: number) => String(n).replace('.', ',');
+  // Amount of a transfer typed by hand once its lines changed (RG5, RG13): the sum of the budgets after an added line or a dropped one, else unchanged.
+  const amountAfter = (m: AccountMovement, keys: string[], to: string, changed: boolean) => {
+    if (!editing || !isManualMovement(m)) return editing?.amount ?? '';
+    if (keys.length > 0) return changed ? asText(amountForLines(data, m.month, to, keys)) : asText(m.amount);
+    return editing.keys.length > 0 ? asText(m.amount) : editing.amount;
+  };
+  const toggleKey = (m: AccountMovement, key: string) => {
+    if (!editing) return;
+    const keys = editing.keys.includes(key) ? editing.keys.filter(k => k !== key) : [...editing.keys, key];
+    setEditing({ ...editing, keys, amount: amountAfter(m, keys, editing.to, keys.some(k => !editing.initial.includes(k))) });
+  };
+  const changeTo = (m: AccountMovement, to: string) => {
+    if (!editing) return;
+    const valid = proposableLines(data, m.month, to).map(l => l.key);
+    const keys = editing.keys.filter(k => valid.includes(k));
+    setEditing({ ...editing, to, keys, amount: amountAfter(m, keys, to, keys.length < editing.keys.length) });
   };
   const save = () => {
     if (!editing) return;
-    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail, date: editing.date, fromAccountId: editing.from, toAccountId: editing.to }));
+    const m = movements.find(x => x.id === editing.id);
+    const valid = proposableLines(data, month, editing.to).map(l => l.key);
+    const keys = editing.keys.filter(k => valid.includes(k));
+    const targets = m && linksLines(m) ? keys.map(key => ({ kind: 'line' as const, key })) : undefined;
+    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail, date: editing.date, fromAccountId: editing.from, toAccountId: editing.to, ...(targets ? { targets } : {}) }));
     setEditing(null);
   };
   return (
@@ -762,7 +797,7 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
                       {editableAccounts.filter(a => a.id !== editing.to || a.id === editing.from).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                     →
-                    <select className="text-input" value={editing.to} onChange={e => setEditing({ ...editing, to: e.target.value })}>
+                    <select className="text-input" value={editing.to} onChange={e => changeTo(m, e.target.value)}>
                       {editableAccounts.filter(a => a.id !== editing.from).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                       {!isEnvelopeAccount(data.accounts.find(a => a.id === editing.from)) && <option value={CASH_ID}>{CASH_LABEL} (retrait)</option>}
                     </select>
@@ -772,11 +807,19 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
                     {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                   </span>
                 )}
-                <input className="text-input is-amount" value={editing.amount} inputMode="decimal" disabled={linkStateOf(m) === 'lie'} title={linkStateOf(m) === 'lie' ? 'Montant figé : les deux lignes du fichier ont ce montant. Déliez ou supprimez le virement.' : undefined} onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
+                <input className="text-input is-amount" value={editing.amount} inputMode="decimal" disabled={linkStateOf(m) === 'lie'} readOnly={editing.keys.length > 0} title={linkStateOf(m) === 'lie' ? 'Montant figé : les deux lignes du fichier ont ce montant. Déliez ou supprimez le virement.' : editing.keys.length > 0 ? 'Montant lié aux lignes associées. Décoche toutes les lignes pour le modifier.' : undefined} onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
                 <span className="icon-btn" title="Enregistrer" onClick={save}>
                   <Icon name="check" size={14} />
                 </span>
               </div>
+              {linksLines(m) && editing.to !== CASH_ID && !isEnvelopeAccount(data.accounts.find(a => a.id === editing.to)) && !isEnvelopesPool(editing.to) && (
+                <div className="detail-edit">
+                  <MovementLines lines={proposableLines(data, m.month, editing.to)} checked={editing.keys} onToggle={key => toggleKey(m, key)} />
+                  {editing.keys.length > 0 && budgetOf(proposableLines(data, m.month, editing.to).filter(l => editing.keys.includes(l.key))) !== (parseAmount(editing.amount) ?? 0) && (
+                    <MovementGap budget={budgetOf(proposableLines(data, m.month, editing.to).filter(l => editing.keys.includes(l.key)))} amount={parseAmount(editing.amount) ?? 0} />
+                  )}
+                </div>
+              )}
               <div className="detail-edit">
                 <DetailInput value={editing.detail} onChange={detail => setEditing({ ...editing, detail })} onEnter={save} />
               </div>
@@ -785,10 +828,11 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
                 <EntryDate entry={m} attachedWord="Rattaché" />
-                <EntryLabel entry={m} hideDetail={!showDetail} attach={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join(' · ')} onOpen={openDetail} />
-                <span className="muted ellipsis" title={[targetLabel(m.target), linkLabel(m)].filter(Boolean).join('\n')}>
+                <EntryLabel entry={m} hideDetail={!showDetail} attach={[targetLabel(targetsOf(m)), linkLabel(m)].filter(Boolean).join(' · ')} onOpen={openDetail} />
+                <span className="muted ellipsis" title={[targetLabel(targetsOf(m)), linkLabel(m)].filter(Boolean).join('\n')}>
                   {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                   {linkLabel(m) && <span className="state-chip is-info" style={{ marginLeft: 6 }}>{linkLabel(m)}</span>}
+                  {gapOf(m) && <span style={{ marginLeft: 6 }}><MovementGap {...gapOf(m)!} /></span>}
                   {isEnvelopesPool(m.toAccountId) && m.id === firstPoolId && <span className="state-chip is-neutral" style={{ marginLeft: 6 }} title="Total du mois : tous les virements vers enveloppes et tous les crédits individuels">Réparti : {money(split.distributed)} sur {money(split.sent)}</span>}
                 </span>
                 <b className="num">{money(m.amount)}</b>
@@ -796,7 +840,7 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
                   <span />
                 ) : (
                   <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
-                    <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '', date: bankDateOf(m, data), from: m.fromAccountId, to: m.toAccountId })}>
+                    <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '', date: bankDateOf(m, data), from: m.fromAccountId, to: m.toAccountId, keys: linkedKeys(m), initial: linkedKeys(m) })}>
                       <span style={{ fontSize: 11 }}>Modifier</span>
                     </span>
                     {linkStateOf(m) === 'lie' && (
@@ -829,10 +873,11 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
 }
 
 /**
- * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget item the transfer stands for
- * (optional; the envelope or the savings line of the destination is proposed). The label, detail and amount are those of the form.
+ * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget items the transfer stands for
+ * (optional): the envelope or the savings line of the destination (one, proposed by default), or several variable lines of the destination (spec 0045:
+ * checked boxes, then the amount is their sum, told to the form through `onLinkedAmount`). The label, detail and amount are those of the form.
  */
-function TransferFields({ month, locked, label, detail, amount, date, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; date: string; onDone: () => void }) {
+function TransferFields({ month, locked, label, detail, amount, date, onLinkedAmount, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; date: string; onLinkedAmount: (sum: number | null) => void; onDone: () => void }) {
   const { data, update } = useStore();
   // The reserved « Espèces » account is hidden (spec 0037, RG21).
   const accounts = data.accounts.filter(a => !a.archived && a.id !== CASH_ACCOUNT_ID);
@@ -844,15 +889,26 @@ function TransferFields({ month, locked, label, detail, amount, date, onDone }: 
   // « Espèces » (a withdrawal, spec 0037, RG1) is a destination of any account but an envelope's; it is not an account and credits none.
   const canWithdraw = !isEnvelopeAccount(accounts.find(a => a.id === fromId));
   const toId = toChoice === CASH_ID && canWithdraw ? CASH_ID : toChoice && toChoice !== CASH_ID && toChoice !== fromId && accounts.some(a => a.id === toChoice) ? toChoice : accounts.find(a => a.id !== fromId)?.id ?? '';
-  const items = toId === CASH_ID ? [] : transferItems(data, month).filter(i => i.toAccountId === toId);
+  // Variable lines of the destination are checked boxes (spec 0045); the select keeps the envelope and the savings/investment lines (one target).
+  const varLines = toId === CASH_ID ? [] : proposableLines(data, month, toId);
+  const [lineKeys, setLineKeys] = useState<string[]>([]);
+  const checkedKeys = lineKeys.filter(k => varLines.some(l => l.key === k));
+  const linkedSum = checkedKeys.length > 0 ? amountForLines(data, month, toId, checkedKeys) : null;
+  useEffect(() => { onLinkedAmount(linkedSum); }, [linkedSum, onLinkedAmount]);
+  useEffect(() => () => onLinkedAmount(null), [onLinkedAmount]);
+  const isVarItem = (t: MovementTarget) => t.kind === 'line' && !!data.months[month]?.lines.some(l => l.key === t.key && l.block === 'var');
+  const items = toId === CASH_ID ? [] : transferItems(data, month).filter(i => i.toAccountId === toId && !isVarItem(i.target));
   const valueOf = (t: MovementTarget | null | undefined) => (t ? (t.kind === 'line' ? `line:${t.key}` : `env:${t.id}`) : '');
-  const value = toId === CASH_ID ? '' : chosen !== undefined ? chosen : valueOf(defaultTransferTarget(data, month, toId, fromId));
+  const defaultItem = (items.find(i => i.fromAccountId === fromId) ?? items[0])?.target;
+  const value = toId === CASH_ID || checkedKeys.length > 0 ? '' : chosen !== undefined ? chosen : valueOf(defaultItem);
   const item = items.find(i => valueOf(i.target) === value);
+  const toggleLine = (key: string) => setLineKeys(k => (k.includes(key) ? k.filter(x => x !== key) : [...k, key]));
   const ready = !!fromId && !!toId && (fromId !== toId) && amount > 0 && isRealDate(date) && !locked;
   const add = () => {
     if (!ready) return;
-    update(d => void addManualTransfer(d, { id: newId('m'), month, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(item ? { target: item.target } : {}), detail }, date));
+    update(d => void addManualTransfer(d, { id: newId('m'), month, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(checkedKeys.length > 0 ? { targets: checkedKeys.map(key => ({ kind: 'line' as const, key })) } : item ? { targets: [item.target] } : {}), detail }, date));
     setChosen(undefined);
+    setLineKeys([]);
     onDone();
   };
   const accountChips = (current: string, pick: (id: string) => void, exclude?: string, withCash = false) => (
@@ -879,14 +935,14 @@ function TransferFields({ month, locked, label, detail, amount, date, onDone }: 
     <>
       <div>
         <div className="field-label is-gap">De</div>
-        {accountChips(fromId, id => { setFromId(id); setChosen(undefined); })}
+        {accountChips(fromId, id => { setFromId(id); setChosen(undefined); setLineKeys([]); })}
       </div>
       <div>
         <div className="field-label is-gap">Vers</div>
-        {accountChips(toId, id => { setToChoice(id); setChosen(undefined); }, fromId, canWithdraw)}
+        {accountChips(toId, id => { setToChoice(id); setChosen(undefined); setLineKeys([]); }, fromId, canWithdraw)}
       </div>
       <div className="form-row">
-        {toId !== CASH_ID && (
+        {toId !== CASH_ID && checkedKeys.length === 0 && (
           <label className="field-w">
             <span className="field-label">Rattacher à (facultatif)</span>
             <select className="text-input" value={value} onChange={e => setChosen(e.target.value)}>
@@ -898,6 +954,7 @@ function TransferFields({ month, locked, label, detail, amount, date, onDone }: 
           </label>
         )}
       </div>
+      {toId !== CASH_ID && !value && !isEnvelopeAccount(accounts.find(a => a.id === toId)) && <MovementLines lines={varLines} checked={checkedKeys} onToggle={toggleLine} disabled={locked} />}
       {locked && <div className="alert-box">Ce mois est clôturé : aucun transfert ne peut y être créé.</div>}
       <div className={`btn-dark is-block${ready ? '' : ' is-disabled'}`} onClick={add}>
         <Icon name="plus" size={15} stroke={3} />
