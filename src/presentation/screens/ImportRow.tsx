@@ -307,6 +307,28 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
           <input id={`source:${l.id}`} className="text-input" value={l.source ?? ''} placeholder={l.row.label} onChange={e => onChange(x => ({ ...x, source: e.target.value }))} aria-label={l.nature === 'envin' || l.nature === 'accin' ? 'Source de l’entrée' : 'Source du revenu'} />
         </div>
       )}
+      {(l.nature === 'depense' || l.nature === 'externe') && l.target && (data.categories ?? []).length > 0 && (
+        <div className="import-remember">
+          <label htmlFor={`category:${l.id}`}>Catégorie</label>
+          <select
+            id={`category:${l.id}`}
+            className="su-select"
+            value={(data.categories ?? []).some(c => c.id === l.categoryId) ? l.categoryId : ''}
+            onChange={e => {
+              const v = e.target.value;
+              onChange(x => {
+                const { categoryId: _c, ...rest } = x;
+                return v ? { ...rest, categoryId: v } : rest;
+              });
+            }}
+          >
+            <option value="">Sans catégorie</option>
+            {(data.categories ?? []).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {assignable && (
         <div className="import-remember">
           <label htmlFor={`assign:${l.id}`}>Budget</label>
