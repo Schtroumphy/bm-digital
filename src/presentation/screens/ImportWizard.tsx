@@ -61,6 +61,8 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
   // `importing` only disables the buttons as a safeguard: the import is synchronous, so it is never seen on screen. The real protection
   // against a double import is `busy` and the idempotence of `validateImport` (RG77).
   const [importing, setImporting] = useState(false);
+  // `loading`: the chosen file is being read and the preview computed (shows a loader instead of the file picker).
+  const [loading, setLoading] = useState(false);
   const busy = useRef(false);
   const linksButton = useRef<HTMLButtonElement>(null);
   const fromLinks = useRef(false);
@@ -93,19 +95,27 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     setFileError(null);
-    const r = source.read(new Uint8Array(await file.arrayBuffer()));
-    if (r.fileError) {
-      setReading(null);
-      setPreview(null);
-      setFileError(r.fileError);
-      return;
+    setLoading(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // Let the browser paint the loader before the (synchronous) parsing and preview computation block the thread.
+      await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      const r = source.read(bytes);
+      if (r.fileError) {
+        setReading(null);
+        setPreview(null);
+        setFileError(r.fileError);
+        return;
+      }
+      setReading(r);
+      setFileName(file.name);
+      setPreview(prepareImport(data, r));
+      resetFilters();
+      resetSession();
+      dropUndo();
+    } finally {
+      setLoading(false);
     }
-    setReading(r);
-    setFileName(file.name);
-    setPreview(prepareImport(data, r));
-    resetFilters();
-    resetSession();
-    dropUndo();
   };
   // After an import, changing the file loses the session's totals: the user confirms first (RG81).
   const askChangeFile = () => {
@@ -318,7 +328,14 @@ export function ImportWizard({ source, onClose }: { source: StatementSource; onC
       {header}
       {steps}
       <div className="import-body">
-        {!preview && (
+        {!preview && loading && (
+          <div className="import-step import-empty import-loading" role="status" aria-live="polite">
+            <span className="import-spinner" aria-hidden="true" />
+            <b>Analyse du fichier en cours…</b>
+            <div className="muted is-small">Lecture des lignes et rapprochement avec vos données.</div>
+          </div>
+        )}
+        {!preview && !loading && (
           <div className="import-step import-empty">
             <b>Choisissez l’export Linxo (.csv, .tsv)</b>
             <input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" onChange={e => void onFile(e.target.files?.[0])} />
