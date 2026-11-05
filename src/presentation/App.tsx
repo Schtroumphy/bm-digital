@@ -25,22 +25,43 @@ import { newSimulation, type SimulationDraft } from '../domain/simulation';
 
 export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'releve' | 'prevAnn' | 'yearView' | 'template' | 'setup' | 'close' | 'goals' | 'simulation' | 'categories';
 
-const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
-  { id: 'dashboard', label: 'Accueil', icon: 'house' },
-  { id: 'budget', label: 'Budget', icon: 'budget' },
-  { id: 'dep', label: 'Opérations', icon: 'list' },
-  { id: 'categories', label: 'Catégories', icon: 'basket' },
-  { id: 'comptes', label: 'Comptes', icon: 'bank' },
-  { id: 'releve', label: 'Relevé', icon: 'check' },
-  { id: 'env', label: 'Enveloppes', icon: 'mail' },
-  { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
-  { id: 'yearView', label: 'Vue annuelle', icon: 'history' },
-  { id: 'template', label: 'Modèle', icon: 'copy' },
-  { id: 'goals', label: 'Objectifs', icon: 'target' },
-  { id: 'simulation', label: 'Simulation', icon: 'flask' },
-  { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
-  { id: 'setup', label: 'Démarrage', icon: 'flag' },
-  { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
+type NavItem = { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean };
+
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Suivi',
+    items: [
+      { id: 'dashboard', label: 'Accueil', icon: 'house' },
+      { id: 'budget', label: 'Budget', icon: 'budget' },
+      { id: 'dep', label: 'Opérations', icon: 'list' },
+      { id: 'comptes', label: 'Soldes', icon: 'bank' },
+      { id: 'env', label: 'Enveloppes', icon: 'mail' },
+      { id: 'releve', label: 'Relevé', icon: 'note' },
+    ],
+  },
+  {
+    title: 'Analyse',
+    items: [
+      { id: 'yearView', label: 'Annuel', icon: 'barChart' },
+      { id: 'categories', label: 'Analyse', icon: 'lineChart' },
+      { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
+      { id: 'simulation', label: 'Simulation', icon: 'flask' },
+    ],
+  },
+  {
+    title: 'Patrimoine',
+    items: [
+      { id: 'goals', label: 'Objectifs', icon: 'target' },
+      { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
+    ],
+  },
+  {
+    title: 'Période',
+    items: [
+      { id: 'setup', label: 'Démarrage', icon: 'flag' },
+      { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
+    ],
+  },
 ];
 
 const TITLES: Record<Screen, string> = {
@@ -120,17 +141,25 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
     <div className="app">
       <nav className="sidebar">
         <div className="brand">b</div>
-        {NAV.filter(n => !(n.id === 'setup' && started)).map(n => (
-          <div
-            key={n.id}
-            className={`nav-item${screen === n.id ? ' is-active' : ''}${n.soon ? ' is-soon' : ''}`}
-            title={n.soon ? `${n.label} · bientôt disponible` : n.label}
-            onClick={n.soon ? undefined : () => go(n.id as Screen)}
-          >
-            <Icon name={n.icon} size={20} stroke={2} />
-            <span>{n.label}</span>
-          </div>
-        ))}
+        {NAV_GROUPS.map(g => {
+          const items = g.items.filter(n => !(n.id === 'setup' && started));
+          return (
+            <div key={g.title} className="nav-group">
+              <div className="nav-group-title">{g.title}</div>
+              {items.map(n => (
+                <div
+                  key={n.id}
+                  className={`nav-item${screen === n.id ? ' is-active' : ''}${n.soon ? ' is-soon' : ''}`}
+                  title={n.soon ? `${n.label} · bientôt disponible` : n.label}
+                  onClick={n.soon ? undefined : () => go(n.id as Screen)}
+                >
+                  <Icon name={n.icon} size={20} stroke={2} />
+                  <span>{n.label}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
         <div className="sidebar-foot">
           <div className={`save-status is-${saveStatus}`} role="status">
             {saveStatus === 'saving' ? 'Enregistrement…' : saveStatus === 'error' ? 'Non enregistré' : 'Enregistré'}

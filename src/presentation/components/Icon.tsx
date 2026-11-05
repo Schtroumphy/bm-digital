@@ -20,6 +20,8 @@ const ICONS = {
   ),
   shield: <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />,
   percent: <path d="M19 5L5 19M6.5 6.5h.01M17.5 17.5h.01" />,
+  barChart: <path d="M3 3v18h18M8 17v-5M13 17V8M18 17v-8" />,
+  lineChart: <path d="M3 3v18h18M7 15l4-4 3 3 5-6" />,
   trend: <path d="M22 7l-8.5 8.5-5-5L2 17M16 7h6v6" />,
   arrowDown: <path d="M12 5v14M5 12l7 7 7-7" />,
   card: <path d="M2 5h20v14H2zM2 10h20" />,
