@@ -26,16 +26,17 @@ export type CloseBlocker =
 
 /**
  * All the reasons that forbid closing `m`, evaluated together: the order rule (RG35), the amount left to place (RG27), then the statements of the
- * accounts (spec 0041, RG13). Empty = can be closed. `today` only bounds the default date of a statement.
+ * accounts (spec 0041, RG13). Empty = can be closed. `today` only bounds the default date of a statement. `ignoreAvailable`: the user forces the closing
+ * although some money is still to place (the amount left is then only informative); the order rule and the statements still apply.
  */
-export function closeBlockers(d: BudgetData, m: MonthKey, today = isoDate()): CloseBlocker[] {
+export function closeBlockers(d: BudgetData, m: MonthKey, today = isoDate(), ignoreAvailable = false): CloseBlocker[] {
   if (!d.months[m]?.initialized || isMonthLocked(d, m)) return [{ kind: 'unavailable' }];
   const out: CloseBlocker[] = [];
   const prev = previousInitializedMonth(d, m);
   if (prev !== null && !isMonthLocked(d, prev)) out.push({ kind: 'previous', month: prev });
   const amount = availableReal(d, m) ?? 0;
   // Over-placed money (negative) only warns: savings and off-budget accounts such as Swile are not entered in the budget, so it can be legitimate.
-  if (amount > 0.005) out.push({ kind: 'available', amount });
+  if (!ignoreAvailable && amount > 0.005) out.push({ kind: 'available', amount });
   const accounts = releveFailures(d, m, today);
   if (accounts.length) out.push({ kind: 'statements', accounts });
   return out;
@@ -47,9 +48,9 @@ export function overPlacedAmount(d: BudgetData, m: MonthKey): number {
   return amount < -0.005 ? -amount : 0;
 }
 
-/** Closes the month (read-only from now on). Returns true when applied. */
-export function closeMonth(d: BudgetData, m: MonthKey): boolean {
-  if (closeBlockers(d, m).length) return false;
+/** Closes the month (read-only from now on). Returns true when applied. `ignoreAvailable`: forced closing despite money left to place. */
+export function closeMonth(d: BudgetData, m: MonthKey, ignoreAvailable = false): boolean {
+  if (closeBlockers(d, m, isoDate(), ignoreAvailable).length) return false;
   d.months[m].closed = true;
   return true;
 }

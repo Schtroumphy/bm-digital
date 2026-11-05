@@ -1,7 +1,9 @@
 import { blockTotals, budgetLines, envelopeAlerts, lineRemaining, monthSummary, variableRemaining, type MonthSummary } from './budget';
 import { assignedOperations, assignedTotals, monthAssignedSummary, type AssignedSummary } from './assignedOperations';
 import { envelopeAccountAt, isLineInBudget, kindOf } from './bank';
-import { envelopeConsumption } from './envelopeCash';
+import { periodTest } from './bankMovements';
+import { creditDateOf, debitDateOf } from './internalTransfers';
+import { envelopeAccountTotal, envelopeConsumption } from './envelopeCash';
 import { effectiveDueDay } from './checkoff';
 import { isLate, leftOfAllocation, leftOfLine } from './comingUp';
 import { currentYear, firstGoalOfKind, goalView, referenceMonth, summaryGoals, type GoalView } from './goals';
@@ -79,6 +81,10 @@ export interface EnvelopeRow {
   name: string;
   hue: number;
   balance: number;
+  /** Virtual part of the balance (the envelope's account), shown when hovering the row. */
+  virtual: number;
+  /** Cash part of the balance, shown when hovering the row. */
+  cash: number;
   /** Spent in the month, shown when hovering the bar. */
   spent: number;
   /** Balance available at the start of the month, the month's allocation included. */
@@ -161,6 +167,14 @@ export interface DashboardWealth {
   savingsShare: number;
 }
 
+/** One savings or investment account at the end of a month; `real` when its balance is the entered statement, else the calculated one. */
+export interface WealthAccountRow {
+  name: string;
+  block: 'epa' | 'inv';
+  balance: number;
+  real: boolean;
+}
+
 /** « Évolution du patrimoine » (spec 0030, RG5): the wealth at the end of the reference month against the month before. */
 export interface DashboardWealthEvolution {
   /** Reference month (the one of `wealth`) and the month before it; null before the first month of the budget. */
@@ -173,8 +187,12 @@ export interface DashboardWealthEvolution {
   change: { total: number; savings: number; invest: number } | null;
   /** Variation of the total in %; null without a previous month or when the previous wealth is not above 0 (« — »). */
   pct: number | null;
+  /** Evolution of the total up to the end of the reference month since the start of the budget, the year start: the budget start (end of its first month) when the budget began in the reference year, else January (baseline: end of December before); null on the baseline month itself or earlier. */
+  sinceStart: { change: number; pct: number | null; from: 'budget' | 'january' } | null;
   /** Total wealth at the end of each of the last 6 months, oldest first, the reference month last; only existing months. */
   series: { month: MonthKey; total: number }[];
+  /** Account balances behind the figures, for the explanation bubbles: end of the month, of the previous month and of the baseline of `sinceStart`. */
+  rows: { now: WealthAccountRow[]; previous: WealthAccountRow[] | null; base: WealthAccountRow[] | null; baseMonth: MonthKey | null };
 }
 
 export interface DashboardView {
@@ -231,7 +249,7 @@ export function monthTransfers(d: BudgetData, month: MonthKey, today: string): D
     if ((l.block !== 'epa' && l.block !== 'inv') || l.execMode === 'informatif' || !isLineInBudget(d, l)) continue;
     if (l.budget === 0) continue;
     // A transfer is « faite » when nothing is left of the line (spec 0043, RG13): the amount shown is what is left, or the budget once done.
-    const left = leftOfLine(l);
+    const left = leftOfLine(d, l);
     out.push({ kind: 'line', id: l.key, name: l.name, ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, month) } : {}), amount: left || l.budget, done: left === 0, late: isLate(d, month, l, today) });
   }
   const alloc = monthAlloc(d, month);
@@ -279,7 +297,8 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
   // Goals and wealth: reference month of the Objectifs screen (spec 0025), not the chosen month.
   const ref = referenceMonth(d, todayMonth);
   const wealth = ref === null ? null : wealthAt(d, ledger, ref);
-  const wealthEvolution = ref === null ? null : wealthEvolutionAt(d, ledger, ref);
+  // The evolution card follows the chosen month (the other wealth blocks keep the reference month).
+  const wealthEvolution = d.firstMonth === null || compareMonths(month, d.firstMonth) < 0 ? null : wealthEvolutionAt(d, ledger, month);
   const year0 = currentYear(todayMonth);
   const firstAmount = firstGoalOfKind(d, 'amount', todayMonth);
   const goals = {
@@ -324,12 +343,15 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
 
   const balances = d.envelopes.map(e => {
     const c = envelopeConsumption(d, ledger, e.id, month);
-    return { e, balance: ledger.envMonth(e.id, month)?.balance ?? 0, start: c?.start ?? 0, spent: c?.spent ?? 0, remaining: c?.remaining ?? 0, consumed: c?.consumed ?? 0 };
+    // The real balance of the envelope's account + its cash (like the Comptes screen); before the account exists, the budgetary balance.
+    const real = envelopeAccountTotal(d, ledger, e.id, month);
+    const balance = real?.total ?? ledger.envMonth(e.id, month)?.balance ?? 0;
+    return { e, balance, virtual: real?.virtual ?? balance, cash: real?.cash ?? 0, start: c?.start ?? 0, spent: c?.spent ?? 0, remaining: c?.remaining ?? 0, consumed: c?.consumed ?? 0 };
   });
   const envelopes: DashboardEnvelopes = {
     total: round2(balances.reduce((a, x) => a + x.balance, 0)),
     allocated: round2(Object.values(monthAlloc(d, month)).reduce((a, v) => a + v, 0)),
-    rows: balances.map(({ e, balance, start, spent, remaining, consumed }) => ({ id: e.id, name: e.name, hue: e.hue, balance, start, spent, remaining, consumed })),
+    rows: balances.map(({ e, balance, virtual, cash, start, spent, remaining, consumed }) => ({ id: e.id, name: e.name, hue: e.hue, balance, virtual, cash, start, spent, remaining, consumed })),
   };
 
   const perMonth = Array.from({ length: 12 }, (_, i) => round2(d.planned.filter(p => p.year === year && p.month === i).reduce((a, p) => a + p.amount, 0)));
@@ -389,12 +411,20 @@ function savingsAccountsOf(d: BudgetData, ledger: Ledger, month: MonthKey): Dash
   }
   if (rows.length === 0) return null;
   const sum = (f: (r: SavingsAccountRow) => number) => round2(rows.reduce((acc, r) => acc + f(r), 0));
+  // A transfer between two accounts of the card is neither received nor spent overall: it only shows on each account's row.
+  const shown = new Set(rows.map(r => r.id));
+  const within = periodTest(d, month);
+  let internal = 0;
+  for (const mv of d.accountMovements ?? []) {
+    if (mv.amount === 0 || !shown.has(mv.fromAccountId) || !shown.has(mv.toAccountId)) continue;
+    if (within(debitDateOf(mv, d)) && within(creditDateOf(mv, d))) internal += mv.amount;
+  }
   const withAssigned = rows.filter(r => r.assigned);
   return {
     rows,
     total: {
-      received: sum(r => r.received),
-      spent: sum(r => r.spent),
+      received: round2(sum(r => r.received) - internal),
+      spent: round2(sum(r => r.spent) - internal),
       change: sum(r => r.change),
       ...(withAssigned.length > 0 ? { assigned: { received: round2(withAssigned.reduce((a, r) => a + r.assigned!.received, 0)), spent: round2(withAssigned.reduce((a, r) => a + r.assigned!.spent, 0)) } } : {}),
     },
@@ -411,6 +441,15 @@ function wealthAt(d: BudgetData, ledger: Ledger, ref: MonthKey): DashboardWealth
   return { total, savings, invest, savingsShare: total > 0 ? savings / total : 0 };
 }
 
+/** Balance of each savings or investment account at the end of `m` (lines of that month that count in the budget), flagged real when a statement was entered. */
+function wealthRows(d: BudgetData, ledger: Ledger, m: MonthKey): WealthAccountRow[] {
+  const inMonth = new Set(monthLines(d, m).filter(l => isLineInBudget(d, l)).map(l => l.key));
+  return accounts(d).filter(a => inMonth.has(a.key)).map(a => {
+    const am = ledger.accMonth(a.key, m);
+    return { name: a.name, block: a.block, balance: round2(am?.balance ?? 0), real: am?.statement != null };
+  });
+}
+
 /** Wealth of `ref` compared with the month before, plus the 6 last months of total wealth (spec 0030). Same `wealthAt` as the « Patrimoine » block. */
 function wealthEvolutionAt(d: BudgetData, ledger: Ledger, ref: MonthKey): DashboardWealthEvolution {
   const first = d.firstMonth;
@@ -420,6 +459,17 @@ function wealthEvolutionAt(d: BudgetData, ledger: Ledger, ref: MonthKey): Dashbo
   const before = exists(previous) ? wealthAt(d, ledger, previous) : null;
   const change = before ? { total: round2(now.total - before.total), savings: round2(now.savings - before.savings), invest: round2(now.invest - before.invest) } : null;
   const series = [5, 4, 3, 2, 1, 0].map(n => addMonths(ref, -n)).filter(exists).map(month => ({ month, total: wealthAt(d, ledger, month).total }));
+  let sinceStart: DashboardWealthEvolution['sinceStart'] = null;
+  let baseMonth: MonthKey | null = null;
+  if (first !== null) {
+    const fromBudget = parseMonth(ref).year <= parseMonth(first).year;
+    const base = fromBudget ? first : addMonths(`${parseMonth(ref).year}-01` as MonthKey, -1);
+    if (compareMonths(ref, base) > 0) {
+      baseMonth = base;
+      const start = wealthAt(d, ledger, base).total;
+      sinceStart = { change: round2(now.total - start), pct: start > 0 ? ((now.total - start) / start) * 100 : null, from: fromBudget ? 'budget' : 'january' };
+    }
+  }
   return {
     month: ref,
     previous: before ? previous : null,
@@ -428,6 +478,8 @@ function wealthEvolutionAt(d: BudgetData, ledger: Ledger, ref: MonthKey): Dashbo
     invest: now.invest,
     change,
     pct: change && before && before.total > 0 ? (change.total / before.total) * 100 : null,
+    sinceStart,
     series,
+    rows: { now: wealthRows(d, ledger, ref), previous: before ? wealthRows(d, ledger, previous) : null, base: baseMonth ? wealthRows(d, ledger, baseMonth) : null, baseMonth },
   };
 }

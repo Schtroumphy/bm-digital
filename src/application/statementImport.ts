@@ -836,7 +836,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
         const category = debit.row.category || credit.row.category;
         const mv: AccountMovement = {
           id: newId('m'), month: debit.month, day: Number(debit.row.date.slice(8, 10)), label: debit.row.label, amount: debit.row.amount,
-          fromAccountId: debit.accountId!, toAccountId: credit.accountId!, ...traceOf(debit), creditTrace: traceOf(credit), ...(category ? { category } : {}), ...(attach ? { target: attach } : {}),
+          fromAccountId: debit.accountId!, toAccountId: credit.accountId!, ...traceOf(debit), creditTrace: traceOf(credit), ...(category ? { category } : {}), ...(attach ? { targets: [attach] } : {}),
         };
         (d.accountMovements ??= []).push(mv);
         if (attach?.kind === 'line') syncLineActual(d, debit.month, attach.key);
@@ -865,8 +865,8 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
       const mv: AccountMovement =
         l.nature === 'recu'
           // Credit face alone: the movement has no debit trace; its date is that of the credit (RG12, RG14).
-          ? { id: newId('m'), month: l.month, day: base.day, label: l.row.label, amount: l.row.amount, fromAccountId: targetId, toAccountId: sourceId, bankDate: l.row.date, creditTrace: traceOf(l), ...(l.row.category ? { category: l.row.category } : {}), ...(attach ? { target: attach } : {}) }
-          : { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId, ...(attach ? { target: attach } : {}) };
+          ? { id: newId('m'), month: l.month, day: base.day, label: l.row.label, amount: l.row.amount, fromAccountId: targetId, toAccountId: sourceId, bankDate: l.row.date, creditTrace: traceOf(l), ...(l.row.category ? { category: l.row.category } : {}), ...(attach ? { targets: [attach] } : {}) }
+          : { id: newId('m'), ...base, fromAccountId: sourceId, toAccountId: targetId, ...(attach ? { targets: [attach] } : {}) };
       (d.accountMovements ??= []).push(mv);
       if (attach?.kind === 'line') syncLineActual(d, l.month, attach.key);
       if (l.nature === 'retrait') batch.withdrawals++;

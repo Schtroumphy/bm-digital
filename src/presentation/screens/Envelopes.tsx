@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { EnvelopeBalances } from '../components/EnvelopeBalances';
-import { OPENING_MESSAGE } from '../components/hints';
+import { CASH_ADJUSTMENT_MESSAGE, CASH_CARD_HINT, CASH_CARD_LABEL, OPENING_MESSAGE } from '../components/hints';
 import { Icon } from '../components/Icon';
 import { deleteEnvelope, envelopeBalance, openingBalanceRefusal, openingCashRefusal, renameEnvelope, setEnvelopeOpeningBalance, setEnvelopeOpeningCash } from '../../application/envelopes';
 import { toneVars } from '../components/tone';
@@ -10,11 +10,13 @@ import { cashPartRefusal, setEnvelopeCashPart } from '../../application/cash';
 import { setEnvelopeAllocation } from '../../application/actions';
 import { cashPartAbove, envelopeCashPart } from '../../domain/cash';
 import { envelopeCash, envelopeTotal } from '../../domain/envelopeCash';
-import { cashHistory, virtualHistory } from '../../domain/envelopeHistory';
+import { cashBalanceAt, cashHistory, virtualHistory } from '../../domain/envelopeHistory';
+import { adjustEnvelopeCash, cashAdjustmentRefusal, deleteCashAdjustment, deleteCashAdjustmentRefusal } from '../../application/cashAdjustments';
+import { isoDate } from '../../domain/checkoff';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
 import { isMonthLocked, monthAlloc } from '../../domain/ledger';
 import type { Envelope, MonthKey } from '../../domain/types';
-import { useStore } from '../state/store';
+import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
 
 const LOCKED_HINT = 'Le mois de départ de cette enveloppe est clos ou verrouillé : le départ n’est plus modifiable.';
@@ -224,8 +226,29 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
     if (refused) return void window.alert(OPENING_MESSAGE[refused]);
     update(d => void setEnvelopeOpeningBalance(d, env.id, v ?? 0));
   };
+  // The cash balance is adjusted as of TODAY, whatever month is displayed (spec 0026, RG32); read-only when today's month is locked (RG33).
+  const today = isoDate();
+  const cashToday = cashBalanceAt(data, env.id, today);
+  const adjustLocked = cashAdjustmentRefusal(data, env.id, cashToday, today) === 'locked';
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const adjustCash = (v: number | null) => {
+    const refused = cashAdjustmentRefusal(data, env.id, v ?? Number.NaN, today);
+    setAdjustError(refused ? CASH_ADJUSTMENT_MESSAGE[refused] : null);
+    if (!refused) update(d => void adjustEnvelopeCash(d, env.id, v ?? 0, newId('ca'), today));
+  };
+  const removeAdjustment = (id: string) => {
+    const refused = deleteCashAdjustmentRefusal(data, id);
+    setAdjustError(refused ? CASH_ADJUSTMENT_MESSAGE[refused] : null);
+    if (!refused) update(d => void deleteCashAdjustment(d, id));
+  };
   const [tab, setTab] = useState<'virtuel' | 'especes'>('virtuel');
   const rows = tab === 'virtuel' ? virtualHistory(data, env.id, month) : cashHistory(data, env.id, month);
+  // Adjustments that can be deleted (their month is not locked): computed once per change of data, not per row at each render.
+  const deletable = useMemo(
+    () => new Set(rows.filter(r => r.kind === 'adjustment' && r.id && deleteCashAdjustmentRefusal(data, r.id) !== 'locked').map(r => r.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, env.id, month, tab],
+  );
   const hist = [5, 4, 3, 2, 1, 0]
     .map(k => addMonths(month, -k))
     .map(m => ({ m, r: ledger.envMonth(env.id, m) }))
@@ -273,9 +296,25 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
             <div className="split-card is-cash">
               <div className="split-card-label">
                 <Icon name="cash" size={14} />
-                Espèces (à part)
+                {CASH_CARD_LABEL}
+                <span className="cpt-tip" title={CASH_CARD_HINT} aria-label="Voir l’explication">i</span>
               </div>
               <div className="split-card-value">{money(cash)}</div>
+              <div className="split-card-note">
+                Solde actuel (au {today.slice(8, 10)}/{today.slice(5, 7)}){' '}
+                <EditableAmount
+                  id={`adjust:${env.id}`}
+                  value={cashToday}
+                  disabled={adjustLocked}
+                  title={adjustLocked ? CASH_ADJUSTMENT_MESSAGE.locked : 'Cliquer pour corriger le solde en espèces d’aujourd’hui'}
+                  onCommit={adjustCash}
+                  className="is-editable"
+                  inputClassName="cell-input is-cash"
+                >
+                  {money(cashToday)}
+                </EditableAmount>
+                {adjustError && <div className="env-tile-error" role="alert">{adjustError}</div>}
+              </div>
               <div className="split-card-note">
                 part du mois {money(part)} · départ{' '}
                 <EditableAmount
@@ -331,6 +370,9 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
             <div key={i} className="hist-grid hist-row" style={{ gridTemplateColumns: HISTORY_COLUMNS }}>
               <span style={{ fontWeight: 500 }}>
                 <span className="muted is-small">{r.date.slice(8, 10)}/{r.date.slice(5, 7)}</span> {r.label}
+                {r.kind === 'adjustment' && r.id && deletable.has(r.id) && (
+                  <button type="button" className="link-btn" style={{ marginLeft: 8 }} title="Supprimer cet ajustement" onClick={() => removeAdjustment(r.id!)}>supprimer</button>
+                )}
               </span>
               <span className="num">{money(r.amount)}</span>
               <b className="num">{money(r.balance)}</b>

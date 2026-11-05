@@ -34,7 +34,7 @@ export function addLineEntry(d: BudgetData, m: MonthKey, key: string, entry: Qui
   const type = TYPE_OF_BLOCK[line.block];
   if (type) return addTransaction(d, { id: entry.id, month: m, day: dayOf(entry.date), bankDate: entry.date, label, amount, type, target: key });
   if (!line.linkedAccountId) return false;
-  return addTransfer(d, { id: entry.id, month: m, day: dayOf(entry.date), bankDate: entry.date, label, amount, fromAccountId: accountIdOf(d, line.accountId), toAccountId: line.linkedAccountId, target: { kind: 'line', key } });
+  return addTransfer(d, { id: entry.id, month: m, day: dayOf(entry.date), bankDate: entry.date, label, amount, fromAccountId: accountIdOf(d, line.accountId), toAccountId: line.linkedAccountId, targets: [{ kind: 'line', key }] });
 }
 
 /**

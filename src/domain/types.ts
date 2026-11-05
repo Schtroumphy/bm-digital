@@ -214,8 +214,11 @@ export interface AccountMovement {
   detail?: string;
   /** Real date at the bank (spec 0015, RG1); absent = `month`/`day`. */
   bankDate?: string;
-  /** Budget item this transfer stands for, in `month` (spec 0019, RG10): the rest of the item (spec 0043) counts what it already sent. */
-  target?: MovementTarget;
+  /**
+   * Budget items this transfer stands for, in `month` (spec 0019, RG10; a list since spec 0045, RG3): the rest of an item (spec 0043) counts what it
+   * already sent. An envelope or a savings/investment line: one target. Dedicated variable lines: one or several. Absent = none.
+   */
+  targets?: MovementTarget[];
   /**
    * Trace of the CREDIT face of an internal transfer imported from the file (spec 0016, RG11). The flat fields above (`importAccountId`, `fingerprint`,
    * `rank`, `bankDate`) are the trace of the DEBIT face; a movement made from a credit alone has no flat trace, only this one, and its `bankDate` is
@@ -324,6 +327,19 @@ export interface Adjustment {
   cancelledOn?: string;
 }
 
+/**
+ * A correction of the cash balance of an envelope (spec 0026, RG28): the cash is informative and not traced, so the user types the balance he
+ * really has and the application records the difference, dated the day it is typed. It touches neither the virtual balance nor any account.
+ */
+export interface CashAdjustment {
+  id: string;
+  envelopeId: string;
+  /** Day of the adjustment (the day it was made), `YYYY-MM-DD`. */
+  date: string;
+  /** Signed: positive adds cash, negative removes some. Never 0. */
+  amount: number;
+}
+
 export interface Settings {
   emergencyAccounts: string[];
   emergencyTarget: number;
@@ -419,6 +435,8 @@ export interface BudgetData {
   importAccountLinks?: ImportAccountLink[];
   /** Corrections of bank accounts (spec 0009). Absent = none. */
   adjustments?: Adjustment[];
+  /** Corrections of the cash balance of an envelope (spec 0026, RG27 to RG34). Absent = none. */
+  cashAdjustments?: CashAdjustment[];
   /** Annual goals (spec 0032). Absent = none (or data saved before the goals existed, see `Settings.goalsMigrated`). */
   goals?: Goal[];
   /** Saved simulations, most recent first (spec 0034). Absent = none. */

@@ -35,7 +35,7 @@ function started(lines: Line[]): BudgetData {
   // account gets the matching transfer, on the 1st. Without a dedicated account no transfer is possible, the actual moves no balance.
   d.accountMovements = lines
     .filter(l => (l.block === 'epa' || l.block === 'inv') && l.actual && l.linkedAccountId)
-    .map(l => ({ id: `auto-${l.key}`, month: M, day: 1, label: l.name, amount: l.actual!, fromAccountId: l.accountId ?? MAIN_ACCOUNT_ID, toAccountId: l.linkedAccountId!, target: { kind: 'line' as const, key: l.key } }));
+    .map(l => ({ id: `auto-${l.key}`, month: M, day: 1, label: l.name, amount: l.actual!, fromAccountId: l.accountId ?? MAIN_ACCOUNT_ID, toAccountId: l.linkedAccountId!, targets: [{ kind: 'line' as const, key: l.key }] }));
   return d;
 }
 
@@ -216,7 +216,7 @@ describe('solde estimé (RG20 à RG24)', () => {
     const d = started([line('livret', 'epa', 200, null, { linkedAccountId: LIVRET })]);
     expect(est(d, 'livret')).toBe(1200);
     // Le réel est la somme des transferts rattachés (spec 0019, RG16) : il remplace le budget du mois.
-    expect(addTransfer(d, { id: 'v', month: M, day: 4, label: 'Versement', amount: 150, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: LIVRET, target: { kind: 'line', key: 'livret' } })).toBe(true);
+    expect(addTransfer(d, { id: 'v', month: M, day: 4, label: 'Versement', amount: 150, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: LIVRET, targets: [{ kind: 'line', key: 'livret' }] })).toBe(true);
     expect(d.months[M].lines[0].actual).toBe(150);
     expect(est(d, 'livret')).toBe(1150);
   });
@@ -319,7 +319,7 @@ describe('solde estimé cumulé sur les mois (RG20 à RG22ter)', () => {
     d.months[DEC] = month(dec);
     // A line given with an actual and a dedicated account gets the matching transfer (spec 0019, RG16).
     d.accountMovements = [[NOV, nov] as const, [DEC, dec] as const].flatMap(([m, ls]) =>
-      ls.filter(l => l.actual && l.linkedAccountId).map(l => ({ id: `auto-${m}-${l.key}`, month: m, day: 1, label: l.name, amount: l.actual!, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: l.linkedAccountId!, target: { kind: 'line' as const, key: l.key } })));
+      ls.filter(l => l.actual && l.linkedAccountId).map(l => ({ id: `auto-${m}-${l.key}`, month: m, day: 1, label: l.name, amount: l.actual!, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: l.linkedAccountId!, targets: [{ kind: 'line' as const, key: l.key }] })));
     return d;
   }
   const at = (d: BudgetData, m: string, key = 'livret') => {

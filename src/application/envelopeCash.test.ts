@@ -27,7 +27,7 @@ const spend = (d: BudgetData, amount: number, payMode?: 'especes' | 'virtuel', i
 };
 /** Transfer from `from` to the envelope « Loisirs » (attached to it). */
 const feed = (d: BudgetData, amount: number, from: string, id = `m${(d.accountMovements?.length ?? 0) + 1}`) =>
-  addTransfer(d, { id, month: M, day: 4, label: 'Alimentation', amount, fromAccountId: from, toAccountId: envAccount(d), target: { kind: 'env', id: 'loisirs' } });
+  addTransfer(d, { id, month: M, day: 4, label: 'Alimentation', amount, fromAccountId: from, toAccountId: envAccount(d), targets: [{ kind: 'env', id: 'loisirs' }] });
 
 /** Allocation of the month and cash part of « Loisirs » (spec 0037, RG11). */
 const allocate = (d: BudgetData, alloc: number, part: number) => {

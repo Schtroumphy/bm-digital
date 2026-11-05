@@ -148,7 +148,7 @@ export function seedData(): BudgetData {
   for (const m of ['2026-10', '2026-11', '2026-12']) {
     for (const e of ENVELOPES) {
       const amount = months[m].alloc[e.id] ?? 0;
-      if (amount > 0) accountMovements.push({ id: `fund-${m}-${e.id}`, month: m, day: 1, label: `Alimentation ${e.name}`, amount, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: envelopeAccountId(e.id), target: { kind: 'env', id: e.id } });
+      if (amount > 0) accountMovements.push({ id: `fund-${m}-${e.id}`, month: m, day: 1, label: `Alimentation ${e.name}`, amount, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: envelopeAccountId(e.id), targets: [{ kind: 'env', id: e.id }] });
     }
   }
 

@@ -1,4 +1,4 @@
-import { clearManualActuals, migrateBankAccounts, migrateCashWithdrawals, migrateCheckAmounts, migrateEnvelopeOpeningCash, migrateGoals, migrateLineStatements } from '../domain/migrate';
+import { clearManualActuals, migrateBankAccounts, migrateCashWithdrawals, migrateCheckAmounts, migrateEnvelopeOpeningCash, migrateGoals, migrateLineStatements, migrateMovementTargets } from '../domain/migrate';
 import type { BudgetData } from '../domain/types';
 import type { BudgetRepository } from './ports';
 
@@ -9,7 +9,10 @@ import type { BudgetRepository } from './ports';
  */
 export async function loadBudget(repository: BudgetRepository, initialData: () => BudgetData): Promise<{ data: BudgetData; cleared: number; unconverted: number }> {
   const stored = await repository.load();
-  const base = migrateEnvelopeOpeningCash(migrateCheckAmounts(migrateBankAccounts(stored ?? initialData())));
+  const start = stored ?? initialData();
+  // A transfer's single `target` becomes a list of `targets` (spec 0045, RG18); saved right away like the other conversions.
+  const retargeted = migrateMovementTargets(start);
+  const base = migrateEnvelopeOpeningCash(migrateCheckAmounts(migrateBankAccounts(retargeted)));
   // The old « Espèces » account is emptied into withdrawals and cash parts (spec 0037); the rewritten data is saved right away, like the goals.
   const withCash = migrateCashWithdrawals(base);
   const withGoals = migrateGoals(withCash);
@@ -19,7 +22,8 @@ export async function loadBudget(repository: BudgetRepository, initialData: () =
   // Goals migrated from the old settings (spec 0032, RG15) are saved right away, like the cleaned actuals.
   const goalsMigrated = stored !== null && stored.settings.goalsMigrated !== true;
   const cashMigrated = withCash !== base;
+  const targetsMigrated = retargeted !== start;
   const statementsMigrated = statements.data !== withGoals;
-  if (loaded.cleared > 0 || goalsMigrated || cashMigrated || statementsMigrated) await repository.save(loaded.data).catch(() => undefined);
+  if (loaded.cleared > 0 || goalsMigrated || cashMigrated || statementsMigrated || targetsMigrated) await repository.save(loaded.data).catch(() => undefined);
   return loaded;
 }

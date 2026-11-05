@@ -65,8 +65,7 @@ export type Database = {
           month: string
           position: number
           rank: number | null
-          target_key: string | null
-          target_kind: string | null
+          targets: Json
           to_account_id: string
           user_id: string
         }
@@ -88,8 +87,7 @@ export type Database = {
           month: string
           position?: number
           rank?: number | null
-          target_key?: string | null
-          target_kind?: string | null
+          targets?: Json
           to_account_id: string
           user_id?: string
         }
@@ -111,8 +109,7 @@ export type Database = {
           month?: string
           position?: number
           rank?: number | null
-          target_key?: string | null
-          target_kind?: string | null
+          targets?: Json
           to_account_id?: string
           user_id?: string
         }
@@ -281,6 +278,33 @@ export type Database = {
             referencedColumns: ["user_id", "month"]
           },
         ]
+      }
+      cash_adjustments: {
+        Row: {
+          amount: number
+          date: string
+          envelope_id: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          date: string
+          envelope_id: string
+          id: string
+          position?: number
+          user_id?: string
+        }
+        Update: {
+          amount?: number
+          date?: string
+          envelope_id?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
       }
       envelope_allocations: {
         Row: {

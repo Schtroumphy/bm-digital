@@ -38,6 +38,7 @@ export const TABLE_ORDER: readonly TableName[] = [
   'transfers',
   'transfers_done',
   'adjustments',
+  'cash_adjustments',
   'planned_items',
   'year_closes',
 ];
@@ -66,6 +67,7 @@ export const TABLE_KEYS: Record<TableName, readonly string[]> = {
   transfers: ['id'],
   transfers_done: ['month', 'transfer_id'],
   adjustments: ['id'],
+  cash_adjustments: ['id'],
   planned_items: ['id'],
   year_closes: ['year'],
 };

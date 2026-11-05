@@ -69,7 +69,7 @@ export function completeData(): BudgetData {
   d.transactions.push({ id: 't-accin', month: '2026-12', day: 10, label: 'Titres-restaurant', amount: 150, type: 'accin', target: 'acc-swile', accountId: 'acc-swile', source: 'Employeur', bankDate: '2026-12-10' });
   // Spec 0035 : dépense financée par l'épargne (payeur = compte d'épargne, cible = clé de la ligne epa) et règle mémorisée vers une ligne d'épargne.
   d.transactions.push({ id: 't-epd', month: '2026-12', day: 9, label: 'Billets avion', amount: 30, type: 'epd', target: 'line-key', accountId: 'acc-sav', importAccountId: 'acc-sav', fingerprint: '2026-12-09|30.00|billets avion', rank: 1, bankDate: '2026-12-09' });
-  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08', target: { kind: 'env', id: 'e-vc' } }];
+  d.accountMovements = [{ id: 'm1', month: '2026-12', day: 8, label: 'Retrait au distributeur', amount: 40, fromAccountId: 'acc-main', toAccountId: 'acc-cash', importAccountId: 'acc-main', fingerprint: '2026-12-08|40.00|retrait', rank: 1, category: 'Retrait', detail: 'Pour le marché', bankDate: '2026-12-08', targets: [{ kind: 'env', id: 'e-vc' }] }];
   d.importAccountLinks = [
     { id: 'l1', accountName: 'Compte Courant (x1111)', connectionName: 'Banque Test', accountId: 'acc-main' },
     { id: 'l2', accountName: 'Livret A (x1234)', connectionName: 'Banque Test', accountId: null },
@@ -221,16 +221,44 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect((await open().load())!.months['2026-12']).not.toHaveProperty('cashPart');
     });
 
+    it('spec 0026 : les ajustements du solde espèces d’une enveloppe sont conservés dans l’ordre, sans trace une fois supprimés (CA32)', async () => {
+      const repo = open();
+      const data = completeData();
+      const env = data.envelopes[0].id;
+      data.cashAdjustments = [
+        { id: 'ca1', envelopeId: env, date: '2026-12-05', amount: -15.5 },
+        { id: 'ca2', envelopeId: env, date: '2026-12-05', amount: 30 },
+      ];
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.cashAdjustments).toEqual(data.cashAdjustments);
+      expect(loaded).toEqual(data);
+      // Deleting them all leaves no trace; data saved without any adjustment is loaded as it is.
+      delete data.cashAdjustments;
+      await repo.save(data);
+      expect(await open().load()).not.toHaveProperty('cashAdjustments');
+    });
+
     it('spec 0019 : la cible d’un transfert est conservée, les transferts sans cible restent sans cible', async () => {
       const repo = open();
       const data = completeData();
       data.accountMovements!.push({ id: 'm2', month: '2026-12', day: 9, label: 'Virement libre', amount: 10, fromAccountId: 'acc-main', toAccountId: 'acc-cash' });
-      data.accountMovements!.push({ id: 'm3', month: '2026-12', day: 10, label: 'Versement', amount: 20, fromAccountId: 'acc-main', toAccountId: 'acc-inv', target: { kind: 'line', key: 'l-ep' } });
+      data.accountMovements!.push({ id: 'm3', month: '2026-12', day: 10, label: 'Versement', amount: 20, fromAccountId: 'acc-main', toAccountId: 'acc-inv', targets: [{ kind: 'line', key: 'l-ep' }] });
       await repo.save(data);
       const loaded = (await repo.load())!;
-      expect(loaded.accountMovements!.find(m => m.id === 'm1')!.target).toEqual({ kind: 'env', id: 'e-vc' });
-      expect(loaded.accountMovements!.find(m => m.id === 'm2')).not.toHaveProperty('target');
-      expect(loaded.accountMovements!.find(m => m.id === 'm3')!.target).toEqual({ kind: 'line', key: 'l-ep' });
+      expect(loaded.accountMovements!.find(m => m.id === 'm1')!.targets).toEqual([{ kind: 'env', id: 'e-vc' }]);
+      expect(loaded.accountMovements!.find(m => m.id === 'm2')).not.toHaveProperty('targets');
+      expect(loaded.accountMovements!.find(m => m.id === 'm3')!.targets).toEqual([{ kind: 'line', key: 'l-ep' }]);
+      expect(loaded).toEqual(data);
+    });
+
+    it('spec 0045 : un virement associé à plusieurs lignes retrouve ses cibles dans l’ordre', async () => {
+      const repo = open();
+      const data = completeData();
+      data.accountMovements!.push({ id: 'm4', month: '2026-12', day: 11, label: 'Virement Boursorama', amount: 360, fromAccountId: 'acc-main', toAccountId: 'acc-inv', targets: [{ kind: 'line', key: 'l-a' }, { kind: 'line', key: 'l-b' }, { kind: 'line', key: 'l-c' }] });
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.accountMovements!.find(m => m.id === 'm4')!.targets).toEqual([{ kind: 'line', key: 'l-a' }, { kind: 'line', key: 'l-b' }, { kind: 'line', key: 'l-c' }]);
       expect(loaded).toEqual(data);
     });
 

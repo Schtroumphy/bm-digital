@@ -35,6 +35,20 @@ describe('clôturer le mois', () => {
     expect(before.months['2027-01'].closed).toBeUndefined();
   });
 
+  it('forcer la clôture malgré du disponible à placer, sans contourner les autres règles', () => {
+    const d = budgetWith('2027-01', '2027-02');
+    d.months['2027-01'].lines[0].actual = 1300; // +300 left to place
+    expect(closeBlockers(d, '2027-01', undefined, true)).toEqual([]);
+    expect(closeMonth(d, '2027-01')).toBe(false);
+    expect(closeMonth(d, '2027-01', true)).toBe(true);
+    expect(d.months['2027-01'].closed).toBe(true);
+    // The order rule still applies: February cannot be forced while January is open.
+    const e = budgetWith('2027-01', '2027-02');
+    e.months['2027-02'].lines[0].actual = 1300;
+    expect(closeMonth(e, '2027-02', true)).toBe(false);
+    expect(e.months['2027-02'].closed).toBeUndefined();
+  });
+
   it('placé plus que disponible : n’empêche plus la clôture, un avertissement seulement', () => {
     const d = budgetWith('2027-01');
     d.months['2027-01'].lines[0].actual = 950; // -50

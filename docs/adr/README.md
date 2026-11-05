@@ -6,6 +6,8 @@ Fichier : `docs/adr/NNNN-<slug-kebab-case>.md` (numéro à 4 chiffres, croissant
 
 La décision de départ (clean architecture, contexte React, etc.) est dans la section 6 de [`../architecture.md`](../architecture.md).
 
+Dernière ADR : [0038 — Un virement vise plusieurs lignes (`targets` en jsonb)](0038-virement-cibles-multiples-jsonb.md).
+
 ## Gabarit
 
 ```markdown

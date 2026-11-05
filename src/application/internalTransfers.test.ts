@@ -160,7 +160,7 @@ describe('aperçu : une paire en deux lignes liées (RG6, RG7)', () => {
     const p = checkAll(prepare(d, [debit('2026-10-02', 'VIREMENT EMIS SANTE', 50), credit('2026-10-03', 'VIREMENT EN VOTRE FAVEUR', 50, ENV_PAIR)]));
     validateImport(d, p, newId);
     // Pointée l'allocation d'octobre ne compte plus dans l'estimé : le virement la remplace (une seule fois).
-    expect(d.accountMovements![0].target).toEqual({ kind: 'env', id: 'sante' });
+    expect(d.accountMovements![0].targets).toEqual([{ kind: 'env', id: 'sante' }]);
     expect(linkStateOf(d.accountMovements![0])).toBe('lie');
   });
 });

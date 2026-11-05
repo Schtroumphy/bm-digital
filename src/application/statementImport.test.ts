@@ -406,7 +406,7 @@ describe('validation de l’import', () => {
     const ledger = new Ledger(d, M);
     expect(ledger.bankMonth('acc-env-vac', M)!.balance).toBe(40);
     expect(ledger.envMonth('vac', M)).toMatchObject({ alloc: 0, balance: 0 });
-    expect(d.accountMovements!.find(m => m.toAccountId === 'acc-env-vac')!.target).toEqual({ kind: 'env', id: 'vac' });
+    expect(d.accountMovements!.find(m => m.toAccountId === 'acc-env-vac')!.targets).toEqual([{ kind: 'env', id: 'vac' }]);
     expect(d.months[M].alloc).toEqual({});
   });
 

@@ -18,8 +18,10 @@ export interface HistoryRow {
   amount: number;
   /** Balance of the list after this row. */
   balance: number;
-  /** The opening row, a movement of the account / a funding, or an expense. */
-  kind: 'opening' | 'movement' | 'expense';
+  /** The opening row, a movement of the account / a funding, an expense, or a correction of the cash balance (spec 0026, RG34). */
+  kind: 'opening' | 'movement' | 'expense' | 'adjustment';
+  /** Id of the `CashAdjustment` for an `adjustment` row (so the screen can delete it). */
+  id?: string;
 }
 
 /** The date is at or before the end of the period of `m` (spec 0039, RG9). */
@@ -60,8 +62,8 @@ function cashParts(d: BudgetData, envelopeId: string, start: MonthKey, m: MonthK
 }
 
 /**
- * « Espèces » list: the opening cash, then the cash part of each month from the opening month (in, dated the 1st) and the expenses paid in cash (out)
- * up to the end of `m`. `opening` replaces the envelope's opening cash (to test a new one). Empty before the account opens.
+ * « Espèces » list: the opening cash, then the cash part of each month from the opening month (in, dated the 1st), the expenses paid in cash (out)
+ * and the adjustments of the cash balance (signed, spec 0026 RG34) up to the end of `m`. `opening` replaces the envelope's opening cash (to test a new one). Empty before the account opens.
  */
 export function cashHistory(d: BudgetData, envelopeId: string, m: MonthKey, opening?: number): HistoryRow[] {
   const e = d.envelopes.find(x => x.id === envelopeId);
@@ -72,10 +74,25 @@ export function cashHistory(d: BudgetData, envelopeId: string, m: MonthKey, open
     ...d.transactions
       .filter(t => t.type === 'env' && t.target === e.id && t.payMode === 'especes' && upTo(d, bankDateOf(t, d), m))
       .map((t): Omit<HistoryRow, 'balance'> => ({ date: bankDateOf(t, d), label: t.label, amount: -t.amount, kind: 'expense' })),
+    // Last, so that on a given day an adjustment comes after all the other moves of that day, expenses included (the sort is stable).
+    ...(d.cashAdjustments ?? [])
+      .filter(a => a.envelopeId === e.id && upTo(d, a.date, m))
+      .map((a): Omit<HistoryRow, 'balance'> => ({ date: a.date, label: 'Ajustement', amount: a.amount, kind: 'adjustment', id: a.id })),
   ];
   return withBalances(periodOf(d, start).start, opening ?? e.openingCash, moves);
 }
 
-/** Lowest balance the cash list reaches in the whole history (to refuse an opening that would make it negative, D11). */
-export const lowestCashBalance = (d: BudgetData, envelopeId: string, opening: number): number =>
-  Math.min(...cashHistory(d, envelopeId, '9999-12', opening).map(r => r.balance));
+/** Cash balance of an envelope at the end of a day (every row dated that day or before it, adjustments included); 0 before its opening. Not clamped. */
+export const cashBalanceAt = (d: BudgetData, envelopeId: string, date: string): number =>
+  cashHistory(d, envelopeId, '9999-12').filter(r => r.date <= date).at(-1)?.balance ?? 0;
+
+/**
+ * Lowest balance the cash list reaches (to refuse an opening or an adjustment that would make it negative, D11, RG30). From the first row without
+ * `from`; with `from` (`YYYY-MM-DD`), from that day on: the balance at the end of that day and every row dated that day or after it.
+ */
+export function lowestCashBalance(d: BudgetData, envelopeId: string, opening: number, from?: string): number {
+  const rows = cashHistory(d, envelopeId, '9999-12', opening);
+  if (from === undefined) return Math.min(...rows.map(r => r.balance));
+  const atFrom = rows.filter(r => r.date <= from).at(-1)?.balance;
+  return Math.min(...rows.filter(r => r.date >= from).map(r => r.balance), ...(atFrom === undefined ? [] : [atFrom]));
+}

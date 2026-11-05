@@ -1,6 +1,6 @@
 import type {
-  AccountBalanceEntry, AccountMovement, Adjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
-  MonthData, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
+  AccountBalanceEntry, AccountMovement, Adjustment, CashAdjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
+  MonthData, MovementTarget, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
 
@@ -17,6 +17,17 @@ const orUndefined = <T>(v: T | null): T | undefined => v ?? undefined;
 /** The object without its `undefined` fields, so an absent optional field is really absent. */
 function compact<T extends object>(o: T): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+}
+
+/** The targets of a transfer read from its jsonb column (spec 0045): unknown shapes are dropped, an empty list is « absent ». */
+function movementTargetsOf(json: unknown): MovementTarget[] | undefined {
+  if (!Array.isArray(json)) return undefined;
+  const out: MovementTarget[] = [];
+  for (const t of json as Record<string, unknown>[]) {
+    if (t?.kind === 'line' && typeof t.key === 'string') out.push({ kind: 'line', key: t.key });
+    else if (t?.kind === 'env' && typeof t.id === 'string') out.push({ kind: 'env', id: t.id });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 const byPosition = <R extends { position: number }>(rows: R[]): R[] => [...rows].sort((a, b) => a.position - b.position);
@@ -192,8 +203,7 @@ export function toRows(d: BudgetData): TableRows {
       credit_fingerprint: orNull(m.creditTrace?.fingerprint),
       credit_rank: orNull(m.creditTrace?.rank),
       credit_bank_date: orNull(m.creditTrace?.bankDate),
-      target_kind: orNull(m.target?.kind),
-      target_key: orNull(m.target ? (m.target.kind === 'line' ? m.target.key : m.target.id) : undefined),
+      targets: (m.targets ?? []).map(t => (t.kind === 'line' ? { kind: t.kind, key: t.key } : { kind: t.kind, id: t.id })),
       position,
     }),
   );
@@ -236,6 +246,10 @@ export function toRows(d: BudgetData): TableRows {
       cancelled_on: orNull(a.cancelledOn),
       position,
     }),
+  );
+
+  (d.cashAdjustments ?? []).forEach((a, position) =>
+    rows.cash_adjustments.push({ id: a.id, envelope_id: a.envelopeId, date: a.date, amount: a.amount, position }),
   );
 
   d.planned.forEach((p, position) =>
@@ -392,7 +406,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       creditTrace: r.credit_import_account_id !== null && r.credit_fingerprint !== null && r.credit_rank !== null && r.credit_bank_date !== null
         ? { importAccountId: r.credit_import_account_id, fingerprint: r.credit_fingerprint, rank: r.credit_rank, bankDate: r.credit_bank_date }
         : undefined,
-      target: r.target_kind === 'line' && r.target_key !== null ? { kind: 'line' as const, key: r.target_key } : r.target_kind === 'env' && r.target_key !== null ? { kind: 'env' as const, id: r.target_key } : undefined,
+      targets: movementTargetsOf(r.targets),
     }),
   );
 
@@ -425,6 +439,8 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       cancelledOn: orUndefined(r.cancelled_on),
     }),
   );
+
+  const cashAdjustments: CashAdjustment[] = byPosition(rows.cash_adjustments).map(r => ({ id: r.id, envelopeId: r.envelope_id, date: r.date, amount: r.amount }));
 
   const planned: PlannedItem[] = byPosition(rows.planned_items).map(r => ({
     id: r.id,
@@ -474,6 +490,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     ...(importRules.length ? { importRules } : {}),
     ...(importAccountLinks.length ? { importAccountLinks } : {}),
     ...(adjustments.length ? { adjustments } : {}),
+    ...(cashAdjustments.length ? { cashAdjustments } : {}),
     ...(goals.length ? { goals } : {}),
     ...(simulations.length ? { simulations } : {}),
     planned,

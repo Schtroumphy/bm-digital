@@ -5,7 +5,7 @@ import { compareMonths, currentMonthKey, parseMonth, round2 } from './format';
 import { isoDate } from './checkoff';
 import { periodOf } from './periods';
 import { hasStaleActuals, manualActualCount, syncLineActuals } from './lineActuals';
-import type { AccountMovement, BudgetData, Goal, MonthKey, TemplateLine, Transaction, Transfer } from './types';
+import type { AccountMovement, BudgetData, Goal, MonthKey, MovementTarget, TemplateLine, Transaction, Transfer } from './types';
 
 /** Shapes of the data saved before bank accounts existed. */
 type LegacyTransaction = Omit<Transaction, 'accountId'> & { source?: 'vir' | 'esp' };
@@ -15,6 +15,22 @@ type LegacyData = Omit<BudgetData, 'accounts' | 'transactions' | 'transfers'> & 
   transactions: LegacyTransaction[];
   transfers: LegacyTransfer[];
 };
+
+/** Shape of a transfer saved before spec 0045: one optional `target`. */
+type LegacyMovement = Omit<AccountMovement, 'targets'> & { target?: MovementTarget; targets?: MovementTarget[] };
+
+/**
+ * Spec 0045, RG18: a transfer with a single `target` gets `targets: [target]`; amounts and balances do not change. Pure and idempotent: the data given
+ * is returned untouched when no transfer carries a `target` any more, and it is never mutated.
+ */
+export function migrateMovementTargets(d: BudgetData): BudgetData {
+  const legacy = (d.accountMovements ?? []) as LegacyMovement[];
+  if (!legacy.some(mv => 'target' in mv)) return d;
+  return {
+    ...d,
+    accountMovements: legacy.map(({ target, ...rest }): AccountMovement => (target ? { ...rest, targets: rest.targets ?? [target] } : rest)),
+  };
+}
 
 /**
  * Brings data saved before bank accounts up to date (RG27, RG28).
@@ -117,7 +133,7 @@ export function migrateCashWithdrawals(d: BudgetData): BudgetData {
       continue;
     }
     if (mv.toAccountId === CASH_ACCOUNT_ID) {
-      const { target: _target, ...rest } = mv;
+      const { targets: _targets, ...rest } = mv;
       movements.push({ ...rest, toAccountId: CASH_ID });
     } else movements.push(mv);
   }

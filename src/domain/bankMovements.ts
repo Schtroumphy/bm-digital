@@ -25,6 +25,8 @@ export interface BankMovement {
   /** `YYYY-MM-DD`. */
   date: string;
   label: string;
+  /** Free context of the entry, shown when the row is opened. */
+  detail?: string;
   amount: number;
   kind: 'line' | 'expense' | 'transfer' | 'adjustment';
   /** Expense or entry of money: the budget item it is attached to (line or envelope name) and its nature, for the account's movement list. */
@@ -68,7 +70,7 @@ function imputationOf(d: BudgetData, t: Transaction): { name: string; type: Tran
 }
 
 /** Whether a date is in the period of month `m`, read once (spec 0039, RG9). */
-function periodTest(d: BudgetData, m: MonthKey): (date: string) => boolean {
+export function periodTest(d: BudgetData, m: MonthKey): (date: string) => boolean {
   const p = periodOf(d, m);
   return date => date >= p.start && date <= p.end;
 }
@@ -83,9 +85,9 @@ function transferMovements(d: BudgetData, id: string, m: MonthKey): BankMovement
   const within = periodTest(d, m);
   for (const mv of d.accountMovements ?? []) {
     if (mv.amount === 0) continue;
-    if (mv.fromAccountId === id && !isEnvelopesPool(id) && within(debitDateOf(mv, d))) out.push({ date: debitDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} → ${nameOf(mv.toAccountId)}`, amount: -mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.fromAccountId === id && !isEnvelopesPool(id) && within(debitDateOf(mv, d))) out.push({ date: debitDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} → ${nameOf(mv.toAccountId)}`, amount: -mv.amount, ...(mv.detail ? { detail: mv.detail } : {}), kind: 'transfer', counterpart: true });
     // A cash withdrawal (`CASH_ID`) credits no account: only its source is debited (spec 0037, RG1).
-    if (mv.toAccountId === id && !isEnvelopesPool(id) && within(creditDateOf(mv, d))) out.push({ date: creditDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${nameOf(mv.fromAccountId)}`, amount: mv.amount, kind: 'transfer', counterpart: true });
+    if (mv.toAccountId === id && !isEnvelopesPool(id) && within(creditDateOf(mv, d))) out.push({ date: creditDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${nameOf(mv.fromAccountId)}`, amount: mv.amount, ...(mv.detail ? { detail: mv.detail } : {}), kind: 'transfer', counterpart: true });
   }
   return out;
 }
@@ -108,7 +110,7 @@ export function realMovements(d: BudgetData, id: string, m: MonthKey): BankMovem
     }
     // An envelope expense paid in cash leaves the envelope's cash balance, never its account (spec 0026, RG6).
     if (isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, ...(t.detail ? { detail: t.detail } : {}), kind: 'expense', imputation: imputationOf(d, t), ...(attached ? { attachedMonth: attached } : {}) });
   }
   // A transfer is real: both faces count, whatever the budget status of the accounts (RG2, RG12).
   out.push(...transferMovements(d, id, m));
@@ -129,12 +131,12 @@ export function beforeBudgetMovements(d: BudgetData, id: string): BankMovement[]
   for (const t of d.transactions) {
     const date = bankDateOf(t, d);
     if (date >= start || isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, beforeBudget: true });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, ...(t.detail ? { detail: t.detail } : {}), kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, beforeBudget: true });
   }
   for (const mv of d.accountMovements ?? []) {
     if (mv.amount === 0 || isEnvelopesPool(id)) continue;
-    if (mv.fromAccountId === id && debitDateOf(mv, d) < start) out.push({ date: debitDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} → ${movementAccountName(d, mv.toAccountId)}`, amount: -mv.amount, kind: 'transfer', counterpart: true, beforeBudget: true });
-    if (mv.toAccountId === id && creditDateOf(mv, d) < start) out.push({ date: creditDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${movementAccountName(d, mv.fromAccountId)}`, amount: mv.amount, kind: 'transfer', counterpart: true, beforeBudget: true });
+    if (mv.fromAccountId === id && debitDateOf(mv, d) < start) out.push({ date: debitDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} → ${movementAccountName(d, mv.toAccountId)}`, amount: -mv.amount, ...(mv.detail ? { detail: mv.detail } : {}), kind: 'transfer', counterpart: true, beforeBudget: true });
+    if (mv.toAccountId === id && creditDateOf(mv, d) < start) out.push({ date: creditDateOf(mv, d), label: `${MOVE_MARK.transfer} ${mv.label} depuis ${movementAccountName(d, mv.fromAccountId)}`, amount: mv.amount, ...(mv.detail ? { detail: mv.detail } : {}), kind: 'transfer', counterpart: true, beforeBudget: true });
   }
   return out;
 }
@@ -149,7 +151,7 @@ export function attachedMovements(d: BudgetData, id: string, m: MonthKey): BankM
   for (const t of d.transactions) {
     const date = bankDateOf(t, d);
     if (t.month !== m || within(date) || isCashExpense(t) || accountIdOf(d, t.accountId) !== id) continue;
-    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
+    out.push({ date, label: movementLabel(d, t), amount: isMoneyIn(t.type) ? t.amount : -t.amount, ...(t.detail ? { detail: t.detail } : {}), kind: 'expense', imputation: imputationOf(d, t), attachedMonth: t.month, outOfMonth: true });
   }
   return out;
 }

@@ -7,6 +7,7 @@ import { cashPartAbove } from '../domain/cash';
 import { exceedsEnvelopeCash } from '../domain/envelopeCash';
 import { isMonthLocked } from '../domain/ledger';
 import { deducedDate, validateBudgetStart } from '../domain/periods';
+import { budgetLockReason } from '../domain/movementLines';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
@@ -244,11 +245,13 @@ export function addLine(d: BudgetData, m: MonthKey, block: BlockKey, key: string
   return true;
 }
 
-/** Edits a line's name or budget. The actual cannot be edited: it is the sum of the entries (spec 0019, RG19). Refused (false) on a locked month or an unknown line. */
+/** Edits a line's name or budget. The actual cannot be edited: it is the sum of the entries (spec 0019, RG19). Refused (false) on a locked month, an unknown line, or the budget of a line attached to a transfer (spec 0045, RG9). */
 export function updateLine(d: BudgetData, m: MonthKey, key: string, patch: Partial<Pick<Line, 'name' | 'budget'>>): boolean {
   if (isMonthLocked(d, m)) return false;
   const l = d.months[m]?.lines.find(x => x.key === key);
   if (!l) return false;
+  // The budget of a line attached to a transfer stands for part of that transfer: it cannot change until the line is detached (spec 0045, RG9).
+  if (patch.budget !== undefined && patch.budget !== l.budget && budgetLockReason(d, m, l)) return false;
   Object.assign(l, patch);
   return true;
 }

@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { goalHue, goalSummaryText } from '../components/goalStyle';
 import { currentYear, firstGoalOfKind, goalView, summaryGoals } from '../../domain/goals';
+import { DetailsBubble } from '../components/DetailsBubble';
 import { Icon, type IconName } from '../components/Icon';
 import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
 import type { OperationsFocus } from './Expenses';
-import { lineEntriesNote } from '../../domain/lineActuals';
+import { lineEntriesNote, lineEntryDetails } from '../../domain/lineActuals';
 import { LineQuickEntry } from '../components/LineQuickEntry';
 import { LineScheduleMeta } from '../components/LineSchedule';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
@@ -23,7 +23,8 @@ import { envelopeAllocationFigures } from '../../domain/envelopeAllocation';
 import { CashMonthBlock } from '../components/CashMonthBlock';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { isoDate } from '../../domain/checkoff';
-import { lineTooltip } from '../../domain/comingUp';
+import { budgetLockReason } from '../../domain/movementLines';
+import { leftLineKeys, lineTooltip } from '../../domain/comingUp';
 import { envelopeCash } from '../../domain/envelopeCash';
 import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber, round2 } from '../../domain/format';
@@ -112,6 +113,21 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
   const today = isoDate();
   const s = monthSummary(data, ledger, month);
   const [availableInfo, setAvailableInfo] = useState<DOMRect | null>(null);
+  // « Masquer le réel »: focus on the budget while planning; display only, remembered on this device.
+  const [hideActual, setHideActual] = useState(() => localStorage.getItem('budget.hideActual') === '1');
+  const toggleHideActual = () =>
+    setHideActual(v => {
+      localStorage.setItem('budget.hideActual', v ? '0' : '1');
+      return !v;
+    });
+  // « Surligner le reste à sortir »: highlights the lines still to leave an account (« À venir ce mois-ci »); display only, remembered on this device.
+  const [highlightLeft, setHighlightLeft] = useState(() => localStorage.getItem('budget.highlightLeft') === '1');
+  const toggleHighlightLeft = () =>
+    setHighlightLeft(v => {
+      localStorage.setItem('budget.highlightLeft', v ? '0' : '1');
+      return !v;
+    });
+  const leftKeys = highlightLeft && !uninit ? leftLineKeys(data, month, today) : undefined;
   // « Fond de secours »: the first `amount` goal of the current year (spec 0032, Q2); nothing to show without one.
   const emergencyGoal = firstGoalOfKind(data, 'amount');
   const emergency = emergencyGoal ? goalView(data, ledger, emergencyGoal) : null;
@@ -139,7 +155,20 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
         </div>
       )}
       <div className={uninit ? 'is-preview' : undefined}>
-        <CashMonthBlock month={month} />
+        <CashMonthBlock month={month}>
+          <button type="button" role="switch" aria-checked={hideActual} className={`switch${hideActual ? ' is-on' : ''}`} onClick={toggleHideActual}>
+            <span className="switch-track">
+              <span className="switch-thumb" />
+            </span>
+            Masquer le réel
+          </button>
+          <button type="button" role="switch" aria-checked={highlightLeft} className={`switch${highlightLeft ? ' is-on' : ''}`} onClick={toggleHighlightLeft}>
+            <span className="switch-track">
+              <span className="switch-thumb" />
+            </span>
+            Surligner le reste à sortir
+          </button>
+        </CashMonthBlock>
         <div className="summary">
           <div className="panel kpi kpi-hero">
             <div className="kpi-label">Reste à placer</div>
@@ -198,17 +227,17 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
 
         <div className="budget-grid">
           <div className="budget-col">
-            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
-            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
+            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
             <GoalsCard onOpenGoals={onOpenGoals} />
           </div>
           <div className="budget-col">
-            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
-            <BlockCard block="var" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
+            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="var" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
           </div>
           <div className="budget-col">
-            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} />
-            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
           </div>
           <div className="budget-col">
             <EnvelopesCompact month={month} locked={locked || !data.months[month]?.initialized} />
@@ -260,38 +289,7 @@ function availableRealText(d: BudgetData, m: MonthKey): string {
   return lines.join('\n');
 }
 
-const BUBBLE_WIDTH = 300;
-
-/** Bubble of a line's details, beside the row (right if there is room, else left); closed by its cross, a click outside or Escape. */
-function DetailsBubble({ title, text, rect, onClose }: { title: string; text: string; rect: DOMRect; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-  const room = window.innerWidth - rect.right;
-  const left = room >= BUBBLE_WIDTH + 12 ? rect.right + 8 : Math.max(8, rect.left - BUBBLE_WIDTH - 8);
-  return createPortal(
-    <div ref={ref} className="details-bubble" style={{ left, top: Math.max(8, rect.top), width: BUBBLE_WIDTH }}>
-      <div className="details-bubble-head">
-        <div className="popover-title">{title}</div>
-        <div className="icon-btn" onClick={onClose}>
-          <Icon name="close" size={14} />
-        </div>
-      </div>
-      <div className="details-bubble-text">{text}</div>
-    </div>,
-    document.body,
-  );
-}
-
-function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { block: BlockKey; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
+function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, onOpenOperations }: { block: BlockKey; hideActual: boolean; leftKeys?: Set<string>; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
   const [hover, setHover] = useState<string | null>(null);
@@ -308,7 +306,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
   const hasAccount = block === 'rev' || block === 'cre' || block === 'fix';
   // Savings and investments show an estimated balance instead of the gap, and can be tied to a dedicated account (spec 0007).
   const isSavings = block === 'epa' || block === 'inv';
-  const gridClass = `line-grid${isSavings ? ' is-balance' : ''}`;
+  const gridClass = `line-grid${isSavings ? ' is-balance' : ''}${hideActual ? ' no-actual' : ''}`;
   const all = monthLines(data, month);
   const lines = all.filter(l => l.block === block);
   // Lines of an out-of-budget account stay listed but are left out of the totals.
@@ -355,7 +353,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
       <div className={`${gridClass} line-head`}>
         <span>Nom</span>
         <span className="num pad">Budget</span>
-        <span className="num pad">Réel</span>
+        {!hideActual && <span className="num pad">Réel</span>}
         <span className="num">{block === 'var' ? 'Restant' : isSavings ? 'Solde estimé' : 'Écart'}</span>
       </div>
       {sections.map(sec => (
@@ -370,7 +368,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
             return (
               <div
                 key={l.key}
-                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}`}
+                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}${leftKeys?.has(l.key) ? ' is-left' : ''}`}
                 onMouseEnter={() => setHover(l.key)}
                 onMouseLeave={() => setHover(null)}
                 onContextMenu={e => {
@@ -395,14 +393,21 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
                   <EditableText id={`n:${l.key}`} value={l.name} onCommit={name => set(l.key, { name })} className="line-name" inputClassName="cell-input is-text" title={[l.name, lineTooltip(data, month, l, today)].filter(Boolean).join('\n')} disabled={locked}>
                     {l.name}
                   </EditableText>
+                  {budgetLockReason(data, month, l) && (
+                    <span title={budgetLockReason(data, month, l) ?? undefined} style={{ display: 'inline-flex', alignItems: 'center', flex: 'none', marginLeft: 4, opacity: 0.6 }}>
+                      <Icon name="lock" size={11} />
+                    </span>
+                  )}
                   {block !== 'var' && <LineScheduleMeta month={month} line={l} locked={locked} today={today} />}
                   <LineQuickEntry month={month} line={l} locked={locked || !data.months[month]?.initialized} />
                 </div>
                 <div className="rel">
-                  <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked}>
+                  {/* A line attached to a transfer has its budget locked until it is detached (spec 0045, RG9). */}
+                  <EditableAmount id={`b:${l.key}`} value={l.budget} onCommit={v => set(l.key, { budget: v ?? 0 })} className="cell" inputClassName="cell-input" hint="right" disabled={locked || !!budgetLockReason(data, month, l)} title={budgetLockReason(data, month, l) ?? undefined}>
                     {money(l.budget)}
                   </EditableAmount>
                 </div>
+                {!hideActual && (
                 <div className="rel">
                   {/* Read only (spec 0019, RG19, RG24): the actual is the sum of the entries of the line. Its count is in the tooltip of the row;
                       screen readers get the same text through a visually hidden span (no layout effect). */}
@@ -417,6 +422,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
                   </div>
                   <span className="sr-only" id={`entries:${l.key}`}>{lineEntriesNote(data, month, l)}</span>
                 </div>
+                )}
                 {isSavings ? (
                   <div className="num gap" style={{ color: est && est.value < 0 ? BAD : undefined }} title={gap === null ? undefined : `Écart : ${gap === 0 ? money(0) : money(gap, true)}`}>
                     {est ? money(est.value) : '—'}
@@ -427,7 +433,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
                   </div>
                 )}
                 {details?.key === l.key && (
-                  <DetailsBubble title={l.name} text={lineTooltip(data, month, l, today)} rect={details.rect} onClose={() => setDetails(null)} />
+                  <DetailsBubble title={l.name} text={[lineTooltip(data, month, l, today), lineEntryDetails(data, month, l)].filter(Boolean).join('\n\n')} rect={details.rect} onClose={() => setDetails(null)} />
                 )}
                 {hist && (
                   <div className="popover">
@@ -485,7 +491,7 @@ function BlockCard({ block, month, locked, today, strip, onOpenOperations }: { b
           )}
         </div>
         <div className="num pad">{money(totals.budget)}</div>
-        <div className="num pad">{money(totals.actual)}</div>
+        {!hideActual && <div className="num pad">{money(totals.actual)}</div>}
         {isSavings ? (
           <div className="num" style={{ color: estimatedTotal < 0 ? BAD : undefined }} title="Somme des soldes estimés (un compte dédié commun n’est compté qu’une fois)">
             {money(estimatedTotal)}

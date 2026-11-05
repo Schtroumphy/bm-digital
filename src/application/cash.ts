@@ -95,15 +95,15 @@ export function reconcileCashLines(d: BudgetData, m: MonthKey, keys: string[], n
  * What would forbid closing `m` once the given cash lines are regularised: the regularisation changes the actuals, so it can change the amount
  * still available. Computed on a copy; the data given is left untouched.
  */
-export function closeBlockersAfterReconcile(d: BudgetData, m: MonthKey, keys: string[]): CloseBlocker[] {
+export function closeBlockersAfterReconcile(d: BudgetData, m: MonthKey, keys: string[], ignoreAvailable = false): CloseBlocker[] {
   const trial = structuredClone(d);
   reconcileCashLines(trial, m, keys, () => 'trial');
-  return closeBlockers(trial, m);
+  return closeBlockers(trial, m, undefined, ignoreAvailable);
 }
 
 /** Regularises the given cash lines then closes the month, all or nothing: refused (false, nothing changed) when the closing would be refused after the regularisation. */
-export function closeMonthReconciling(d: BudgetData, m: MonthKey, keys: string[], newId: () => string): boolean {
-  if (closeBlockersAfterReconcile(d, m, keys).length) return false;
+export function closeMonthReconciling(d: BudgetData, m: MonthKey, keys: string[], newId: () => string, ignoreAvailable = false): boolean {
+  if (closeBlockersAfterReconcile(d, m, keys, ignoreAvailable).length) return false;
   reconcileCashLines(d, m, keys, newId);
-  return closeMonth(d, m);
+  return closeMonth(d, m, ignoreAvailable);
 }

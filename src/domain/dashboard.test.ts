@@ -1,3 +1,4 @@
+import { envelopeAccountTotal } from './envelopeCash';
 import { describe, expect, it } from 'vitest';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts, newEnvelopeAccount } from './bank';
 import { envelopeAlerts, lineRemaining, monthSummary, variableRemaining } from './budget';
@@ -132,9 +133,10 @@ describe('enveloppes (CA5)', () => {
     const ledger = new Ledger(d, '2027-03');
     const e = view(d).envelopes!;
     expect(e.allocated).toBe(200);
-    const vac = ledger.envMonth('vac', M)!.balance;
-    const san = ledger.envMonth('san', M)!.balance;
-    expect(e.total).toBe(vac + san);
+    // The balance shown is the real one: the envelope's account + its cash, never the budgetary start + allocation.
+    const real = (id: string) => envelopeAccountTotal(d, ledger, id, M)!.total;
+    expect(e.total).toBe(real('vac') + real('san'));
+    for (const r of e.rows) expect(r.balance).toBe(real(r.id));
     for (const r of e.rows) {
       const em = ledger.envMonth(r.id, M)!;
       // Provision: spent against the starting balance (previous balance + money really in on the account), cash included.
@@ -211,7 +213,7 @@ describe('à faire : virements (CA8, spec 0043 CA11)', () => {
 
   it('une allocation dont le transfert est fait n’est plus à faire mais compte dans les faits', () => {
     const d = started();
-    d.accountMovements = [{ id: 'a', month: M, day: 1, label: 'Allocation', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-vac', target: { kind: 'env', id: 'vac' } }];
+    d.accountMovements = [{ id: 'a', month: M, day: 1, label: 'Allocation', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-vac', targets: [{ kind: 'env', id: 'vac' }] }];
     const t = todo(d);
     expect(t.transfers.map(x => x.id)).toEqual(['lt', 'etf', 'mt']);
     expect([t.transfersDone, t.transfersAll]).toEqual([1, 4]);
@@ -224,7 +226,7 @@ describe('à faire : virements (CA8, spec 0043 CA11)', () => {
     expect(ids).not.toContain('cou');
   });
 
-  it('le montant à faire est le reste : le budget moins le réel déjà viré', () => {
+  it('le montant à faire est le reste : le budget moins le réel déjà viré (l’épargne garde cette règle, spec 0043 RG5 amendée)', () => {
     const d = started();
     d.months[M].lines.find(l => l.key === 'lt')!.actual = 250;
     expect(todo(d).transfers.find(x => x.id === 'lt')!.amount).toBe(50);
@@ -423,11 +425,21 @@ describe('Évolution du patrimoine (spec 0030)', () => {
     expect(evo(d).series.map(p => p.month)).toEqual(['2026-10', '2026-11', '2026-12', '2027-01', '2027-02', M]);
   });
 
-  it('RG7 : suit le mois de référence, pas le mois du sélecteur, même non initialisé', () => {
+  it('RG7 : suit le mois du sélecteur', () => {
     const d = started();
-    d.months['2027-04'] = { initialized: false, lines: [], alloc: {}, transfersDone: {} };
-    const v = dashboardView(d, new Ledger(d, '2027-03'), '2027-04', TODAY);
-    expect(v.wealthEvolution).toEqual(view(d).wealthEvolution);
+    const v = dashboardView(d, new Ledger(d, '2027-03'), '2027-02', TODAY);
+    expect(v.wealthEvolution!.month).toBe('2027-02');
+    expect(v.wealthEvolution!.previous).toBe('2027-01');
+  });
+
+  it('depuis le début du budget la première année, depuis janvier ensuite', () => {
+    const d = started();
+    const at = (m: string) => dashboardView(d, new Ledger(d, '2027-03'), m, TODAY).wealthEvolution!.sinceStart;
+    expect(at('2027-01')).toBeNull();
+    expect(at('2027-02')!.from).toBe('budget');
+    d.firstMonth = '2026-06';
+    expect(at('2027-02')!.from).toBe('january');
+    expect(at('2026-09')!.from).toBe('budget');
   });
 
   it('avant le premier mois : aucune évolution', () => {
