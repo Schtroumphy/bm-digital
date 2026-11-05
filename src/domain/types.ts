@@ -168,6 +168,8 @@ export interface Transaction {
   offBudget?: true;
   /** Flagged by the user to find it again through the filter of the Saisie screen. Information only: touches no figure. Only ever `true`; absent = not flagged. */
   flagged?: true;
+  /** Category of the expense (spec 0046): id of a `BudgetData.categories` entry, for `var`, `env`, `fix` and `epd` only. Absent = « Sans catégorie ». Not the Linxo `category` text. */
+  categoryId?: string;
   /** `rev` and `envin` entries only: who paid (free text, facultative). Information only: not part of the fingerprint nor of any figure (spec 0016, RG3). */
   source?: string;
 }
@@ -251,6 +253,16 @@ export interface ImportRule {
   nature: ImportNature;
   /** Absent for a rule « Virement reçu » (`recu`): it only presets the nature (spec 0015, RG19a). */
   target?: ImportTarget;
+  /** Category the rule presets on the imported line (spec 0046, RG14). Absent = « Sans catégorie ». */
+  categoryId?: string;
+}
+
+/** A category of expenses (spec 0046, RG1, RG3): stable id, unique name, hue given at creation and never edited. */
+export interface Category {
+  id: string;
+  name: string;
+  /** OKLCH hue of the category's dot. */
+  hue: number;
 }
 
 /**
@@ -437,6 +449,11 @@ export interface BudgetData {
   adjustments?: Adjustment[];
   /** Corrections of the cash balance of an envelope (spec 0026, RG27 to RG34). Absent = none. */
   cashAdjustments?: CashAdjustment[];
+  /**
+   * Categories of expenses (spec 0046), in display order. Absent = never initialised (the default list is created on load, RG2);
+   * an empty list is a list the user emptied, which is not created again.
+   */
+  categories?: Category[];
   /** Annual goals (spec 0032). Absent = none (or data saved before the goals existed, see `Settings.goalsMigrated`). */
   goals?: Goal[];
   /** Saved simulations, most recent first (spec 0034). Absent = none. */

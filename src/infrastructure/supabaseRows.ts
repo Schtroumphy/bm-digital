@@ -1,5 +1,5 @@
 import type {
-  AccountBalanceEntry, AccountMovement, Adjustment, CashAdjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
+  AccountBalanceEntry, AccountMovement, Adjustment, CashAdjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, Category, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
   MonthData, MovementTarget, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
@@ -45,8 +45,12 @@ export function toRows(d: BudgetData): TableRows {
     emergency_due: orNull(d.settings.emergencyDue),
     invest_due: orNull(d.settings.investDue),
     goals_migrated: d.settings.goalsMigrated === true,
+    // « Liste jamais initialisée » (absente) se distingue d'une « liste vidée » (spec 0046, RG2).
+    categories_initialized: d.categories !== undefined,
     start_date: orNull(d.settings.startDate),
   });
+
+  (d.categories ?? []).forEach((c, position) => rows.categories.push({ id: c.id, name: c.name, hue: c.hue, position }));
 
   (d.goals ?? []).forEach(g =>
     rows.goals.push({
@@ -173,6 +177,7 @@ export function toRows(d: BudgetData): TableRows {
       fingerprint: orNull(t.fingerprint),
       rank: orNull(t.rank),
       category: orNull(t.category),
+      category_id: orNull(t.categoryId),
       detail: orNull(t.detail),
       bank_date: orNull(t.bankDate),
       source: orNull(t.source),
@@ -214,6 +219,7 @@ export function toRows(d: BudgetData): TableRows {
       pattern: r.pattern,
       nature: r.nature,
       target_kind: r.target?.kind ?? null,
+      category_id: orNull(r.categoryId),
       target_id: !r.target ? null : r.target.kind === 'var' || r.target.kind === 'line' || r.target.kind === 'savings' ? r.target.key : r.target.id,
       position,
     }),
@@ -378,6 +384,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       fingerprint: orUndefined(r.fingerprint),
       rank: orUndefined(r.rank),
       category: orUndefined(r.category),
+      categoryId: orUndefined(r.category_id),
       detail: orUndefined(r.detail),
       bankDate: orUndefined(r.bank_date),
       source: orUndefined(r.source),
@@ -414,7 +421,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     const id = r.target_id;
     const target: ImportTarget | undefined =
       id === null ? undefined : r.target_kind === 'var' ? { kind: 'var', key: id } : r.target_kind === 'line' ? { kind: 'line', key: id } : r.target_kind === 'savings' ? { kind: 'savings', key: id } : r.target_kind === 'env' ? { kind: 'env', id } : { kind: 'account', id };
-    return { id: r.id, pattern: r.pattern, nature: r.nature as ImportNature, ...(target ? { target } : {}) };
+    return { id: r.id, pattern: r.pattern, nature: r.nature as ImportNature, ...(target ? { target } : {}), ...(r.category_id ? { categoryId: r.category_id } : {}) };
   });
 
   const importAccountLinks: ImportAccountLink[] = byPosition(rows.import_account_links).map(r => ({
@@ -451,6 +458,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     envelopeId: r.envelope_id,
   }));
 
+  const categories: Category[] = byPosition(rows.categories).map(r => ({ id: r.id, name: r.name, hue: r.hue }));
   const goals: Goal[] = byPosition(rows.goals).map(r => {
     const params = (r.params ?? {}) as { accounts?: unknown; scope?: unknown };
     return compact({
@@ -491,6 +499,8 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     ...(importAccountLinks.length ? { importAccountLinks } : {}),
     ...(adjustments.length ? { adjustments } : {}),
     ...(cashAdjustments.length ? { cashAdjustments } : {}),
+    // Liste présente (même vide) seulement si elle a été initialisée (spec 0046, RG2).
+    ...(s.categories_initialized ? { categories } : {}),
     ...(goals.length ? { goals } : {}),
     ...(simulations.length ? { simulations } : {}),
     planned,

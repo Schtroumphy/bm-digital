@@ -221,3 +221,40 @@ describe('SupabaseRepository : écriture par diff', () => {
     expect(writes(remote.calls)).toEqual([]);
   });
 });
+
+describe('catégories de dépenses (spec 0046)', () => {
+  it('la liste, la catégorie d’une dépense et celle d’une règle se convertissent dans les deux sens', () => {
+    const data = completeData();
+    const rows = toRows(data);
+    expect(rows.categories).toEqual([{ id: 'cat-ali', name: 'Alimentation', hue: 28, position: 0 }, { id: 'cat-log', name: 'Logement', hue: 165, position: 1 }]);
+    expect(rows.settings[0].categories_initialized).toBe(true);
+    expect(rows.transactions.find(t => t.id === 't-cat')!.category_id).toBe('cat-ali');
+    expect(rows.transactions[0].category_id).toBeNull();
+    expect(rows.import_rules[0].category_id).toBe('cat-ali');
+    const back = fromRows(withUser(rows))!;
+    expect(back.categories).toEqual(data.categories);
+    expect(back.transactions.find(t => t.id === 't-cat')!.categoryId).toBe('cat-ali');
+    expect(back.transactions[0]).not.toHaveProperty('categoryId');
+    expect(back.importRules![1]).not.toHaveProperty('categoryId');
+  });
+
+  it('CA1 : une liste vidée (initialisée, sans ligne) revient vide ; une liste jamais créée reste absente', () => {
+    const emptied = { ...completeData(), categories: [] };
+    expect(fromRows(withUser(toRows(emptied)))!.categories).toEqual([]);
+    const never = completeData();
+    delete never.categories;
+    expect(fromRows(withUser(toRows(never)))).not.toHaveProperty('categories');
+  });
+
+  it('le dépôt enregistre les catégories (diff) et les recharge', async () => {
+    const remote = createMemoryRemote();
+    const repo = createSupabaseRepository(remote);
+    const data = completeData();
+    await repo.save(data);
+    const changed = structuredClone(data);
+    changed.categories = [changed.categories![0]];
+    await repo.save({ ...changed, transactions: changed.transactions.filter(t => t.id !== 't-cat') });
+    const loaded = await createSupabaseRepository(remote).load();
+    expect(loaded?.categories).toEqual([data.categories![0]]);
+  });
+});

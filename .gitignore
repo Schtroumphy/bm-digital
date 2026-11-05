@@ -19,3 +19,6 @@ backups/
 
 # Relevés bancaires exportés (données financières personnelles)
 docs/relevés/
+
+# Fichiers temporaires du CLI Supabase
+supabase/.temp/

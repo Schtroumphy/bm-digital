@@ -18,6 +18,7 @@ export type ReadRows = { [T in TableName]: SelectRow<T>[] };
 export const TABLE_ORDER: readonly TableName[] = [
   'settings',
   'bank_accounts',
+  'categories',
   'envelopes',
   'template_lines',
   'months',
@@ -47,6 +48,7 @@ export const TABLE_ORDER: readonly TableName[] = [
 export const TABLE_KEYS: Record<TableName, readonly string[]> = {
   settings: [],
   bank_accounts: ['id'],
+  categories: ['id'],
   envelopes: ['id'],
   template_lines: ['key'],
   months: ['month'],

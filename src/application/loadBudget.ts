@@ -1,3 +1,4 @@
+import { withDefaultCategories } from '../domain/categories';
 import { clearManualActuals, migrateBankAccounts, migrateCashWithdrawals, migrateCheckAmounts, migrateEnvelopeOpeningCash, migrateGoals, migrateLineStatements, migrateMovementTargets } from '../domain/migrate';
 import type { BudgetData } from '../domain/types';
 import type { BudgetRepository } from './ports';
@@ -18,12 +19,15 @@ export async function loadBudget(repository: BudgetRepository, initialData: () =
   const withGoals = migrateGoals(withCash);
   // The statements of the lines become statements of their dedicated account (spec 0041, RG24); those that cannot are counted, for a banner shown once.
   const statements = migrateLineStatements(withGoals);
-  const loaded = { ...clearManualActuals(statements.data), unconverted: statements.unconverted };
+  // The default categories are created once, when the data have no list yet (spec 0046, RG2); saved right away like the other conversions.
+  const withCategories = withDefaultCategories(statements.data);
+  const loaded = { ...clearManualActuals(withCategories), unconverted: statements.unconverted };
   // Goals migrated from the old settings (spec 0032, RG15) are saved right away, like the cleaned actuals.
   const goalsMigrated = stored !== null && stored.settings.goalsMigrated !== true;
   const cashMigrated = withCash !== base;
   const targetsMigrated = retargeted !== start;
   const statementsMigrated = statements.data !== withGoals;
-  if (loaded.cleared > 0 || goalsMigrated || cashMigrated || statementsMigrated || targetsMigrated) await repository.save(loaded.data).catch(() => undefined);
+  const categoriesCreated = stored !== null && withCategories !== statements.data;
+  if (loaded.cleared > 0 || goalsMigrated || cashMigrated || statementsMigrated || targetsMigrated || categoriesCreated) await repository.save(loaded.data).catch(() => undefined);
   return loaded;
 }

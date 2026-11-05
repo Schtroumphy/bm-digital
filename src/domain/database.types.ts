@@ -390,6 +390,30 @@ export type Database = {
         }
         Relationships: []
       }
+      categories: {
+        Row: {
+          hue: number
+          id: string
+          name: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          hue: number
+          id: string
+          name: string
+          position?: number
+          user_id?: string
+        }
+        Update: {
+          hue?: number
+          id?: string
+          name?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       goals: {
         Row: {
           due: string | null
@@ -455,6 +479,7 @@ export type Database = {
       }
       import_rules: {
         Row: {
+          category_id: string | null
           id: string
           nature: string
           pattern: string
@@ -464,6 +489,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          category_id?: string | null
           id: string
           nature: string
           pattern: string
@@ -473,6 +499,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          category_id?: string | null
           id?: string
           nature?: string
           pattern?: string
@@ -609,6 +636,7 @@ export type Database = {
       }
       settings: {
         Row: {
+          categories_initialized: boolean
           emergency_accounts: string[]
           emergency_due: string | null
           emergency_target: number
@@ -623,6 +651,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          categories_initialized?: boolean
           emergency_accounts?: string[]
           emergency_due?: string | null
           emergency_target?: number
@@ -637,6 +666,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          categories_initialized?: boolean
           emergency_accounts?: string[]
           emergency_due?: string | null
           emergency_target?: number
@@ -753,6 +783,7 @@ export type Database = {
       }
       transactions: {
         Row: {
+          category_id: string | null
           account_id: string | null
           amount: number
           assigned_account_id: string | null
@@ -777,6 +808,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          category_id?: string | null
           account_id?: string | null
           amount: number
           assigned_account_id?: string | null
@@ -801,6 +833,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          category_id?: string | null
           account_id?: string | null
           amount?: number
           assigned_account_id?: string | null

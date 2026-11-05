@@ -6,6 +6,7 @@ import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId } fr
 import { cashPartAbove } from '../domain/cash';
 import { exceedsEnvelopeCash } from '../domain/envelopeCash';
 import { isMonthLocked } from '../domain/ledger';
+import { isCategorizableType } from '../domain/categories';
 import { deducedDate, validateBudgetStart } from '../domain/periods';
 import { budgetLockReason } from '../domain/movementLines';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
@@ -283,6 +284,8 @@ const withoutAccount = ({ accountId: _accountId, ...rest }: Transaction): Transa
 export function addTransaction(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
   if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
+  // A category goes only on an expense of a categorisable type, and must exist (spec 0046, RG6, RG7).
+  if (input.categoryId !== undefined && (!isCategorizableType(input.type) || !(d.categories ?? []).some(c => c.id === input.categoryId))) return false;
   if (input.offBudget !== undefined && (!isAssignableType(input.type) || input.assignedAccountId !== undefined)) return false;
   if (input.type === 'fix' || input.type === 'rev') return addLineExpense(d, input, keepAssignment);
   if (input.type === 'envin') return addEnvelopeInflow(d, input);
@@ -404,6 +407,8 @@ export interface TransactionPatch {
   assignedAccountId?: string | null;
   /** Marked « hors budget » (spec 0031): undefined = keep the current marking. Dropped when the operation is assigned to an account. */
   offBudget?: boolean;
+  /** Category (spec 0046): undefined = keep the current one, null = remove it. Dropped when the new type cannot carry one. */
+  categoryId?: string | null;
 }
 
 /**
@@ -421,12 +426,13 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   if ((old.type === 'epd') !== (patch.type === 'epd')) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
-  const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, offBudget: _o, ...kept } = old;
+  const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, ...kept } = old;
+  const category = patch.categoryId === undefined ? old.categoryId : (patch.categoryId ?? undefined);
   const assigned = patch.assignedAccountId === undefined ? old.assignedAccountId : (patch.assignedAccountId ?? undefined);
   const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(category !== undefined && isCategorizableType(patch.type) ? { categoryId: category } : {}), ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;

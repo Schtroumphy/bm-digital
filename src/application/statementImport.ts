@@ -94,6 +94,8 @@ export interface PreviewLine {
   assignedAccountId?: string;
   /** Same kinds of line: marked « hors budget » with no account (spec 0031). Exclusive with `assignedAccountId`. Absent = counted. */
   offBudget?: boolean;
+  /** Expense (`depense`, `externe`) only: category of the entry written (spec 0046, RG13). Preset by a rule that has one (RG14). Absent = « Sans catégorie ». Not part of the fingerprint. */
+  categoryId?: string;
 }
 
 /** The two accounts a line of nature « virement » (debit `interne`/`retrait`, credit `recu`) moves money between; null when it is not one or has no target yet. */
@@ -299,9 +301,13 @@ function matchingRule(d: BudgetData, sourceId: string, row: StatementRow, month:
 }
 
 /** Nature and target proposed for a line (RG35, RG16): a remembered rule first, then the keywords, else a plain expense. */
-function proposal(d: BudgetData, sourceId: string, row: StatementRow, month: MonthKey): { nature: LineNature; target: ImportTarget | null } {
+function proposal(d: BudgetData, sourceId: string, row: StatementRow, month: MonthKey): { nature: LineNature; target: ImportTarget | null; categoryId?: string } {
   const rule = matchingRule(d, sourceId, row, month);
-  if (rule) return { nature: rule.nature, target: rule.target ?? null };
+  if (rule) {
+    // The category of the rule is preset only if it still exists and the rule is an expense rule (spec 0046, RG14).
+    const exists = rule.categoryId !== undefined && (d.categories ?? []).some(c => c.id === rule.categoryId);
+    return { nature: rule.nature, target: rule.target ?? null, ...(exists && (rule.nature === 'depense' || rule.nature === 'externe') ? { categoryId: rule.categoryId } : {}) };
+  }
   if (row.direction === 'credit') {
     // An entry of money on an envelope's account comes from « Enveloppes (global) » (spec 0016, RG27); otherwise it is a « Revenu » by default,
     // a transfer-like label only adds a hint (spec 0015, RG17, RG18).
@@ -373,11 +379,11 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
       lines.push({ ...base, duplicate: false, similarManual: false, similarImported: null, transferHint: false, receivedHint: credit && isTransferReceived(row), nature: credit ? 'revenu' : 'depense', target: null, checked: false });
       return;
     }
-    const { nature, target } = proposal(d, accountId, row, month);
+    const { nature, target, categoryId } = proposal(d, accountId, row, month);
     const duplicate = known.has(importKey(accountId, fingerprint, rank));
     const near = (byDay.get(dayKey(accountId, row.date, row.amount, credit)) ?? []).filter(x => x.fingerprint !== fingerprint);
     const fresh: PreviewLine = {
-      ...base, duplicate, nature, target,
+      ...base, duplicate, nature, target, ...(categoryId !== undefined ? { categoryId } : {}),
       similarManual: manual.has(dayKey(accountId, row.date, row.amount, credit)),
       similarImported: near.length === 0 ? null : row.category !== '' && near.some(x => x.category === row.category) ? 'probable' : 'semblable',
       transferHint: nature === 'a_qualifier',
@@ -391,7 +397,7 @@ export function prepareImport(d: BudgetData, reading: StatementReading, choices:
     if (old && old.accountId === accountId && old.rank === rank) {
       // Only a line the user touched (or already linked/unlinked) is protected from the automatic pairing; an untouched one may now find its other half.
       if (old.link !== undefined || old.nature !== fresh.nature || old.checked !== fresh.checked || JSON.stringify(old.target) !== JSON.stringify(fresh.target)) carried.add(fresh.id);
-      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source, assignedAccountId: old.assignedAccountId, offBudget: old.offBudget });
+      lines.push({ ...fresh, nature: old.nature, target: old.target, month: old.month, checked: old.checked && !duplicate, remember: old.remember, newLineName: old.newLineName, attach: old.attach, link: old.link, ambiguous: old.ambiguous, source: old.source, assignedAccountId: old.assignedAccountId, offBudget: old.offBudget, categoryId: old.categoryId });
     } else lines.push(fresh);
   });
   // Debits and entries of money are listed together, by date (RG59); the sort keeps the file's order for the same day.
@@ -751,6 +757,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
   const chosenIds = new Set(chosen.map(l => l.id));
   const batch: ImportBatch = { outsideBalances: 0, expenses: 0, revenues: 0, envelopeEntries: 0, envelopeEntriesTotal: 0, accountEntries: 0, accountEntriesTotal: 0, withdrawals: 0, internalTransfers: 0, linkedTransfers: 0, envelopeTransfers: 0, completedFaces: 0, importedIds: [], failedIds: [] };
   const assignment = (l: PreviewLine) => (l.assignedAccountId ? { assignedAccountId: l.assignedAccountId } : l.offBudget ? { offBudget: true as const } : {});
+  const categoryOf = (l: PreviewLine) => (l.categoryId !== undefined && (d.categories ?? []).some(c => c.id === l.categoryId) ? { categoryId: l.categoryId } : {});
   const traceOf = (l: PreviewLine): ImportTrace => ({ importAccountId: l.accountId!, fingerprint: l.fingerprint, rank: l.rank, bankDate: l.row.date });
 
   const imported: PreviewLine[] = [];
@@ -811,12 +818,12 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
     } else if (isExpenseNature(l.nature)) {
       const tx: Transaction =
         t.kind === 'var'
-          ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId, ...assignment(l) }
+          ? { id: newId('t'), ...base, type: 'var', target: targetId, accountId: fixedTransactionAccountId(d, { type: 'var', month: l.month, target: targetId }) ?? sourceId, ...assignment(l), ...categoryOf(l) }
           : t.kind === 'line'
-            ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId, ...assignment(l) }
+            ? { id: newId('t'), ...base, type: 'fix', target: targetId, accountId: sourceId, ...assignment(l), ...categoryOf(l) }
             : t.kind === 'savings'
-              ? { id: newId('t'), ...base, type: 'epd', target: targetId, accountId: sourceId }
-              : { id: newId('t'), ...base, type: 'env', target: targetId };
+              ? { id: newId('t'), ...base, type: 'epd', target: targetId, accountId: sourceId, ...categoryOf(l) }
+              : { id: newId('t'), ...base, type: 'env', target: targetId, ...categoryOf(l) };
       if (addTransaction(d, tx)) {
         batch.expenses++;
         imported.push(l);
@@ -878,7 +885,7 @@ export function validateImport(d: BudgetData, preview: ImportPreview, newId: (pr
   batch.importedIds = imported.map(l => l.id);
   batch.outsideBalances = imported.filter(l => lineBalanceWarning(d, l) !== null).length;
 
-  for (const l of imported) if (l.remember !== null && l.nature !== 'envin' && l.nature !== 'accin' && !(l.target?.kind === 'line' && l.target.key === NEW_REVENUE_LINE)) rememberRule(d, l.remember, l.nature as ImportNature, l.target ?? undefined, newId);
+  for (const l of imported) if (l.remember !== null && l.nature !== 'envin' && l.nature !== 'accin' && !(l.target?.kind === 'line' && l.target.key === NEW_REVENUE_LINE)) rememberRule(d, l.remember, l.nature as ImportNature, l.target ?? undefined, newId, isExpenseNature(l.nature) ? categoryOf(l).categoryId : undefined);
   // A match with an account, chosen in the banner, is written only if a line of that pair was written (RG74).
   const importedPairs = new Set(imported.map(l => l.pairKey));
   for (const p of preview.pairs) {
@@ -912,7 +919,7 @@ export function hasPendingCorrections(d: BudgetData, reading: StatementReading, 
 }
 
 /** Adds the rule, or updates the one with the same pattern (RG18). An empty pattern remembers nothing. */
-export function rememberRule(d: BudgetData, pattern: string, nature: ImportNature, target: ImportTarget | undefined, newId: (prefix: string) => string) {
+export function rememberRule(d: BudgetData, pattern: string, nature: ImportNature, target: ImportTarget | undefined, newId: (prefix: string) => string, categoryId?: string) {
   const p = normalizeLabel(pattern);
   if (!p) return;
   const rules = (d.importRules ??= []);
@@ -921,5 +928,8 @@ export function rememberRule(d: BudgetData, pattern: string, nature: ImportNatur
     same.nature = nature;
     if (target) same.target = target;
     else delete same.target;
-  } else rules.push({ id: newId('r'), pattern: p, nature, ...(target ? { target } : {}) });
+    // The rule retains the category chosen on the line, « Sans catégorie » included (spec 0046, RG14).
+    if (categoryId) same.categoryId = categoryId;
+    else delete same.categoryId;
+  } else rules.push({ id: newId('r'), pattern: p, nature, ...(target ? { target } : {}), ...(categoryId ? { categoryId } : {}) });
 }
