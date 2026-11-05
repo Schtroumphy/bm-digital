@@ -60,8 +60,8 @@ const plural = (n: number) => (n > 1 ? 'lignes' : 'ligne');
 function AccountSummary({ p }: { p: AccountComingUp }) {
   return (
     <div className="pt-body">
-      {p.groups.length === 0 && <div className="pt-line"><span>Rien à sortir</span></div>}
-      {p.groups.map(g => (
+      {p.groups.every(g => g.items.length === 0) && <div className="pt-line"><span>Rien à sortir</span></div>}
+      {p.groups.filter(g => g.items.length > 0).map(g => (
         <div key={g.id} className="pt-line">
           <span>{g.label} ({g.items.length} {plural(g.items.length)})</span>
           <span>{money(-g.total, true)}</span>
@@ -81,15 +81,24 @@ function AccountSummary({ p }: { p: AccountComingUp }) {
   );
 }
 
-function ItemRow({ x }: { x: LeftItem }) {
+function ItemRow({ x, done }: { x: LeftItem; done?: boolean }) {
   return (
-    <div className="pt-row">
+    <div className={done ? 'pt-row is-grey' : 'pt-row'}>
       <span>
         {x.name}
         {x.day !== undefined && <span className="pt-maj"> le {x.day}</span>}
         {x.late && <span className="late-badge">en retard</span>}
       </span>
-      <span title={`Budget ${money(x.budget)} ; reste ${money(x.amount)}`}>{money(x.amount)}</span>
+      <span title={done ? `Budget ${money(x.budget)} ; sorti ${money(x.amount)}` : `Budget ${money(x.budget)} ; reste ${money(x.amount)}`}>{money(x.amount)}</span>
+    </div>
+  );
+}
+
+function SubHead({ label, total }: { label: string; total: number }) {
+  return (
+    <div className="pt-detail-sub" style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <span>{label}</span>
+      <span>{money(total)}</span>
     </div>
   );
 }
@@ -101,8 +110,10 @@ function AccountDetail({ p }: { p: AccountComingUp }) {
         {p.groups.length === 0 && <div className="pt-row is-grey"><span>Rien à sortir</span></div>}
         {p.groups.map(g => (
           <div key={g.id}>
-            <div className="pt-detail-sub">{g.label}</div>
+            <SubHead label={g.label} total={g.total} />
             {g.items.map(x => <ItemRow key={`${x.kind}:${x.id}`} x={x} />)}
+            {g.done.length > 0 && <SubHead label="Déjà sorti" total={g.done.reduce((t, x) => t + x.amount, 0)} />}
+            {g.done.map(x => <ItemRow key={`done:${x.kind}:${x.id}`} x={x} done />)}
           </div>
         ))}
         {p.expectedItems.length > 0 && (

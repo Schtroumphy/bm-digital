@@ -4,6 +4,8 @@ import { compareMonths, round2 } from './format';
 import { hasEnvelopesDebit } from './internalTransfers';
 import { lineEntriesNote } from './lineActuals';
 import { isMonthLocked, monthLines } from './ledger';
+import { isDedicatedVarLine } from './transfers';
+import { movementAccountName } from './internalTransfers';
 import { transfersTargeting } from './movementTargets';
 import { realMovements } from './bankMovements';
 import { periodOf } from './periods';
@@ -79,6 +81,8 @@ export interface LeftGroup {
   label: string;
   total: number;
   items: LeftItem[];
+  /** What already left in this group (amount = actual paid), for the detail. */
+  done: LeftItem[];
 }
 
 export interface AccountComingUp {
@@ -136,21 +140,36 @@ export function accountComingUp(d: BudgetData, m: MonthKey, accountId: string, t
   const account = d.accounts.find(a => a.id === accountId);
   if (!account) return null;
   const items: { group: LeftGroupId; item: LeftItem }[] = [];
+  const doneItems: { group: LeftGroupId; item: LeftItem }[] = [];
   for (const l of payLines(d, m, accountId)) {
     const item = itemOfLine(d, m, l, today);
     if (item.amount > 0) items.push({ group: groupOfMode(l.execMode), item });
+    if ((l.actual ?? 0) > 0) doneItems.push({ group: groupOfMode(l.execMode), item: { ...item, amount: l.actual ?? 0, late: false } });
   }
   if (accountId === mainAccount(d).id) {
     for (const e of allocationEnvelopes(d, m)) {
       const amount = leftOfAllocation(d, m, e.id);
-      if (amount > 0) items.push({ group: 'autres', item: { id: e.id, kind: 'allocation', name: `Alloc. ${e.name}`, amount, budget: (d.months[m].alloc[e.id] ?? 0) - (d.months[m].cashPart?.[e.id] ?? 0), late: false } });
+      const budget = (d.months[m].alloc[e.id] ?? 0) - (d.months[m].cashPart?.[e.id] ?? 0);
+      const base = { id: e.id, kind: 'allocation' as const, name: `Alloc. ${e.name}`, budget, late: false };
+      if (amount > 0) items.push({ group: 'autres', item: { ...base, amount } });
+      const sent = round2(budget - amount);
+      if (sent > 0 && !hasEnvelopesDebit(d, m)) doneItems.push({ group: 'autres', item: { ...base, amount: sent } });
     }
+  }
+  // Money already sent to the dedicated account of a variable line (e.g. Boursorama for Alimentation): it has left this account.
+  for (const mv of d.accountMovements ?? []) {
+    if (mv.month !== m || mv.fromAccountId !== accountId || mv.target?.kind !== 'line') continue;
+    const key = mv.target.key;
+    const l = monthLines(d, m).find(x => x.key === key);
+    if (!l || !isDedicatedVarLine(d, l)) continue;
+    doneItems.push({ group: groupOfMode(l.execMode), item: { id: mv.id, kind: 'line', name: `${l.name} → ${movementAccountName(d, mv.toAccountId)}`, amount: mv.amount, budget: l.budget, day: mv.day, late: false } });
   }
   const byDay = (a: LeftItem, b: LeftItem) => (a.day ?? Infinity) - (b.day ?? Infinity);
   const groups = LEFT_GROUPS.map(g => {
     const mine = items.filter(x => x.group === g.id).map(x => x.item).sort(byDay);
-    return { ...g, total: round2(mine.reduce((s, x) => s + x.amount, 0)), items: mine };
-  }).filter(g => g.items.length > 0);
+    const done = doneItems.filter(x => x.group === g.id).map(x => x.item).sort(byDay);
+    return { ...g, total: round2(mine.reduce((s, x) => s + x.amount, 0)), items: mine, done };
+  }).filter(g => g.items.length > 0 || g.done.length > 0);
   const total = round2(groups.reduce((s, g) => s + g.total, 0));
   const reference = referenceBalance(d, m, accountId, today);
   const expectedItems = monthLines(d, m)

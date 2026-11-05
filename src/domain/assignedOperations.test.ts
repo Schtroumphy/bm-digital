@@ -216,6 +216,21 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
     expect(row.change).toBe(30);
   });
 
+  it('carte Épargne : un virement entre deux comptes de la carte reste sur leurs lignes mais sort du total reçu / dépensé', () => {
+    const d = budget();
+    d.accountMovements = [
+      { id: 'm1', month: M, day: 10, label: 'Réaffectation', amount: 800, fromAccountId: LDDS, toAccountId: INV },
+      { id: 'm2', month: M, day: 11, label: 'Épargne du mois', amount: 100, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: LDDS },
+    ];
+    const s = dashboardView(d, led(d), M, '2026-10-20').savingsAccounts!;
+    const ldds = s.rows.find(r => r.id === LDDS)!;
+    const inv = s.rows.find(r => r.id === INV)!;
+    expect([ldds.received, ldds.spent]).toEqual([100, 800]);
+    expect([inv.received, inv.spent]).toEqual([800, 0]);
+    expect([s.total.received, s.total.spent]).toEqual([100, 0]);
+    expect(s.total.change).toBe(s.total.received - s.total.spent);
+  });
+
   it('carte Épargne (0029, RG3) : un compte archivé n’apparaît que s’il a un mouvement ou une affectée', () => {
     const d = budget();
     d.accounts.find(a => a.id === LDDS)!.archived = true;
