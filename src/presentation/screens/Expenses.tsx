@@ -1,12 +1,15 @@
 import { Fragment, useEffect, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
+import { CategorySelect, LOCKED_HINT } from '../components/CategorySelect';
 import { DetailInput } from '../components/DetailInput';
 import { EntryDate } from '../components/EntryDate';
 import { Icon } from '../components/Icon';
 import { MovementGap, MovementLines } from '../components/MovementLines';
 import { GOOD, HUE, tone } from '../components/tone';
 import { deleteTransaction, deleteTransactions, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
+import { setCategoryOnSelection, setTransactionCategory, groupedMessage } from '../../application/categories';
+import { isCategorizableType, isUncategorized } from '../../domain/categories';
 import { addManualTransaction, addManualTransfer } from '../../application/manualEntry';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
@@ -148,8 +151,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; flaggedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', flaggedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '' });
+  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string; categoryId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', flaggedOnly: false, uncategorizedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // The list below the form is split in two tabs: the transactions and the transfers (account movements); the filters apply to both.
   const [view, setView] = useState<'ops' | 'transferts'>('ops');
@@ -157,7 +160,13 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const [transfer, setTransfer] = useState(false);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
   const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
-  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string; assignedAccountId: string } | null>(null);
+  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string; assignedAccountId: string; categoryId: string } | null>(null);
+  // Grouped classification (spec 0046, RG12): category chosen in the selection bar ('' = Sans catégorie) and the message of the last application.
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkMessage, setBulkMessage] = useState('');
+  // Layout: the creation form lives in a right-hand panel opened by « Nouvelle opération »; the less used filters fold behind « Plus de filtres ».
+  const [formOpen, setFormOpen] = useState(false);
+  const [moreFilters, setMoreFilters] = useState(false);
   const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
   const saveDetail = () => {
     if (!editingDetail) return;
@@ -217,10 +226,11 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
     .filter(t => !filter.target || (t.target === filter.target && !isTransactionOffBudget(t)))
     .filter(t => matchesEntrySearch(t, filter.q))
     .filter(t => !filter.flaggedOnly || t.flagged === true)
+    .filter(t => !filter.uncategorizedOnly || isUncategorized(data, t))
     .filter(t => (!filter.from || bankDateOf(t, data) >= filter.from) && (!filter.to || bankDateOf(t, data) <= filter.to))
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
     .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
-  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || filter.accountId !== 'all' || filter.flaggedOnly || filter.from || filter.to || filter.min || filter.max);
+  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || filter.accountId !== 'all' || filter.flaggedOnly || filter.uncategorizedOnly || filter.from || filter.to || filter.min || filter.max);
   const envelopeEntriesTotal = round2(txs.filter(t => t.type === 'envin').reduce((a, t) => a + t.amount, 0));
   const accountEntriesTotal = round2(txs.filter(t => t.type === 'accin').reduce((a, t) => a + t.amount, 0));
   const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
@@ -239,6 +249,14 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
       if (!next.delete(id)) next.add(id);
       return next;
     });
+  const applyCategory = () => {
+    if (picked.length === 0) return;
+    const ids = picked.map(t => t.id);
+    const category = bulkCategory || undefined;
+    // Tried on a copy first to tell the user how many were changed or ignored; `update` then does the same on the real data.
+    setBulkMessage(groupedMessage(setCategoryOnSelection(structuredClone(data), ids, category)));
+    update(d => void setCategoryOnSelection(d, ids, category));
+  };
   const removePicked = () => {
     if (locked || picked.length === 0) return;
     if (!window.confirm(`Supprimer ${picked.length} opération${picked.length > 1 ? 's' : ''} (dépenses : ${money(spentOf(picked))}) ?`)) return;
@@ -248,8 +266,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   };
   const targetsOf = (type: TxType, payerId?: string): [string, string][] =>
     type === 'epd' ? savingsExpenseLines(data, month, bankAccount(data, payerId)?.id ?? '').map(l => [l.key, l.name]) : type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, l.name]) : type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, l.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
-  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t, data), detail: t.detail ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? (t.offBudget ? OFF_BUDGET_CHOICE : '') });
-  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target, assignedAccountId: editingTx.assignedAccountId === OFF_BUDGET_CHOICE ? null : editingTx.assignedAccountId || null, offBudget: editingTx.assignedAccountId === OFF_BUDGET_CHOICE };
+  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t, data), detail: t.detail ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? (t.offBudget ? OFF_BUDGET_CHOICE : ''), categoryId: t.categoryId ?? '' });
+  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target, assignedAccountId: editingTx.assignedAccountId === OFF_BUDGET_CHOICE ? null : editingTx.assignedAccountId || null, offBudget: editingTx.assignedAccountId === OFF_BUDGET_CHOICE, categoryId: editingTx.categoryId || null };
   // The edit is tried on a copy first: a refused version (locked month, imputation or account not allowed) leaves the entry untouched and keeps the form open.
   const editAllowed = !!editingTx && !!editPatch && updateTransaction(structuredClone(data), editingTx.id, editPatch);
   const saveEdit = () => {
@@ -335,13 +353,15 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
     ];
   }
 
+  const categories = data.categories ?? [];
+  const formCategory = categories.some(c => c.id === form.categoryId) ? form.categoryId : '';
   const add = () => {
     if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused || !isRealDate(entryDate)) return;
     update(d =>
-      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(txType, txTarget), amount, type: txType, target: txTarget, ...(cashLine ? {} : { accountId }), detail: form.detail, ...((entryEnvelopeId || entryAccountId) && form.source.trim() ? { source: form.source.trim() } : {}), ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
+      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(txType, txTarget), amount, type: txType, target: txTarget, ...(cashLine ? {} : { accountId }), detail: form.detail, ...(formCategory && isCategorizableType(txType) ? { categoryId: formCategory } : {}), ...((entryEnvelopeId || entryAccountId) && form.source.trim() ? { source: form.source.trim() } : {}), ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '' }));
+    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -355,8 +375,23 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
 
   return (
     <div className="dep-layout">
-      <div className="panel-lg form-card">
-        <div className="form-title">Nouvelle opération</div>
+      <div className="panel-lg flow">
+        {flow.map((c, i) => (
+          <div key={c.label} className={`flow-cell${c.hero ? ' is-hero' : ''}${i === flow.length - 1 ? ' is-last' : ''}`}>
+            <div className="flow-label">{c.label}</div>
+            <div className="flow-value">{money(c.value)}</div>
+          </div>
+        ))}
+      </div>
+      {formOpen && <div className="drawer-backdrop" onClick={() => setFormOpen(false)} />}
+      {formOpen && (
+      <aside className="panel-lg form-card drawer" aria-label="Nouvelle opération">
+        <div className="drawer-head">
+          <div className="form-title">Nouvelle opération</div>
+          <span className="icon-btn" role="button" title="Fermer" onClick={() => setFormOpen(false)}>
+            <Icon name="close" size={14} />
+          </span>
+        </div>
         <div className="form-row">
           <label className="field-w">
             <span className="field-label">Libellé</span>
@@ -446,6 +481,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           )}
         </div>
         {isAssignableType(txType) && <AssignPicker accounts={assignOptions} value={assignedId} disabled={locked} onChange={assignedAccountId => setForm(f => ({ ...f, assignedAccountId }))} />}
+        {isCategorizableType(txType) && <CategorySelect categories={categories} value={formCategory} disabled={locked} lockedHint={LOCKED_HINT} onChange={categoryId => setForm(f => ({ ...f, categoryId }))} />}
         {cashRefused && <div className="alert-box">Espèces insuffisantes sur cette enveloppe.</div>}
         {lineBlocker && <div className="alert-box">{lineBlocker}</div>}
         {accountRefused && <div className="alert-box">Choisis un compte différent du compte débité (le compte dédié de la ligne).</div>}
@@ -464,46 +500,58 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
         </div>
           </>
         )}
-      </div>
+      </aside>
+      )}
 
       <div className="dep-side">
-        <div className="panel-lg flow">
-          {flow.map((c, i) => (
-            <div key={c.label} className={`flow-cell${c.hero ? ' is-hero' : ''}${i === flow.length - 1 ? ' is-last' : ''}`}>
-              <div className="flow-label">{c.label}</div>
-              <div className="flow-value">{money(c.value)}</div>
-            </div>
-          ))}
-        </div>
         <div className="panel-lg">
           <div className="tx-head">
-            <div className="tx-title">{view === 'ops' ? 'Opérations' : 'Transferts'} de {monthLabel(month)}</div>
-            {view === 'ops' ? (
-              <b title={`Total des dépenses (les entrées d’argent ne comptent pas)${assignedSpent > 0 ? `\ndont ${money(assignedSpent)} hors budget / affectés` : ''}${envelopeEntriesTotal > 0 ? `\nEntrées sur enveloppe du mois : ${money(envelopeEntriesTotal)} (non déduites)` : ''}${accountEntriesTotal > 0 ? `\nEntrées sur compte hors budget du mois : ${money(accountEntriesTotal)} (non déduites)` : ''}`}>{money(spentOf(txs))}</b>
-            ) : (
-              <b>{money(allMovements.reduce((a, m) => a + m.amount, 0))}</b>
-            )}
+            <div>
+              <div className="tx-title">{view === 'ops' ? 'Opérations' : 'Transferts'} de {monthLabel(month)}</div>
+              <div className="tx-sub" title={view === 'ops' ? `Total des dépenses (les entrées d’argent ne comptent pas)${assignedSpent > 0 ? `\ndont ${money(assignedSpent)} hors budget / affectés` : ''}${envelopeEntriesTotal > 0 ? `\nEntrées sur enveloppe du mois : ${money(envelopeEntriesTotal)} (non déduites)` : ''}${accountEntriesTotal > 0 ? `\nEntrées sur compte hors budget du mois : ${money(accountEntriesTotal)} (non déduites)` : ''}` : undefined}>
+                {view === 'ops' ? `${txs.length} opération${txs.length > 1 ? 's' : ''} · total ${money(spentOf(txs))}` : `${allMovements.length} transfert${allMovements.length > 1 ? 's' : ''} · total ${money(allMovements.reduce((a, m) => a + m.amount, 0))}`}
+              </div>
+            </div>
+            <button type="button" className="btn-dark" onClick={() => setFormOpen(true)}>
+              <Icon name="plus" size={15} stroke={3} />
+              Nouvelle opération
+            </button>
           </div>
-          <div className="tabs" style={{ margin: '0 16px 8px' }}>
+          <div className="tabs" style={{ margin: '0 22px 10px' }}>
             {([['ops', 'Opérations', txs.length], ['transferts', 'Transferts', allMovements.length]] as const).map(([id, name, n]) => (
               <div key={id} className={`tab${view === id ? ' is-active' : ''}`} onClick={() => setView(id)}>
                 {name} ({n})
               </div>
             ))}
           </div>
-          <div className="tx-filters">
-            <div className="tx-f">
-              <span className="tx-f-label">Recherche</span>
-              <input className="text-input" value={filter.q} placeholder="Libellé ou détail" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
-            </div>
-            {focus && filter.target && (
-              <div className="tx-f">
-                <span className="tx-f-label">Ligne</span>
-                <span className="btn-outline tx-clear" title="Retirer le filtre sur la ligne" onClick={() => setFilter(f => ({ ...f, target: '', type: 'all' }))}>
-                  {focus.label} ✕
-                </span>
+          <div className="tx-toolbar">
+            <input className="text-input tx-search" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
+            {view === 'ops' && (
+              <div className="chips">
+                {([['all', 'Toutes'], ['var', 'Variables'], ['env', 'Enveloppes'], ['epa', 'Épargne']] as const).map(([t, name]) => (
+                  <Chip key={t} on={filter.type === t} onClick={() => setFilter(f => ({ ...f, type: t }))}>{name}</Chip>
+                ))}
               </div>
             )}
+            {view === 'ops' && <span className="tx-divider" aria-hidden="true" />}
+            {view === 'ops' && (
+              <div className="chips">
+                <Chip on={filter.flaggedOnly} onClick={() => setFilter(f => ({ ...f, flaggedOnly: !f.flaggedOnly }))}>Marquées</Chip>
+                <Chip on={filter.uncategorizedOnly} onClick={() => setFilter(f => ({ ...f, uncategorizedOnly: !f.uncategorizedOnly }))}>Sans catégorie</Chip>
+                <Chip on={filter.showDetail} onClick={() => setFilter(f => ({ ...f, showDetail: !f.showDetail }))}>Détails</Chip>
+              </div>
+            )}
+            {focus && filter.target && (
+              <span className="btn-outline tx-clear" title="Retirer le filtre sur la ligne" onClick={() => setFilter(f => ({ ...f, target: '', type: 'all' }))}>
+                {focus.label} ✕
+              </span>
+            )}
+            <button type="button" className={`btn-outline tx-more${moreFilters ? ' is-on' : ''}`} onClick={() => setMoreFilters(m => !m)}>
+              <Icon name="list" size={14} />
+              Plus de filtres
+            </button>
+          </div>
+          {moreFilters && <div className="tx-filters">
             {view === 'ops' && <div className="tx-f">
               <span className="tx-f-label">Type</span>
               <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>
@@ -542,25 +590,15 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 <input className="text-input is-amount" aria-label="Montant maximum" value={filter.max} placeholder="max" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, max: sanitizeAmountInput(e.target.value) }))} />
               </div>
             </div>
-            <div className="tx-f">
-              <span className="tx-f-label">Affichage</span>
-              <div className="tx-f-pair">
-                <label className="tx-pointed-filter" title="N’afficher que les opérations marquées d’un drapeau">
-                  <input type="checkbox" checked={filter.flaggedOnly} onChange={e => setFilter(f => ({ ...f, flaggedOnly: e.target.checked }))} />
-                  Marquées
-                </label>
-                <label className="tx-pointed-filter" title="Afficher le détail sous le libellé de chaque ligne">
-                  <input type="checkbox" checked={filter.showDetail} onChange={e => setFilter(f => ({ ...f, showDetail: e.target.checked }))} />
-                  Détails
-                </label>
-                {(filter.from || filter.to || filter.min || filter.max || filter.flaggedOnly) && (
-                  <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '', flaggedOnly: false }))}>
-                    Effacer
-                  </span>
-                )}
+            {(filter.from || filter.to || filter.min || filter.max) && (
+              <div className="tx-f">
+                <span className="tx-f-label">&nbsp;</span>
+                <button type="button" className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '' }))}>
+                  Effacer
+                </button>
               </div>
-            </div>
-          </div>
+            )}
+          </div>}
           {view === 'ops' && <>
           {isFiltered && (
             <div className="tx-bulk">
@@ -585,6 +623,14 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               <span className={`btn-outline is-danger${locked ? ' is-disabled' : ''}`} onClick={removePicked}>
                 Supprimer la sélection
               </span>
+              <span className="bulk-category">
+                <CategorySelect variant="box" categories={categories} value={bulkCategory} label="Catégorie à appliquer à la sélection" disabled={locked} lockedHint={LOCKED_HINT} onChange={setBulkCategory} />
+                <button type="button" className="btn-outline" disabled={locked} title={locked ? LOCKED_HINT : undefined} onClick={applyCategory}>
+                  Classer {picked.length} écriture{picked.length > 1 ? 's' : ''}
+                </button>
+              </span>
+              {locked && <span className="field-optional">Mois clôturé : rouvrir le mois pour modifier</span>}
+              {bulkMessage && <span role="status">{bulkMessage}</span>}
             </div>
           )}
           <div className="tx-grid tx-cols">
@@ -592,6 +638,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
             <span>Date</span>
             <span>Libellé</span>
             <span>Imputation</span>
+            <span>Catégorie</span>
             <span>Compte</span>
             <span className="num">Montant</span>
             <span />
@@ -622,6 +669,19 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                     </span>
                   )}
                 </span>
+                {isCategorizableType(t.type) ? (
+                  <CategorySelect
+                    variant="inline"
+                    categories={categories}
+                    value={t.categoryId ?? ''}
+                    label={`Catégorie de ${t.label}`}
+                    disabled={locked}
+                    lockedHint={LOCKED_HINT}
+                    onChange={id => update(d => void setTransactionCategory(d, t.id, id || undefined))}
+                  />
+                ) : (
+                  <span className="tx-category-none" title="Cette écriture ne peut pas avoir de catégorie">—</span>
+                )}
                 <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
                 <b className="num" style={signedAmount(t) > 0 ? { color: GOOD } : undefined}>{money(signedAmount(t), true)}</b>
                 <span className="tx-actions">
@@ -681,6 +741,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                       onChange={assignedAccountId => setEditingTx({ ...editingTx, assignedAccountId })}
                     />
                   )}
+                  {isCategorizableType(editingTx.type) && <CategorySelect categories={categories} value={editingTx.categoryId} disabled={locked} lockedHint={LOCKED_HINT} onChange={categoryId => setEditingTx({ ...editingTx, categoryId })} />}
                   {!editAllowed && <div className="alert-box">Cette modification est refusée : vérifie le libellé, le montant, la date et l’imputation (compte de la ligne, ligne archivée…).</div>}
                   <div className="tx-edit-actions">
                     <span className="btn-outline" onClick={() => setEditingTx(null)}>Annuler</span>
