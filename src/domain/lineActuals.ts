@@ -45,6 +45,21 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
   return d.transactions.filter(t => t.month === m && t.type === type && t.target === l.key && !isTransactionOffBudget(t)).map(t => t.amount);
 }
 
+/**
+ * « Détails » of a line (white bubble of the Budget screen): the detail field of each real entry of the line in the month, one block per entry
+ * (day, label, amount, then the detail). An entry without detail is listed too (date, label, amount only); empty text when the line has no entry.
+ */
+export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): string {
+  const entries: { day: number; label: string; amount: number; detail?: string }[] = isSavingsBlock(l.block)
+    ? (d.accountMovements ?? []).filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key)
+    : d.transactions.filter(t => t.month === m && t.type === (l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix') && t.target === l.key && !isTransactionOffBudget(t));
+  const fmt = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return entries
+    .sort((a, b) => a.day - b.day)
+    .map(e => `${String(e.day).padStart(2, '0')} · ${e.label} · ${fmt(e.amount)} €${e.detail ? `\n${e.detail}` : ''}`)
+    .join('\n\n');
+}
+
 /** Number of entries on a line (for its tooltip). */
 export const lineEntryCount = (d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): number => lineEntryAmounts(d, m, l).length;
 

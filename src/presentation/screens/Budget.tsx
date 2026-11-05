@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { LinkedAccountPicker } from '../components/LinkedAccountPicker';
 import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { goalHue, goalSummaryText } from '../components/goalStyle';
 import { currentYear, firstGoalOfKind, goalView, summaryGoals } from '../../domain/goals';
+import { DetailsBubble } from '../components/DetailsBubble';
 import { Icon, type IconName } from '../components/Icon';
 import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
 import type { OperationsFocus } from './Expenses';
-import { lineEntriesNote } from '../../domain/lineActuals';
+import { lineEntriesNote, lineEntryDetails } from '../../domain/lineActuals';
 import { LineQuickEntry } from '../components/LineQuickEntry';
 import { LineScheduleMeta } from '../components/LineSchedule';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
@@ -274,37 +274,6 @@ function availableRealText(d: BudgetData, m: MonthKey): string {
   return lines.join('\n');
 }
 
-const BUBBLE_WIDTH = 300;
-
-/** Bubble of a line's details, beside the row (right if there is room, else left); closed by its cross, a click outside or Escape. */
-function DetailsBubble({ title, text, rect, onClose }: { title: string; text: string; rect: DOMRect; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-  const room = window.innerWidth - rect.right;
-  const left = room >= BUBBLE_WIDTH + 12 ? rect.right + 8 : Math.max(8, rect.left - BUBBLE_WIDTH - 8);
-  return createPortal(
-    <div ref={ref} className="details-bubble" style={{ left, top: Math.max(8, rect.top), width: BUBBLE_WIDTH }}>
-      <div className="details-bubble-head">
-        <div className="popover-title">{title}</div>
-        <div className="icon-btn" onClick={onClose}>
-          <Icon name="close" size={14} />
-        </div>
-      </div>
-      <div className="details-bubble-text">{text}</div>
-    </div>,
-    document.body,
-  );
-}
-
 function BlockCard({ block, month, locked, today, strip, hideActual, onOpenOperations }: { block: BlockKey; hideActual: boolean; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { editing, setEditing, openMenu } = useUi();
@@ -443,7 +412,7 @@ function BlockCard({ block, month, locked, today, strip, hideActual, onOpenOpera
                   </div>
                 )}
                 {details?.key === l.key && (
-                  <DetailsBubble title={l.name} text={lineTooltip(data, month, l, today)} rect={details.rect} onClose={() => setDetails(null)} />
+                  <DetailsBubble title={l.name} text={[lineTooltip(data, month, l, today), lineEntryDetails(data, month, l)].filter(Boolean).join('\n\n')} rect={details.rect} onClose={() => setDetails(null)} />
                 )}
                 {hist && (
                   <div className="popover">

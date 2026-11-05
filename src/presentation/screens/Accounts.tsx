@@ -578,7 +578,10 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
   // Categories kept by the filter of the movements (empty = no filter). Reset when the account or the month changes.
   const [kept, setKept] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
-  useEffect(() => { setKept([]); setFilterOpen(false); }, [account.id, month]);
+  // Rows opened by a click: full label and detail instead of the truncated line.
+  const [opened, setOpened] = useState<string[]>([]);
+  const toggle = (k: string) => setOpened(o => (o.includes(k) ? o.filter(x => x !== k) : [...o, k]));
+  useEffect(() => { setKept([]); setFilterOpen(false); setOpened([]); }, [account.id, month]);
   // Picking an account brings the top of its panel into view.
   useEffect(() => { asideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [account.id]);
   const g = groupOf(account);
@@ -685,12 +688,12 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
               if (item.assigned) {
                 const op = item.assigned;
                 return (
-                  <li key={`assigned:${op.id}`} className="cpt-move assigned-row" title="Opération affectée à ce compte : hors solde, hors entrées et sorties">
+                  <li key={`assigned:${op.id}`} className="cpt-move assigned-row is-clickable" onClick={() => toggle(`assigned:${op.id}`)} title="Opération affectée à ce compte : hors solde, hors entrées et sorties">
                     <span className="cpt-move-date">{dayOf(op.date)}</span>
                     <span className="cpt-move-label">
-                      <span className="ellipsis" title={op.label}>{markedLabel(op.label)}</span>
-                      <span className="muted is-small ellipsis">{op.type === 'rev' ? 'Entrée' : 'Dépense'} · {op.imputation} · {op.type === 'rev' ? 'reçue sur' : 'payée avec'} {op.ownAccountName}</span>
-                      {op.detail && <span className="muted is-small ellipsis" title={op.detail}>{op.detail}</span>}
+                      <span className={opened.includes(`assigned:${op.id}`) ? 'wrap' : 'ellipsis'}>{markedLabel(op.label)}</span>
+                      <span className={`muted is-small ${opened.includes(`assigned:${op.id}`) ? 'wrap' : 'ellipsis'}`}>{op.type === 'rev' ? 'Entrée' : 'Dépense'} · {op.imputation} · {op.type === 'rev' ? 'reçue sur' : 'payée avec'} {op.ownAccountName}</span>
+                      {op.detail && <span className={`muted is-small ${opened.includes(`assigned:${op.id}`) ? 'wrap' : 'ellipsis'}`}>{op.detail}</span>}
                     </span>
                     <span className="num">
                       {money(op.amount, true)}
@@ -701,14 +704,15 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
               }
               const mv = item.move;
               return (
-                <li key={i} className="cpt-move" style={mv.outOfMonth || mv.beforeBudget ? { opacity: 0.65 } : undefined} title={mv.beforeBudget && start ? outOfPeriodReason(start) : mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${fullDate(mv.date)} : comptée dans le solde de ${monthLabel(monthOfDate(data, mv.date) ?? mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
+                <li key={i} className="cpt-move is-clickable" onClick={() => toggle(`mv:${i}`)} style={mv.outOfMonth || mv.beforeBudget ? { opacity: 0.65 } : undefined} title={mv.beforeBudget && start ? outOfPeriodReason(start) : mv.outOfMonth ? `Rattachée à ${monthLabel(month).toLowerCase()}, datée du ${fullDate(mv.date)} : comptée dans le solde de ${monthLabel(monthOfDate(data, mv.date) ?? mv.date.slice(0, 7)).toLowerCase()}.` : undefined}>
                   <span className="cpt-move-date">{dayOf(mv.date)}</span>
                   <span className="cpt-move-label">
-                    <span className="ellipsis" title={mv.label}>{markedLabel(mv.label)}</span>
-                    <span className="muted is-small ellipsis">
+                    <span className={opened.includes(`mv:${i}`) ? 'wrap' : 'ellipsis'}>{markedLabel(mv.label)}</span>
+                    <span className={`muted is-small ${opened.includes(`mv:${i}`) ? 'wrap' : 'ellipsis'}`}>
                       {mv.beforeBudget && <span className="cpt-tag" style={{ marginRight: 6 }}>Hors période</span>}
                       {mv.imputation ? `${categoryOf(mv)} · ${mv.imputation.name}` : categoryOf(mv)}
                     </span>
+                    {mv.detail && <span className={`muted is-small ${opened.includes(`mv:${i}`) ? 'wrap' : 'ellipsis'}`}>{mv.detail}</span>}
                   </span>
                   <b className="num" style={mv.amount > 0 ? { color: GOOD } : undefined}>{money(mv.amount, true)}</b>
                 </li>
