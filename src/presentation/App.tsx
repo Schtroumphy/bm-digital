@@ -15,13 +15,14 @@ import { ExpensesScreen, type OperationsFocus } from './screens/Expenses';
 import { GoalsScreen } from './screens/Goals';
 import { PlanningScreen } from './screens/Planning';
 import { ReleveScreen } from './screens/Releve';
+import { YearViewScreen } from './screens/YearView';
 import { SimulationScreen } from './screens/Simulation';
 import { SetupActions, SetupScreen } from './screens/Setup';
 import { TemplateScreen } from './screens/Template';
 import { useSetupDraft } from './state/setupDraft';
 import { newSimulation, type SimulationDraft } from '../domain/simulation';
 
-export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'releve' | 'prevAnn' | 'template' | 'setup' | 'close' | 'goals' | 'simulation';
+export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'releve' | 'prevAnn' | 'yearView' | 'template' | 'setup' | 'close' | 'goals' | 'simulation';
 
 const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean }[] = [
   { id: 'dashboard', label: 'Accueil', icon: 'house' },
@@ -31,6 +32,7 @@ const NAV: { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolea
   { id: 'releve', label: 'Relevé', icon: 'check' },
   { id: 'env', label: 'Enveloppes', icon: 'mail' },
   { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
+  { id: 'yearView', label: 'Vue annuelle', icon: 'history' },
   { id: 'template', label: 'Modèle', icon: 'copy' },
   { id: 'goals', label: 'Objectifs', icon: 'target' },
   { id: 'simulation', label: 'Simulation', icon: 'flask' },
@@ -47,6 +49,7 @@ const TITLES: Record<Screen, string> = {
   comptes: 'Comptes',
   releve: 'Relevé de fin de mois',
   prevAnn: 'Prévisionnel annuel',
+  yearView: 'Vue annuelle',
   template: 'Modèle de budget',
   setup: 'Initialisation',
   close: 'Clôture de l’année',
@@ -174,7 +177,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
         )}
         <header className="header">
           <div className="title">{TITLES[screen]}</div>
-          {screen === 'prevAnn' || screen === 'close' ? (
+          {screen === 'prevAnn' || screen === 'yearView' || screen === 'close' ? (
             <div className="picker">
               <button className="picker-arrow" disabled={year <= firstYear} onClick={() => setYear(y => y - 1)} aria-label="Année précédente">
                 <Icon name="chevronLeft" />
@@ -253,6 +256,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
+        {screen === 'yearView' && <YearViewScreen year={year} />}
         {screen === 'template' && <TemplateScreen month={month} />}
         {screen === 'setup' && (
           <SetupScreen
