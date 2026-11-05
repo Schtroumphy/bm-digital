@@ -1,7 +1,8 @@
 import { round2 } from './format';
 import { isSavingsBlock, isTransactionOffBudget } from './bank';
 import { ENVELOPES_ID } from './internalTransfers';
-import type { BudgetData, Line, MonthKey } from './types';
+import { lineKeysOf, targetsOf } from './movementTargets';
+import type { AccountMovement, BudgetData, Line, MonthKey } from './types';
 
 /*
  * The actual of a line is the sum of its entries, never a typed amount (spec 0019, RG19, RG20):
@@ -28,12 +29,12 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
   if (isSavingsBlock(l.block)) {
     const movements = d.accountMovements ?? [];
     const lines = d.months[m]?.lines ?? [];
-    const toThisLine = movements.filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key).map(mv => mv.amount);
+    const toThisLine = movements.filter(mv => mv.month === m && lineKeysOf(mv).includes(l.key)).map(mv => mv.amount);
     // Money the line's account passes on leaves this line: to another savings line (it is in that line's actual), or to a plain transfer with no budget item
     // (main account, another account, cash). A transfer to an envelope is excluded: envelopes are counted by their allocations.
-    const isOtherSavingsLine = (mv: { target?: { kind: string; key?: string } }) => lines.some(o => o.key === mv.target?.key && isSavingsBlock(o.block));
+    const isOtherSavingsLine = (mv: AccountMovement) => lines.some(o => lineKeysOf(mv).includes(o.key) && isSavingsBlock(o.block));
     const passedOn = l.linkedAccountId
-      ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && mv.toAccountId !== ENVELOPES_ID && (mv.target ? mv.target.kind === 'line' && mv.target.key !== l.key && isOtherSavingsLine(mv) : true)).map(mv => -mv.amount)
+      ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && mv.toAccountId !== ENVELOPES_ID && (targetsOf(mv).length > 0 ? targetsOf(mv)[0].kind === 'line' && !lineKeysOf(mv).includes(l.key) && isOtherSavingsLine(mv) : true)).map(mv => -mv.amount)
       : [];
     // Operations paid by another account but assigned to this line's account (spec 0028, RG26): the money came from outside the line, so they count as a payment into it
     // (an expense in positive, an entry of money such as a refund in negative). They stay out of the expenses and of the other budget figures.
@@ -51,7 +52,7 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
  */
 export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): string {
   const entries: { day: number; label: string; amount: number; detail?: string }[] = isSavingsBlock(l.block)
-    ? (d.accountMovements ?? []).filter(mv => mv.month === m && mv.target?.kind === 'line' && mv.target.key === l.key)
+    ? (d.accountMovements ?? []).filter(mv => mv.month === m && lineKeysOf(mv).includes(l.key))
     : d.transactions.filter(t => t.month === m && t.type === (l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix') && t.target === l.key && !isTransactionOffBudget(t));
   const fmt = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return entries

@@ -58,7 +58,7 @@ describe('retrait : une sortie sans compte de destination (spec 0037, RG1 à RG3
     expect(withdraw(d, 30, 'c', 'inconnu')).toBe(false);
     d.accounts.find(a => a.id === 'swile')!.archived = true;
     expect(withdraw(d, 30, 'd', 'swile')).toBe(false);
-    expect(addTransfer(d, { id: 'e', month: M, day: 2, label: 'Retrait', amount: 5, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ID, target: { kind: 'env', id: 'shop' } })).toBe(false);
+    expect(addTransfer(d, { id: 'e', month: M, day: 2, label: 'Retrait', amount: 5, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ID, targets: [{ kind: 'env', id: 'shop' }] })).toBe(false);
     expect(d.accountMovements).toHaveLength(1);
   });
 
@@ -271,10 +271,9 @@ describe('conversion des données existantes (spec 0037, « Sort des données »
   function legacy(): BudgetData {
     const d = october();
     d.accountMovements = [
-      { id: 'ret', month: M, day: 4, label: 'Retrait DAB', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ACCOUNT_ID, target: undefined },
-      { id: 'fund', month: M, day: 5, label: 'Alimentation', amount: 20, fromAccountId: CASH_ACCOUNT_ID, toAccountId: d.envelopes[0].accountId, target: { kind: 'env', id: 'shop' } },
+      { id: 'ret', month: M, day: 4, label: 'Retrait DAB', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: CASH_ACCOUNT_ID },
+      { id: 'fund', month: M, day: 5, label: 'Alimentation', amount: 20, fromAccountId: CASH_ACCOUNT_ID, toAccountId: d.envelopes[0].accountId, targets: [{ kind: 'env', id: 'shop' }] },
     ];
-    delete d.accountMovements[0].target;
     d.transactions = [{ id: 'old', month: M, day: 8, label: 'Marché', amount: 12, type: 'var', target: 'sport', accountId: CASH_ACCOUNT_ID }];
     d.importRules = [{ id: 'r', pattern: 'retrait', nature: 'retrait', target: { kind: 'account', id: CASH_ACCOUNT_ID } }];
     d.envelopes[0].openingCash = 10;

@@ -192,7 +192,8 @@ describe('lignes var hors budget informatives (amendement 8)', () => {
   const itemsOf = (d: BudgetData) => main(d).groups.flatMap(g => g.items);
 
   it('une ligne var hors budget n’est jamais en retard et ne compte pas dans l’en-tête', () => {
-    const d = started([swile({ dueDay: 5 }), ln('f', 'fix', 10, { dueDay: 5 })]);
+    // No entry on the Swile line: with one, nothing would be left of it (spec 0043, RG5 amended).
+    const d = started([swile({ dueDay: 5, actual: null }), ln('f', 'fix', 10, { dueDay: 5 })]);
     expect(lateCount(d, M, '2027-01-20')).toBe(2);
     setBankAccountInBudget(d, SWILE, false);
     expect(isLate(d, M, d.months[M].lines[0], '2027-01-20')).toBe(false);

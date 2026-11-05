@@ -132,7 +132,7 @@ describe('transfert : création, modification, suppression (RG14 à RG18)', () =
     expect(transfer(d, 10, { day: 32 })).toBe(false);
     expect(transfer(d, 10, { label: '  ' })).toBe(false);
     expect(transfer(d, 10, { toAccountId: 'inconnu' })).toBe(false);
-    expect(transfer(d, 10, { target: { kind: 'env', id: 'nope' } })).toBe(false);
+    expect(transfer(d, 10, { targets: [{ kind: 'env', id: 'nope' }] })).toBe(false);
     expect(d.accountMovements).toBeUndefined();
     expect(transfer(d, 40)).toBe(true);
     settleStatements(d, M);
@@ -143,8 +143,8 @@ describe('transfert : création, modification, suppression (RG14 à RG18)', () =
 
   it('RG16 : le réel d’une ligne epa est la somme des transferts rattachés ; supprimer le dernier le vide', () => {
     const d = started([ln('liv', 'epa', 100, { linkedAccountId: LIVRET })]);
-    transfer(d, 60, { toAccountId: LIVRET, target: { kind: 'line', key: 'liv' }, id: 'a' });
-    transfer(d, 15, { toAccountId: LIVRET, target: { kind: 'line', key: 'liv' }, id: 'b' });
+    transfer(d, 60, { toAccountId: LIVRET, targets: [{ kind: 'line', key: 'liv' }], id: 'a' });
+    transfer(d, 15, { toAccountId: LIVRET, targets: [{ kind: 'line', key: 'liv' }], id: 'b' });
     expect(d.months[M].lines[0].actual).toBe(75);
     deleteAccountMovement(d, 'a');
     expect(d.months[M].lines[0].actual).toBe(15);

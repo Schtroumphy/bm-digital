@@ -213,7 +213,7 @@ describe('à faire : virements (CA8, spec 0043 CA11)', () => {
 
   it('une allocation dont le transfert est fait n’est plus à faire mais compte dans les faits', () => {
     const d = started();
-    d.accountMovements = [{ id: 'a', month: M, day: 1, label: 'Allocation', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-vac', target: { kind: 'env', id: 'vac' } }];
+    d.accountMovements = [{ id: 'a', month: M, day: 1, label: 'Allocation', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-vac', targets: [{ kind: 'env', id: 'vac' }] }];
     const t = todo(d);
     expect(t.transfers.map(x => x.id)).toEqual(['lt', 'etf', 'mt']);
     expect([t.transfersDone, t.transfersAll]).toEqual([1, 4]);
@@ -226,7 +226,7 @@ describe('à faire : virements (CA8, spec 0043 CA11)', () => {
     expect(ids).not.toContain('cou');
   });
 
-  it('le montant à faire est le reste : le budget moins le réel déjà viré', () => {
+  it('le montant à faire est le reste : le budget moins le réel déjà viré (l’épargne garde cette règle, spec 0043 RG5 amendée)', () => {
     const d = started();
     d.months[M].lines.find(l => l.key === 'lt')!.actual = 250;
     expect(todo(d).transfers.find(x => x.id === 'lt')!.amount).toBe(50);

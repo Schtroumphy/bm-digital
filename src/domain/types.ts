@@ -214,8 +214,11 @@ export interface AccountMovement {
   detail?: string;
   /** Real date at the bank (spec 0015, RG1); absent = `month`/`day`. */
   bankDate?: string;
-  /** Budget item this transfer stands for, in `month` (spec 0019, RG10): the rest of the item (spec 0043) counts what it already sent. */
-  target?: MovementTarget;
+  /**
+   * Budget items this transfer stands for, in `month` (spec 0019, RG10; a list since spec 0045, RG3): the rest of an item (spec 0043) counts what it
+   * already sent. An envelope or a savings/investment line: one target. Dedicated variable lines: one or several. Absent = none.
+   */
+  targets?: MovementTarget[];
   /**
    * Trace of the CREDIT face of an internal transfer imported from the file (spec 0016, RG11). The flat fields above (`importAccountId`, `fingerprint`,
    * `rank`, `bankDate`) are the trace of the DEBIT face; a movement made from a credit alone has no flat trace, only this one, and its `bankDate` is

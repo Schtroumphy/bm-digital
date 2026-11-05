@@ -65,8 +65,7 @@ export type Database = {
           month: string
           position: number
           rank: number | null
-          target_key: string | null
-          target_kind: string | null
+          targets: Json
           to_account_id: string
           user_id: string
         }
@@ -88,8 +87,7 @@ export type Database = {
           month: string
           position?: number
           rank?: number | null
-          target_key?: string | null
-          target_kind?: string | null
+          targets?: Json
           to_account_id: string
           user_id?: string
         }
@@ -111,8 +109,7 @@ export type Database = {
           month?: string
           position?: number
           rank?: number | null
-          target_key?: string | null
-          target_kind?: string | null
+          targets?: Json
           to_account_id?: string
           user_id?: string
         }

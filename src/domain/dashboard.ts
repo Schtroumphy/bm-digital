@@ -249,7 +249,7 @@ export function monthTransfers(d: BudgetData, month: MonthKey, today: string): D
     if ((l.block !== 'epa' && l.block !== 'inv') || l.execMode === 'informatif' || !isLineInBudget(d, l)) continue;
     if (l.budget === 0) continue;
     // A transfer is « faite » when nothing is left of the line (spec 0043, RG13): the amount shown is what is left, or the budget once done.
-    const left = leftOfLine(l);
+    const left = leftOfLine(d, l);
     out.push({ kind: 'line', id: l.key, name: l.name, ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, month) } : {}), amount: left || l.budget, done: left === 0, late: isLate(d, month, l, today) });
   }
   const alloc = monthAlloc(d, month);

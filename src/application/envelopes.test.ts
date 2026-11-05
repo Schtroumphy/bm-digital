@@ -37,7 +37,7 @@ const accountOf = (d: BudgetData, envelopeId: string) => d.envelopes.find(e => e
 
 /** Real funding of an envelope: a transfer from the main account to the envelope's account, attached to the envelope (spec 0019, RG10, RG14). */
 const fund = (d: BudgetData, amount: number, id = 'fund', month = M) =>
-  addTransfer(d, { id, month, day: 2, label: 'Alimentation', amount, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: accountOf(d, 'sante'), target: { kind: 'env', id: 'sante' } });
+  addTransfer(d, { id, month, day: 2, label: 'Alimentation', amount, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: accountOf(d, 'sante'), targets: [{ kind: 'env', id: 'sante' }] });
 
 describe('l’allocation est un débit fictif ; l’alimentation réelle est un transfert (spec 0019)', () => {
   it('CA1: une allocation seule ne bouge aucun solde réel', () => {
