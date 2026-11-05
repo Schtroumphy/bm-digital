@@ -32,7 +32,7 @@ export function blockerItems(b: CloseBlocker): BlockerItem[] {
  */
 export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKey; onRefused: () => void; onDone: () => void }) {
   const { data, update } = useStore();
-  const [reconciling, setReconciling] = useState(false);
+  const [reconciling, setReconciling] = useState<false | 'normal' | 'forced'>(false);
   if (!data.months[month]?.initialized || isYearClosed(data, parseMonth(month).year)) return null;
   if (isMonthClosed(data, month)) {
     const blocker = reopenBlocker(data, month);
@@ -50,9 +50,21 @@ export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKe
     );
   }
   const close = () => {
+    // Only some money left to place stops the closing: the user can force it (the amount stays unplaced).
+    const blockers = closeBlockers(data, month);
+    let force = false;
+    if (blockers.length && blockers.every(b => b.kind === 'available')) {
+      const left = blockers[0].kind === 'available' ? blockers[0].amount : 0;
+      if (!window.confirm(`Il reste ${money(left)} à placer sur ${monthLabel(month)}.\n\nForcer la clôture quand même ? Le mois deviendra en lecture seule.`)) return;
+      force = true;
+    }
     // Cash lines not fully entered: the closing offers to regularise them first (spec 0037, RG19).
-    if (reconcilableLines(data, month).length) return setReconciling(true);
-    if (closeBlockers(data, month).length) return onRefused();
+    if (reconcilableLines(data, month).length) return setReconciling(force ? 'forced' : 'normal');
+    if (!force && blockers.length) return onRefused();
+    if (force) {
+      update(d => void closeMonth(d, month, true));
+      return onDone();
+    }
     const over = overPlacedAmount(data, month);
     const warning = over > 0 ? `\n\nAttention : tu as placé ${money(over)} de plus que disponible.` : '';
     if (!window.confirm(`Clôturer ${monthLabel(month)} ? Le mois deviendra en lecture seule.${warning}`)) return;
@@ -65,7 +77,7 @@ export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKe
         <Icon name="lock" size={14} />
         Clôturer le mois
       </div>
-      {reconciling && <CashReconcileDialog month={month} lines={reconcilableLines(data, month)} onClose={() => setReconciling(false)} onDone={() => { setReconciling(false); onDone(); }} />}
+      {reconciling && <CashReconcileDialog force={reconciling === 'forced'} month={month} lines={reconcilableLines(data, month)} onClose={() => setReconciling(false)} onDone={() => { setReconciling(false); onDone(); }} />}
     </>
   );
 }
@@ -75,15 +87,15 @@ export function MonthCloseControl({ month, onRefused, onDone }: { month: MonthKe
  * A confirmed line gets a cash expense « Reste non saisi » for the rest of its budget; a refused one stays as it is. The closing can be refused after the
  * regularisation (it changes the actuals, hence the amount still available) or because of the statements: the reasons are shown and the buttons disabled.
  */
-function CashReconcileDialog({ month, lines, onClose, onDone }: { month: MonthKey; lines: ReconcilableLine[]; onClose: () => void; onDone: () => void }) {
+function CashReconcileDialog({ force, month, lines, onClose, onDone }: { force: boolean; month: MonthKey; lines: ReconcilableLine[]; onClose: () => void; onDone: () => void }) {
   const { data, update } = useStore();
   const [picked, setPicked] = useState<string[]>([]);
   const toggle = (key: string) => setPicked(p => (p.includes(key) ? p.filter(k => k !== key) : [...p, key]));
-  const withPicked = closeBlockersAfterReconcile(data, month, picked);
-  const without = closeBlockersAfterReconcile(data, month, []);
+  const withPicked = closeBlockersAfterReconcile(data, month, picked, force);
+  const without = closeBlockersAfterReconcile(data, month, [], force);
   const reasons = (picked.length ? withPicked : without).flatMap(blockerItems).map(i => i.text);
   const finish = (keys: string[]) => {
-    update(d => void closeMonthReconciling(d, month, keys, () => newId('t')));
+    update(d => void closeMonthReconciling(d, month, keys, () => newId('t'), force));
     onDone();
   };
   return (
