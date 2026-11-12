@@ -123,14 +123,21 @@ function Choice({ options, value, onPick, render }: { options: [string, string][
 }
 
 /** Drop-down menu whose entries keep the chip content (e.g. the account dot), which a native `<select>` cannot show. */
-function Menu({ options, value, onPick, render }: { options: [string, string][]; value: string; onPick: (id: string) => void; render: (id: string, name: string) => React.ReactNode }) {
+function Menu({ options, value, onPick, render, pill }: { options: [string, string][]; value: string; onPick: (id: string) => void; render: (id: string, name: string) => React.ReactNode; pill?: boolean }) {
   const [open, setOpen] = useState(false);
   const current = options.find(o => o[0] === value);
   return (
     <span className="acc-picker" style={{ display: 'block' }}>
-      <div className="text-input" style={{ cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
-        {current ? render(current[0], current[1]) : 'Choisir…'}
-      </div>
+      {pill ? (
+        <div className={`menu-pill${open ? ' is-open' : ''}`} onClick={() => setOpen(o => !o)}>
+          <span className="menu-pill-label">{current ? render(current[0], current[1]) : 'Choisir…'}</span>
+          <Icon name="chevronDown" size={14} />
+        </div>
+      ) : (
+        <div className="text-input" style={{ cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+          {current ? render(current[0], current[1]) : 'Choisir…'}
+        </div>
+      )}
       {open && (
         <>
           <div className="backdrop" onClick={() => setOpen(false)} />
@@ -520,12 +527,18 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               Nouvelle opération
             </button>
           </div>
-          <div className="tabs" style={{ margin: '0 22px 10px' }}>
+          <div style={{ margin: '0 22px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div className="tabs" style={{ margin: 0 }}>
             {([['ops', 'Opérations', txs.length], ['transferts', 'Transferts', allMovements.length]] as const).map(([id, name, n]) => (
               <div key={id} className={`tab${view === id ? ' is-active' : ''}`} onClick={() => setView(id)}>
                 {name} ({n})
               </div>
             ))}
+          </div>
+          <button type="button" className={`btn-outline tx-more${moreFilters ? ' is-on' : ''}`} onClick={() => setMoreFilters(m => !m)}>
+              <Icon name="list" size={14} />
+              Plus de filtres
+            </button>
           </div>
           <div className="tx-toolbar">
             <input className="text-input tx-search" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
@@ -536,6 +549,21 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 ))}
               </div>
             )}
+            {view === 'ops' && <span className="tx-divider" aria-hidden="true" />}
+            <div>
+              <Menu
+                pill
+                options={[['all', 'Tous les comptes'], ...data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID && (!a.archived || a.id === filter.accountId)).map(a => [a.id, a.name] as [string, string])]}
+                value={filter.accountId}
+                onPick={id => setFilter(f => ({ ...f, accountId: id }))}
+                render={(id, name) => (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {id !== 'all' && <AccountDot account={data.accounts.find(a => a.id === id)} />}
+                    {name}
+                  </span>
+                )}
+              />
+            </div>
             {view === 'ops' && <span className="tx-divider" aria-hidden="true" />}
             {view === 'ops' && (
               <div className="chips">
@@ -549,10 +577,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 {focus.label} ✕
               </span>
             )}
-            <button type="button" className={`btn-outline tx-more${moreFilters ? ' is-on' : ''}`} onClick={() => setMoreFilters(m => !m)}>
-              <Icon name="list" size={14} />
-              Plus de filtres
-            </button>
           </div>
           {moreFilters && <div className="tx-filters">
             {view === 'ops' && <div className="tx-f">
@@ -566,17 +590,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 ))}
               </select>
             </div>}
-            <div className="tx-f">
-              <span className="tx-f-label">Compte</span>
-              <select className="text-input" value={filter.accountId} onChange={e => setFilter(f => ({ ...f, accountId: e.target.value }))}>
-                <option value="all">Tous les comptes</option>
-                {data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID).map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
             {view === 'ops' && <div className="tx-f">
               <span className="tx-f-label">Ligne</span>
               <select className="text-input" value={filter.line} onChange={e => setFilter(f => ({ ...f, line: e.target.value }))}>

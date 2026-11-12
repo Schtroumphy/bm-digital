@@ -1338,3 +1338,10 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .tx-more { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 36px; box-sizing: border-box; }
 .tx-more.is-on { background: var(--ink); color: #fff; }
 .tx-divider { width: 1px; height: 20px; background: rgba(32, 30, 29, 0.15); flex: none; }
+
+.menu-pill { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 14px; border-radius: 999px; background: rgba(32, 30, 29, 0.05); cursor: pointer; font-size: 13.5px; font-weight: 600; white-space: nowrap; transition: background 0.15s; }
+.menu-pill:hover, .menu-pill.is-open { background: rgba(32, 30, 29, 0.09); }
+.menu-pill-label { display: inline-flex; align-items: center; gap: 6px; }
+.menu-pill svg { opacity: 0.55; transition: transform 0.15s; }
+.menu-pill.is-open svg { transform: rotate(180deg); }
+.tx-toolbar .acc-menu { top: 42px; min-width: 210px; width: max-content; }
