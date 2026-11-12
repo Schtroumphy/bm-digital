@@ -52,33 +52,31 @@ function BreakdownSection({ month }: { month: MonthKey }) {
   const rows: CategoryShare[] = [...breakdown.rows, ...(breakdown.none ? [breakdown.none] : [])];
   const maxAmount = Math.max(...rows.map(r => r.amount), 0);
   return (
-    <>
-      <section className="panel cat-panel" aria-label="Répartition du mois">
-        <div className="cat-title">Répartition du mois</div>
-        {breakdown.total === 0 && rows.length === 0 ? (
-          <div className="empty">Aucune dépense pour {monthLabel(month)}</div>
-        ) : (
-          <>
-            <div className="cat-head">
-              <span>
-                Dépenses du mois : <b>{money(breakdown.total)}</b>
-              </span>
-              <span>
-                {breakdown.uncategorizedCount} écriture{breakdown.uncategorizedCount > 1 ? 's' : ''} sans catégorie
-              </span>
+    <section className="panel cat-panel" aria-label="Répartition du mois">
+      <div className="cat-title">Répartition du mois</div>
+      {breakdown.total === 0 && rows.length === 0 ? (
+        <div className="empty">Aucune dépense pour {monthLabel(month)}</div>
+      ) : (
+        <>
+          <div className="cat-head">
+            <span>
+              Dépenses du mois : <b>{money(breakdown.total)}</b>
+            </span>
+            <span>
+              {breakdown.uncategorizedCount} écriture{breakdown.uncategorizedCount > 1 ? 's' : ''} sans catégorie
+            </span>
+          </div>
+          <div className="cat-split">
+            <CategoryPie slices={pieSlices(breakdown)} total={breakdown.total} active={hover} onActive={setHover} onSelect={toggle} />
+            <div className="cat-legend">
+              {rows.map(r => (
+                <ShareRow key={r.category?.id ?? 'none'} row={r} max={maxAmount} month={month} active={hover === (r.category?.id ?? 'none')} dimmed={hover !== null && hover !== (r.category?.id ?? 'none')} open={open === (r.category?.id ?? 'none')} onHover={setHover} onToggle={toggle} />
+              ))}
             </div>
-            <div className="cat-split">
-              <CategoryPie slices={pieSlices(breakdown)} total={breakdown.total} active={hover} onActive={setHover} onSelect={toggle} />
-              <div className="cat-legend">
-                {rows.map(r => (
-                  <ShareRow key={r.category?.id ?? 'none'} row={r} max={maxAmount} month={month} active={hover === (r.category?.id ?? 'none')} dimmed={hover !== null && hover !== (r.category?.id ?? 'none')} open={open === (r.category?.id ?? 'none')} onHover={setHover} onToggle={toggle} />
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </section>
-    </>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -86,7 +84,6 @@ function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle }: 
   const { data } = useStore();
   const id = row.category?.id ?? 'none';
   const name = row.category?.name ?? 'Sans catégorie';
-  const text = `${money(row.amount)}, ${percent(row.share)}`;
   return (
     <div className={`cat-share${active ? ' is-active' : ''}${dimmed ? ' is-dimmed' : ''}`} onMouseEnter={() => onHover(id)} onMouseLeave={() => onHover(null)}>
       <button type="button" className={`cat-row cat-row-btn${row.category ? '' : ' is-none'}`} aria-expanded={open} aria-controls={`cat-detail-${id}`} onClick={() => onToggle(id)} onFocus={() => onHover(id)} onBlur={() => onHover(null)}>
@@ -95,7 +92,7 @@ function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle }: 
         <b className="num">{money(row.amount)}</b>
         <span className="num">{percent(row.share)}</span>
         <span className="num cat-count">({row.count})</span>
-        <span className="progress" role="img" aria-label={`${name} : ${text}`}>
+        <span className="progress" aria-hidden="true">
           <span style={{ display: 'block', height: '100%', borderRadius: 99, width: `${max > 0 ? (row.amount / max) * 100 : 0}%`, background: row.category ? tone(row.category.hue).base : 'var(--neutral-fill)' }} />
         </span>
       </button>
