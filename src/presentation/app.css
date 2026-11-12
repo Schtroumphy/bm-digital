@@ -1328,9 +1328,9 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cat-detail-date { color: var(--muted); }
 
 /* Opérations: creation form in a right-hand panel, toolbar above the list */
-.drawer-backdrop { position: fixed; inset: 0; background: rgba(32, 30, 29, 0.25); z-index: 40; }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw; z-index: 41; border-radius: 20px 0 0 20px; overflow-y: auto; box-shadow: -12px 0 40px rgba(32, 30, 29, 0.15); }
-.drawer-head { display: flex; align-items: center; justify-content: space-between; }
+.op-drawer-backdrop { position: fixed; inset: 0; background: rgba(32, 30, 29, 0.25); z-index: 40; }
+.op-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw; z-index: 41; border-radius: 20px 0 0 20px; overflow-y: auto; box-shadow: -12px 0 40px rgba(32, 30, 29, 0.15); }
+.op-drawer-head { display: flex; align-items: center; justify-content: space-between; }
 .tx-head { padding-top: 20px; align-items: flex-start; justify-content: space-between; }
 .tx-sub { font-size: 12.5px; font-weight: 500; color: rgba(32, 30, 29, 0.55); margin-top: 2px; }
 .tx-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 0 22px 14px; }

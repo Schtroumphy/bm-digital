@@ -152,7 +152,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string; categoryId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', flaggedOnly: false, uncategorizedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string; line: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', flaggedOnly: false, uncategorizedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '', line: '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // The list below the form is split in two tabs: the transactions and the transfers (account movements); the filters apply to both.
   const [view, setView] = useState<'ops' | 'transferts'>('ops');
@@ -224,13 +224,14 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
     .filter(t => filter.type === 'all' || t.type === filter.type)
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId || t.assignedAccountId === filter.accountId)
     .filter(t => !filter.target || (t.target === filter.target && !isTransactionOffBudget(t)))
+    .filter(t => !filter.line || `${t.type}|${t.target}` === filter.line)
     .filter(t => matchesEntrySearch(t, filter.q))
     .filter(t => !filter.flaggedOnly || t.flagged === true)
     .filter(t => !filter.uncategorizedOnly || isUncategorized(data, t))
     .filter(t => (!filter.from || bankDateOf(t, data) >= filter.from) && (!filter.to || bankDateOf(t, data) <= filter.to))
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
     .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
-  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || filter.accountId !== 'all' || filter.flaggedOnly || filter.uncategorizedOnly || filter.from || filter.to || filter.min || filter.max);
+  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || !!filter.line || filter.accountId !== 'all' || filter.flaggedOnly || filter.uncategorizedOnly || filter.from || filter.to || filter.min || filter.max);
   const envelopeEntriesTotal = round2(txs.filter(t => t.type === 'envin').reduce((a, t) => a + t.amount, 0));
   const accountEntriesTotal = round2(txs.filter(t => t.type === 'accin').reduce((a, t) => a + t.amount, 0));
   const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
@@ -296,6 +297,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
     URL.revokeObjectURL(a.href);
   };
   const targetName = (type: TxType, id: string) => (type === 'accin' ? data.accounts.find(a => a.id === id)?.name : type === 'env' || type === 'envin' ? data.envelopes.find(e => e.id === id)?.name : lines.find(l => l.key === id)?.name) ?? 'Supprimé';
+  // Lines (imputations) that carry at least one entry this month, for the « Ligne » filter.
+  const lineOptions = [...new Map(txs.map(t => [`${t.type}|${t.target}`, `${targetName(t.type, t.target)} · ${TYPE_LABEL[t.type]}`] as const)).entries()].sort((a, b) => a[1].localeCompare(b[1], 'fr'));
   const targetHue = (type: TxType, id: string) => (type === 'var' || type === 'fix' ? HUE.dep : type === 'env' || type === 'envin' ? data.envelopes.find(e => e.id === id)?.hue ?? HUE.epa : HUE.epa);
 
   let impact: [string, string][] = [];
@@ -383,10 +386,10 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           </div>
         ))}
       </div>
-      {formOpen && <div className="drawer-backdrop" onClick={() => setFormOpen(false)} />}
+      {formOpen && <div className="op-drawer-backdrop" onClick={() => setFormOpen(false)} />}
       {formOpen && (
-      <aside className="panel-lg form-card drawer" aria-label="Nouvelle opération">
-        <div className="drawer-head">
+      <aside className="panel-lg form-card op-drawer" aria-label="Nouvelle opération">
+        <div className="op-drawer-head">
           <div className="form-title">Nouvelle opération</div>
           <span className="icon-btn" role="button" title="Fermer" onClick={() => setFormOpen(false)}>
             <Icon name="close" size={14} />
@@ -574,6 +577,17 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 ))}
               </select>
             </div>
+            {view === 'ops' && <div className="tx-f">
+              <span className="tx-f-label">Ligne</span>
+              <select className="text-input" value={filter.line} onChange={e => setFilter(f => ({ ...f, line: e.target.value }))}>
+                <option value="">Toutes les lignes</option>
+                {lineOptions.map(([key, name]) => (
+                  <option key={key} value={key}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>}
             <div className="tx-f">
               <span className="tx-f-label">Période</span>
               <div className="tx-f-pair">
