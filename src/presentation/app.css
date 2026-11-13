@@ -938,7 +938,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 /* ── dashboard (spec 0027) ─────────────────────────────── */
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: stretch; }
 .dash-left, .dash-right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.dash-assigned { font-size: 12px; color: var(--muted); flex: 1; min-width: 210px; box-sizing: border-box; padding: 6px 0 6px 28px; border-left: 1px solid var(--hairline); text-align: center; }
+.dash-assigned { font-size: 12px; color: var(--muted); flex: 1 1 210px; min-width: 0; overflow-wrap: anywhere; box-sizing: border-box; padding: 6px 0 6px 28px; border-left: 1px solid var(--hairline); text-align: center; }
 .dash-assigned.has-tip:hover::after { white-space: pre-line; text-align: left; }
 .dash-top { padding: 18px 24px 20px; display: flex; flex-direction: column; gap: 18px; }
 .dash-kpis { display: grid; grid-template-columns: 1.5fr repeat(5, 1fr); grid-template-rows: auto auto auto; }
@@ -947,7 +947,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .dash-hero { font-size: 36px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--violet-ink); }
 .dash-val { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
 .dash-sub { font-size: 11px; font-weight: 600; color: var(--muted); min-height: 14px; }
-.dash-donut { display: flex; align-items: center; gap: 28px; }
+.dash-donut { display: flex; align-items: center; flex-wrap: wrap; gap: 16px 28px; min-width: 0; }
 .donut { position: relative; width: 140px; height: 140px; flex: none; }
 .donut.is-empty { display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 14px solid oklch(0.94 0.005 80); box-sizing: border-box; color: var(--muted); }
 .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
@@ -1345,3 +1345,26 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .menu-pill svg { opacity: 0.55; transition: transform 0.15s; }
 .menu-pill.is-open svg { transform: rotate(180deg); }
 .tx-toolbar .acc-menu { top: 42px; min-width: 210px; width: max-content; }
+.ya-with-delta { display: inline-flex; flex-direction: column-reverse; align-items: flex-end; gap: 1px; line-height: 1.1; }
+.ya-delta { font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.ya-cell.is-link { cursor: pointer; }
+.ya-cell.is-link:hover { text-decoration: underline; text-decoration-color: rgba(32, 30, 29, 0.35); text-underline-offset: 3px; color: var(--violet-ink); }
+.ya-cell.is-link:focus-visible { outline: 2px solid var(--violet-ink); outline-offset: -2px; border-radius: 6px; }
+.ya-delta.is-good { color: oklch(0.45 0.12 150); }
+.ya-delta.is-bad { color: oklch(0.52 0.17 25); }
+.tx-search-inline { flex: 0 1 280px; min-width: 160px; width: auto; height: 36px; border: 0; border-radius: 999px; background: rgba(32, 30, 29, 0.05); }
+.emoji-btn { min-width: 38px; padding: 0 8px; font-size: 16px; line-height: 1; }
+.emoji-menu { top: 36px; left: 0; width: 244px; display: flex; flex-wrap: wrap; gap: 2px; padding: 8px; }
+.emoji-choice { width: 34px; height: 34px; border: 0; border-radius: 8px; background: none; font-size: 18px; cursor: pointer; }
+.emoji-choice:hover { background: rgba(32, 30, 29, 0.06); }
+.emoji-choice.is-on { background: var(--violet-tint); }
+.emoji-reset { width: 100%; margin-top: 4px; padding: 6px; border: 0; border-top: 1px solid var(--hairline); background: none; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; }
+.cat-share-main { display: flex; align-items: center; gap: 4px; }
+.cat-share-main .cat-row-btn { flex: 1; min-width: 0; }
+.icon-link { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.icon-link:hover, .icon-link:focus-visible { background: var(--violet-tint); color: var(--violet-ink); }
+
+/* Real amount that leads to the Opérations tab. */
+.amount-link { all: unset; cursor: pointer; border-bottom: 1px dotted currentColor; }
+.amount-link:hover { opacity: 0.7; }
+.amount-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

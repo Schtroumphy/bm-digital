@@ -1,3 +1,4 @@
+import { categoryLabel } from '../../domain/categories';
 import type { Category } from '../../domain/types';
 import { toneVars } from './tone';
 
@@ -27,7 +28,7 @@ export function CategorySelect({ categories, value, disabled, label = 'Catégori
       <option value="">Sans catégorie</option>
       {categories.map(c => (
         <option key={c.id} value={c.id}>
-          {c.name}
+          {categoryLabel(c)}
         </option>
       ))}
     </select>
@@ -36,7 +37,7 @@ export function CategorySelect({ categories, value, disabled, label = 'Catégori
     const category = categories.find(c => c.id === current);
     return (
       <span className={`cat-pill${category ? '' : ' is-none'}${disabled ? ' is-disabled' : ''}`} style={category ? toneVars(category.hue) : undefined} title={disabled && lockedHint ? lockedHint : undefined}>
-        <span className="cat-pill-text">{category?.name ?? 'Sans catégorie'}</span>
+        <span className="cat-pill-text">{category ? categoryLabel(category) : 'Sans catégorie'}</span>
         {select}
       </span>
     );

@@ -247,6 +247,16 @@ describe('solde estimé (RG20 à RG24)', () => {
     expect(est(d, 'pel')).toBe(3500);
   });
 
+  it('un mois clôturé sans réel ne compte plus son budget dans le solde estimé', () => {
+    const d = started([line('livret', 'epa', 200, null, { linkedAccountId: LIVRET })]);
+    d.months['2027-02'] = { initialized: true, lines: [line('livret', 'epa', 300, null, { linkedAccountId: LIVRET })], alloc: {}, transfersDone: {} };
+    const l = d.months['2027-02'].lines[0];
+    const at2 = () => estimatedBalance(d, new Ledger(d, '2027-02'), '2027-02', l)?.value;
+    expect(at2()).toBe(1500);
+    d.months[M].closed = true;
+    expect(at2()).toBe(1300);
+  });
+
   it('CA22: dédié non ouvert à ce mois, mois non initialisé : pas de solde', () => {
     const d = started([line('livret', 'epa', 200, null, { linkedAccountId: LIVRET })]);
     setBankAccountOpening(d, LIVRET, { month: '2027-02' });

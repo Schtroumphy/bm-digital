@@ -9,13 +9,14 @@ import { MovementGap, MovementLines } from '../components/MovementLines';
 import { GOOD, HUE, tone } from '../components/tone';
 import { deleteTransaction, deleteTransactions, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
 import { setCategoryOnSelection, setTransactionCategory, groupedMessage } from '../../application/categories';
-import { isCategorizableType, isUncategorized } from '../../domain/categories';
+import { categoryLabel, isCategorizableType, isUncategorized } from '../../domain/categories';
 import { addManualTransaction, addManualTransfer } from '../../application/manualEntry';
 import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
 import { transferItems } from '../../domain/transfers';
 import { amountForLines, budgetGap, budgetOf, isManualMovement, proposableLines } from '../../domain/movementLines';
+import { savingsLineEntries } from '../../domain/lineActuals';
 import { lineKeysOf, targetsOf } from '../../domain/movementTargets';
 import { deleteAccountMovement, setAccountMovementDetail, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
@@ -46,8 +47,15 @@ const TYPE_LABEL: Record<TxType, string> = { var: 'Variable', env: 'Enveloppe', 
 
 /** Filter an other tab asks the Opérations tab to open with: the entries of one budget line or envelope. */
 export interface OperationsFocus {
-  type: TxType;
-  target: string;
+  type?: TxType;
+  target?: string;
+  /** Opens the tab on the entries of one category (id), or of none (`uncategorized`). */
+  categoryId?: string;
+  uncategorized?: boolean;
+  /** Opens the tab on the operations and transfers of one account. */
+  accountId?: string;
+  /** Opens the « Transferts » tab on the transfers aimed at one savings or investment line (key). */
+  movementLine?: string;
   label: string;
 }
 
@@ -159,10 +167,10 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
   const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string; categoryId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string; line: string }>({ q: '', type: focus?.type ?? 'all', accountId: 'all', flaggedOnly: false, uncategorizedOnly: false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '', line: '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; categoryId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string; line: string; movementLine: string }>({ q: '', type: focus?.type ?? 'all', accountId: focus?.accountId ?? 'all', categoryId: focus?.categoryId ?? 'all', flaggedOnly: false, uncategorizedOnly: focus?.uncategorized ?? false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '', line: '', movementLine: focus?.movementLine ?? '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // The list below the form is split in two tabs: the transactions and the transfers (account movements); the filters apply to both.
-  const [view, setView] = useState<'ops' | 'transferts'>('ops');
+  const [view, setView] = useState<'ops' | 'transferts'>(focus?.movementLine ? 'transferts' : 'ops');
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
   const [transfer, setTransfer] = useState(false);
   // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
@@ -225,20 +233,27 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const s = monthSummary(data, ledger, month);
   const minAmount = parseAmount(filter.min) ?? null;
   const maxAmount = parseAmount(filter.max) ?? null;
+  // Entries behind the actual of a savings line (focus from the Budget tab): its transfers, the ones its account passes on, the operations assigned to its account.
+  const focusedLine = filter.movementLine ? data.months[month]?.lines.find(l => l.key === filter.movementLine) : undefined;
+  const lineEntries = focusedLine ? savingsLineEntries(data, month, focusedLine) : null;
+  const lineMovementIds = new Set(lineEntries ? [...lineEntries.toLine, ...lineEntries.passedOn].map(mv => mv.id) : []);
+  const lineTxIds = new Set(lineEntries?.assigned.map(t => t.id) ?? []);
   const txs = data.transactions.filter(t => t.month === month);
   const assignedSpent = spentOf(txs.filter(isTransactionOffBudget));
   const shown = txs
     .filter(t => filter.type === 'all' || t.type === filter.type)
     .filter(t => filter.accountId === 'all' || bankAccount(data, t.accountId)?.id === filter.accountId || t.assignedAccountId === filter.accountId)
+    .filter(t => !filter.movementLine || lineTxIds.has(t.id))
     .filter(t => !filter.target || (t.target === filter.target && !isTransactionOffBudget(t)))
     .filter(t => !filter.line || `${t.type}|${t.target}` === filter.line)
     .filter(t => matchesEntrySearch(t, filter.q))
     .filter(t => !filter.flaggedOnly || t.flagged === true)
+    .filter(t => filter.categoryId === 'all' || t.categoryId === filter.categoryId)
     .filter(t => !filter.uncategorizedOnly || isUncategorized(data, t))
     .filter(t => (!filter.from || bankDateOf(t, data) >= filter.from) && (!filter.to || bankDateOf(t, data) <= filter.to))
     .filter(t => (minAmount === null || t.amount >= minAmount) && (maxAmount === null || t.amount <= maxAmount))
     .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)));
-  const isFiltered = !!(filter.q || filter.type !== 'all' || !!filter.target || !!filter.line || filter.accountId !== 'all' || filter.flaggedOnly || filter.uncategorizedOnly || filter.from || filter.to || filter.min || filter.max);
+  const isFiltered = !!(filter.q || !!filter.movementLine || filter.type !== 'all' || !!filter.target || !!filter.line || filter.accountId !== 'all' || filter.categoryId !== 'all' || filter.flaggedOnly || filter.uncategorizedOnly || filter.from || filter.to || filter.min || filter.max);
   const envelopeEntriesTotal = round2(txs.filter(t => t.type === 'envin').reduce((a, t) => a + t.amount, 0));
   const accountEntriesTotal = round2(txs.filter(t => t.type === 'accin').reduce((a, t) => a + t.amount, 0));
   const shownRevenue = round2(shown.filter(t => t.type === 'rev').reduce((a, t) => a + t.amount, 0));
@@ -246,6 +261,9 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const allMovements = (data.accountMovements ?? []).filter(m => m.month === month);
   const shownMovements = allMovements
     .filter(m => filter.accountId === 'all' || m.fromAccountId === filter.accountId || m.toAccountId === filter.accountId)
+    .filter(m => !filter.movementLine || lineMovementIds.has(m.id))
+    // Focus on a budget line or an envelope: its transfers appear next to its operations.
+    .filter(m => !filter.target || (m.targets ?? []).some(t => (t.kind === 'line' ? t.key : t.id) === filter.target))
     .filter(m => matchesEntrySearch(m, filter.q))
     .filter(m => inRange(bankDateOf(m, data), m.amount));
   // Only the shown rows can be selected, so a bulk delete never removes an expense the user cannot see.
@@ -527,7 +545,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               Nouvelle opération
             </button>
           </div>
-          <div style={{ margin: '0 22px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ margin: '0 22px 10px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="tabs" style={{ margin: 0 }}>
             {([['ops', 'Opérations', txs.length], ['transferts', 'Transferts', allMovements.length]] as const).map(([id, name, n]) => (
               <div key={id} className={`tab${view === id ? ' is-active' : ''}`} onClick={() => setView(id)}>
@@ -535,13 +553,14 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               </div>
             ))}
           </div>
+          <input className="text-input tx-search tx-search-inline" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
+          <span style={{ flex: 1 }} />
           <button type="button" className={`btn-outline tx-more${moreFilters ? ' is-on' : ''}`} onClick={() => setMoreFilters(m => !m)}>
               <Icon name="list" size={14} />
               Plus de filtres
             </button>
           </div>
           <div className="tx-toolbar">
-            <input className="text-input tx-search" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
             {view === 'ops' && (
               <div className="chips">
                 {([['all', 'Toutes'], ['var', 'Variables'], ['env', 'Enveloppes'], ['epa', 'Épargne']] as const).map(([t, name]) => (
@@ -564,6 +583,22 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 )}
               />
             </div>
+            {view === 'ops' && (
+              <div>
+                <Menu
+                  pill
+                  options={[['all', 'Toutes les catégories'], ...(data.categories ?? []).map(c => [c.id, categoryLabel(c)] as [string, string])]}
+                  value={filter.categoryId}
+                  onPick={id => setFilter(f => ({ ...f, categoryId: id }))}
+                  render={(id, name) => (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {id !== 'all' && <span className="dot is-10" style={{ background: tone((data.categories ?? []).find(c => c.id === id)?.hue ?? 0).base }} />}
+                      {name}
+                    </span>
+                  )}
+                />
+              </div>
+            )}
             {view === 'ops' && <span className="tx-divider" aria-hidden="true" />}
             {view === 'ops' && (
               <div className="chips">
@@ -572,8 +607,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 <Chip on={filter.showDetail} onClick={() => setFilter(f => ({ ...f, showDetail: !f.showDetail }))}>Détails</Chip>
               </div>
             )}
-            {focus && filter.target && (
-              <span className="btn-outline tx-clear" title="Retirer le filtre sur la ligne" onClick={() => setFilter(f => ({ ...f, target: '', type: 'all' }))}>
+            {focus && (filter.target || filter.movementLine) && (
+              <span className="btn-outline tx-clear" title="Retirer le filtre sur la ligne" onClick={() => setFilter(f => ({ ...f, target: '', movementLine: '', type: 'all' }))}>
                 {focus.label} ✕
               </span>
             )}

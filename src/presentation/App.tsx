@@ -270,6 +270,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
           <DashboardScreen
             month={month}
             onOpen={(t: DashboardTarget) => go(t)}
+            onOpenOperations={f => { go('dep'); setFocus(f); }}
           />
         )}
         {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
@@ -285,11 +286,11 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             }}
           />
         )}
-        {screen === 'categories' && <CategoriesScreen month={month} />}
+        {screen === 'categories' && <CategoriesScreen month={month} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
-        {screen === 'yearView' && <YearViewScreen year={year} />}
+        {screen === 'yearView' && <YearViewScreen year={year} onOpenOperations={(m, f) => { setMonth(m); go('dep'); setFocus(f); }} />}
         {screen === 'template' && <TemplateScreen month={month} />}
         {screen === 'setup' && (
           <SetupScreen

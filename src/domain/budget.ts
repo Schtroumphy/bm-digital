@@ -69,14 +69,15 @@ export function availableRealBreakdown(d: BudgetData, m: MonthKey): { remaining:
 
 /**
  * Budgets of the savings/investment lines that have no actual yet, month by month from `from` to `to`
- * (months not initialized count 0), for the lines picked by `keep` (RG22bis: only these lines fall back to their budget).
+ * (months not initialized or closed count 0), for the lines picked by `keep` (RG22bis: only these lines fall back to their budget).
  */
 function pendingBudgets(d: BudgetData, ledger: Ledger, from: MonthKey, to: MonthKey, keep: (l: Line) => boolean): number {
   let total = 0;
   for (const k of ledger.months) {
     if (compareMonths(k, from) < 0 || compareMonths(k, to) > 0) continue;
     const md = d.months[k];
-    if (!md?.initialized) continue;
+    // A closed month is over: a transfer it did not make will not happen, so its budget no longer stands for money still to come.
+    if (!md?.initialized || md.closed) continue;
     for (const l of md.lines) if (isSavingsBlock(l.block) && l.actual === null && keep(l)) total += l.budget;
   }
   return round2(total);

@@ -50,7 +50,7 @@ export function toRows(d: BudgetData): TableRows {
     start_date: orNull(d.settings.startDate),
   });
 
-  (d.categories ?? []).forEach((c, position) => rows.categories.push({ id: c.id, name: c.name, hue: c.hue, position }));
+  (d.categories ?? []).forEach((c, position) => rows.categories.push({ id: c.id, name: c.name, hue: c.hue, emoji: c.emoji ?? null, position }));
 
   (d.goals ?? []).forEach(g =>
     rows.goals.push({
@@ -458,7 +458,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     envelopeId: r.envelope_id,
   }));
 
-  const categories: Category[] = byPosition(rows.categories).map(r => ({ id: r.id, name: r.name, hue: r.hue }));
+  const categories: Category[] = byPosition(rows.categories).map(r => ({ id: r.id, name: r.name, hue: r.hue, ...(r.emoji ? { emoji: r.emoji } : {}) }));
   const goals: Goal[] = byPosition(rows.goals).map(r => {
     const params = (r.params ?? {}) as { accounts?: unknown; scope?: unknown };
     return compact({

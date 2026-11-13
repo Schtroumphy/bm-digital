@@ -263,6 +263,8 @@ export interface Category {
   name: string;
   /** OKLCH hue of the category's dot. */
   hue: number;
+  /** Emoji chosen for the category; absent = the one suggested by `categoryEmoji` from its name. */
+  emoji?: string;
 }
 
 /**

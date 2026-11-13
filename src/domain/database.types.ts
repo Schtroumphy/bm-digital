@@ -392,6 +392,7 @@ export type Database = {
       }
       categories: {
         Row: {
+          emoji: string | null
           hue: number
           id: string
           name: string
@@ -399,6 +400,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          emoji?: string | null
           hue: number
           id: string
           name: string
@@ -406,6 +408,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          emoji?: string | null
           hue?: number
           id?: string
           name?: string

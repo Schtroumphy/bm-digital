@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { addCategory, deleteCategory, renameCategory, usedMessage } from '../../application/categories';
-import { categoryBreakdown, categoryEntries, categoryUsage, parseCategoryName, pieSlices, type CategoryShare } from '../../domain/categories';
+import { addCategory, deleteCategory, renameCategory, setCategoryEmoji, usedMessage } from '../../application/categories';
+import { categoryBreakdown, categoryEmoji, categoryEntries, categoryUsage, EMOJI_CHOICES, parseCategoryName, pieSlices, type CategoryShare } from '../../domain/categories';
 import { money, monthLabel, percent } from '../../domain/format';
 import type { Category, MonthKey } from '../../domain/types';
 import { CategoryPie } from '../components/CategoryPie';
+import { Icon } from '../components/Icon';
+import type { OperationsFocus } from './Expenses';
 import { tone } from '../components/tone';
 import { newId, useStore } from '../state/store';
 
@@ -17,7 +19,7 @@ const TABS: { id: CategoriesTab; label: string }[] = [
  * Screen « Catégories » (spec 0046, RG27): two sub-tabs, « Répartition » (open by default: the month's breakdown, read only) and « Gérer » (the list).
  * Same `tabs` look as the rest of the app; arrow keys move between the tabs. The last tab is not remembered: the screen opens on « Répartition ».
  */
-export function CategoriesScreen({ month }: { month: MonthKey }) {
+export function CategoriesScreen({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
   const [tab, setTab] = useState<CategoriesTab>('repartition');
   const move = (e: React.KeyboardEvent, from: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -36,13 +38,13 @@ export function CategoriesScreen({ month }: { month: MonthKey }) {
         ))}
       </div>
       <div id={`cat-panel-${tab}`} role="tabpanel" aria-labelledby={`cat-tab-${tab}`}>
-        {tab === 'repartition' ? <BreakdownSection key={month} month={month} /> : <ManageSection />}
+        {tab === 'repartition' ? <BreakdownSection key={month} month={month} onOpenOperations={onOpenOperations} /> : <ManageSection onOpenOperations={onOpenOperations} />}
       </div>
     </>
   );
 }
 
-function BreakdownSection({ month }: { month: MonthKey }) {
+function BreakdownSection({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data } = useStore();
   // Slice or row under the pointer (shared by the pie and the list, RG28) and the one row unfolded; both are forgotten when the month changes.
   const [hover, setHover] = useState<string | null>(null);
@@ -70,7 +72,7 @@ function BreakdownSection({ month }: { month: MonthKey }) {
             <CategoryPie slices={pieSlices(breakdown)} total={breakdown.total} active={hover} onActive={setHover} onSelect={toggle} />
             <div className="cat-legend">
               {rows.map(r => (
-                <ShareRow key={r.category?.id ?? 'none'} row={r} max={maxAmount} month={month} active={hover === (r.category?.id ?? 'none')} dimmed={hover !== null && hover !== (r.category?.id ?? 'none')} open={open === (r.category?.id ?? 'none')} onHover={setHover} onToggle={toggle} />
+                <ShareRow key={r.category?.id ?? 'none'} row={r} max={maxAmount} month={month} active={hover === (r.category?.id ?? 'none')} dimmed={hover !== null && hover !== (r.category?.id ?? 'none')} open={open === (r.category?.id ?? 'none')} onHover={setHover} onToggle={toggle} onOpenOperations={onOpenOperations} />
               ))}
             </div>
           </div>
@@ -80,22 +82,27 @@ function BreakdownSection({ month }: { month: MonthKey }) {
   );
 }
 
-function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle }: { row: CategoryShare; max: number; month: MonthKey; active: boolean; dimmed: boolean; open: boolean; onHover: (id: string | null) => void; onToggle: (id: string) => void }) {
+function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle, onOpenOperations }: { row: CategoryShare; max: number; month: MonthKey; active: boolean; dimmed: boolean; open: boolean; onHover: (id: string | null) => void; onToggle: (id: string) => void; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data } = useStore();
   const id = row.category?.id ?? 'none';
   const name = row.category?.name ?? 'Sans catégorie';
   return (
     <div className={`cat-share${active ? ' is-active' : ''}${dimmed ? ' is-dimmed' : ''}`} onMouseEnter={() => onHover(id)} onMouseLeave={() => onHover(null)}>
-      <button type="button" className={`cat-row cat-row-btn${row.category ? '' : ' is-none'}`} aria-expanded={open} aria-controls={`cat-detail-${id}`} onClick={() => onToggle(id)} onFocus={() => onHover(id)} onBlur={() => onHover(null)}>
-        <span className="dot is-9" style={{ background: row.category ? tone(row.category.hue).base : 'var(--neutral-fill)' }} />
-        <span className="cat-name">{name}</span>
-        <b className="num">{money(row.amount)}</b>
-        <span className="num">{percent(row.share)}</span>
-        <span className="num cat-count">({row.count})</span>
-        <span className="progress" aria-hidden="true">
-          <span style={{ display: 'block', height: '100%', borderRadius: 99, width: `${max > 0 ? (row.amount / max) * 100 : 0}%`, background: row.category ? tone(row.category.hue).base : 'var(--neutral-fill)' }} />
-        </span>
-      </button>
+      <div className="cat-share-main">
+        <button type="button" className={`cat-row cat-row-btn${row.category ? '' : ' is-none'}`} aria-expanded={open} aria-controls={`cat-detail-${id}`} onClick={() => onToggle(id)} onFocus={() => onHover(id)} onBlur={() => onHover(null)}>
+          <span className="dot is-9" style={{ background: row.category ? tone(row.category.hue).base : 'var(--neutral-fill)' }} />
+          <span className="cat-name">{row.category && categoryEmoji(row.category) ? `${categoryEmoji(row.category)} ` : ''}{name}</span>
+          <b className="num">{money(row.amount)}</b>
+          <span className="num">{percent(row.share)}</span>
+          <span className="num cat-count">({row.count})</span>
+          <span className="progress" aria-hidden="true">
+            <span style={{ display: 'block', height: '100%', borderRadius: 99, width: `${max > 0 ? (row.amount / max) * 100 : 0}%`, background: row.category ? tone(row.category.hue).base : 'var(--neutral-fill)' }} />
+          </span>
+        </button>
+        <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${name}`} title="Voir les dépenses" onClick={() => onOpenOperations(row.category ? { categoryId: row.category.id, label: name } : { uncategorized: true, label: name })}>
+          <Icon name="list" size={15} />
+        </button>
+      </div>
       {open && (
         <ul id={`cat-detail-${id}`} className="cat-detail" aria-label={`Écritures : ${name}`}>
           {categoryEntries(data, month, row.category?.id ?? null).map(e => (
@@ -111,7 +118,7 @@ function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle }: 
   );
 }
 
-function ManageSection() {
+function ManageSection({ onOpenOperations }: { onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, update } = useStore();
   const categories = data.categories ?? [];
   const [name, setName] = useState('');
@@ -141,15 +148,16 @@ function ManageSection() {
       {message && <div className="alert-box" role="alert">{message}</div>}
       {categories.length === 0 && <div className="empty">Aucune catégorie, ajoutes-en une</div>}
       {categories.map(c => (
-        <ManageRow key={c.id} category={c} categories={categories} onMessage={setMessage} />
+        <ManageRow key={c.id} category={c} categories={categories} onMessage={setMessage} onOpenOperations={onOpenOperations} />
       ))}
     </section>
   );
 }
 
-function ManageRow({ category: c, categories, onMessage }: { category: Category; categories: Category[]; onMessage: (m: string) => void }) {
+function ManageRow({ category: c, categories, onMessage, onOpenOperations }: { category: Category; categories: Category[]; onMessage: (m: string) => void; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, update } = useStore();
   const [editing, setEditing] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
   const used = categoryUsage(data, c.id);
   const save = () => {
@@ -171,17 +179,39 @@ function ManageRow({ category: c, categories, onMessage }: { category: Category;
   return (
     <div className="cat-row is-manage">
       <span className="dot is-9" style={{ background: tone(c.hue).base }} />
+      <span className="acc-picker">
+        <button type="button" className="btn-outline emoji-btn" aria-label={`Choisir l’emoji de ${c.name}`} title="Choisir un emoji" onClick={() => setPicking(p => !p)}>
+          {categoryEmoji(c) || '＋'}
+        </button>
+        {picking && (
+          <>
+            <div className="backdrop" onClick={() => setPicking(false)} />
+            <div className="popmenu emoji-menu">
+              {EMOJI_CHOICES.map(e => (
+                <button key={e} type="button" className={`emoji-choice${categoryEmoji(c) === e ? ' is-on' : ''}`} onClick={() => { update(d => void setCategoryEmoji(d, c.id, e)); setPicking(false); }}>
+                  {e}
+                </button>
+              ))}
+              <button type="button" className="emoji-reset" onClick={() => { update(d => void setCategoryEmoji(d, c.id, '')); setPicking(false); }}>
+                Emoji par défaut
+              </button>
+            </div>
+          </>
+        )}
+      </span>
       {editing === null ? (
         <>
           <span className="cat-name">{c.name}</span>
           <span className="cat-count">{used} dépense{used > 1 ? 's' : ''}</span>
+          <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${c.name}`} title="Voir les dépenses" onClick={() => onOpenOperations({ categoryId: c.id, label: c.name })}>
+            <Icon name="list" size={15} />
+          </button>
           <button type="button" className="btn-outline" aria-label={`Renommer ${c.name}`} onClick={() => setEditing(c.name)}>
             Renommer
           </button>
           <button type="button" className="btn-outline is-danger" aria-label={`Supprimer ${c.name}`} disabled={used > 0} title={used > 0 ? usedMessage(used) : undefined} onClick={remove}>
             Supprimer
           </button>
-          {used > 0 && <span className="cat-count">{usedMessage(used)}</span>}
         </>
       ) : (
         <>

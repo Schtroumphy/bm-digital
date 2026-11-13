@@ -11,6 +11,7 @@ import { Donut, DONUT_COLORS } from '../components/Donut';
 import { goalHue } from '../components/goalStyle';
 import { Icon } from '../components/Icon';
 import { MonthNotes } from '../components/MonthNotes';
+import type { OperationsFocus } from './Expenses';
 import { QuickEntryPopup } from '../components/QuickEntryPopup';
 import { BAD, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { newId, useStore } from '../state/store';
@@ -404,12 +405,21 @@ function WealthCard({ w, emergency }: { w: DashboardWealth | null; emergency: Go
 const changeColor = (n: number) => (n > 0 ? GOOD : n < 0 ? BAD : MUTED);
 
 /** Received / spent of a savings row, and what is assigned to it outside its balance. */
-function SavingsFlows({ received, spent, assigned }: { received: number; spent: number; assigned?: { received: number; spent: number } }) {
+function SavingsFlows({ received, spent, assigned, accountId, name, onOpenOperations }: { received: number; spent: number; assigned?: { received: number; spent: number }; accountId?: string; name?: string; onOpenOperations?: (f: OperationsFocus) => void }) {
+  // The real amounts of an account open the Opérations tab filtered on that account.
+  const amount = (value: number) =>
+    accountId && onOpenOperations ? (
+      <button type="button" className="amount-link" title="Voir les opérations du compte" onClick={() => onOpenOperations({ accountId, label: name ?? '' })}>
+        <b>{money(value)}</b>
+      </button>
+    ) : (
+      <b>{money(value)}</b>
+    );
   return (
     <>
       <div className="savings-flows">
-        <span>Reçu <b>{money(received)}</b></span>
-        <span>Dépensé <b>{money(spent)}</b></span>
+        <span>Reçu {amount(received)}</span>
+        <span>Dépensé {amount(spent)}</span>
       </div>
       {assigned && (
         <div className="savings-assigned">
@@ -421,7 +431,7 @@ function SavingsFlows({ received, spent, assigned }: { received: number; spent: 
   );
 }
 
-function SavingsRow({ r }: { r: SavingsAccountRow }) {
+function SavingsRow({ r, onOpenOperations }: { r: SavingsAccountRow; onOpenOperations: (f: OperationsFocus) => void }) {
   return (
     <div className="savings-row">
       <div className="savings-line">
@@ -429,13 +439,13 @@ function SavingsRow({ r }: { r: SavingsAccountRow }) {
         <span className="savings-name">{r.name}</span>
         <b style={{ color: changeColor(r.change) }}>{signed(r.change)}</b>
       </div>
-      <SavingsFlows received={r.received} spent={r.spent} assigned={r.assigned} />
+      <SavingsFlows received={r.received} spent={r.spent} assigned={r.assigned} accountId={r.id} name={r.name} onOpenOperations={onOpenOperations} />
     </div>
   );
 }
 
 /** « Épargne » (spec 0029): month movements of the savings and investment accounts, read only. */
-function SavingsCard({ v }: { v: DashboardView }) {
+function SavingsCard({ v, onOpenOperations }: { v: DashboardView; onOpenOperations: (f: OperationsFocus) => void }) {
   const s = v.savingsAccounts;
   const [onlyMoved, setOnlyMoved] = useState(true);
   if (v.initialized && !s) return null;
@@ -458,9 +468,9 @@ function SavingsCard({ v }: { v: DashboardView }) {
       {s ? (
         <div className="savings-list">
           {shown.length === 0 && <div className="dash-empty">Aucun compte n’a évolué ce mois-ci</div>}
-          {savings.map(r => <SavingsRow key={r.id} r={r} />)}
+          {savings.map(r => <SavingsRow key={r.id} r={r} onOpenOperations={onOpenOperations} />)}
           {invest.length > 0 && <div className="savings-sep">Investissements</div>}
-          {invest.map(r => <SavingsRow key={r.id} r={r} />)}
+          {invest.map(r => <SavingsRow key={r.id} r={r} onOpenOperations={onOpenOperations} />)}
           <div className="savings-row savings-total">
             <div className="savings-line">
               <span className="savings-name has-tip" data-tip="Les virements entre ces comptes sont comptés des deux côtés">Total</span>
@@ -510,7 +520,7 @@ function GoalsCard({ v, onOpen }: { v: DashboardView; onOpen: (t: DashboardTarge
 }
 
 /** Accueil (spec 0027): what to know and to do for a month. Its only writes are the quick entries of the « + » and the notes. */
-export function DashboardScreen({ month, onOpen }: { month: MonthKey; onOpen: (t: DashboardTarget) => void }) {
+export function DashboardScreen({ month, onOpen, onOpenOperations }: { month: MonthKey; onOpen: (t: DashboardTarget) => void; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, ledger } = useStore();
   const v = dashboardView(data, ledger, month, isoDate());
   const canAdd = v.initialized && !isMonthLocked(data, month);
@@ -551,7 +561,7 @@ export function DashboardScreen({ month, onOpen }: { month: MonthKey; onOpen: (t
         <div className="dash-right">
           <TodoCard v={v} onOpen={onOpen} />
           <WealthCard w={v.wealth} emergency={v.emergency} />
-          <SavingsCard v={v} />
+          <SavingsCard v={v} onOpenOperations={onOpenOperations} />
         </div>
       </div>
     </>

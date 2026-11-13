@@ -16,6 +16,30 @@ export const isCategorizableType = (type: TxType): boolean => CATEGORIZABLE_TYPE
 /** Default list, created once when the data have no list yet (RG2). */
 export const DEFAULT_CATEGORY_NAMES = ['Alimentation', 'Logement', 'Transport', 'Loisirs', 'Santé', 'Abonnements', 'Autres'] as const;
 
+/** Emoji of each default category (and of a few usual names); used when a category has none of its own. */
+const SUGGESTED_EMOJI: [string, string][] = [
+  ['alimentation', '🛒'], ['courses', '🛒'], ['restaurant', '🍽️'], ['logement', '🏠'], ['loyer', '🏠'], ['transport', '🚗'], ['loisirs', '🎮'], ['sorties', '🎉'],
+  ['sante', '🩺'], ['abonnements', '🔁'], ['vetements', '👕'], ['cadeaux', '🎁'], ['voyages', '✈️'], ['vacances', '🏖️'], ['education', '🎓'], ['animaux', '🐾'],
+  ['impots', '🧾'], ['assurances', '🛡️'], ['energie', '💡'], ['enfants', '🧸'], ['sport', '🏃'], ['snack', '🍿'], ['repas', '🍽️'], ['shopping', '🛍️'], ['mode', '👕'], ['pret', '🏦'], ['credit', '🏦'], ['autres', '📦'],
+];
+
+/** Emoji of a category: its own, else the one suggested by its name (accents and case ignored), else none (''). */
+export function categoryEmoji(c: Pick<Category, 'name' | 'emoji'>): string {
+  if (c.emoji) return c.emoji;
+  const key = normalizeCategoryName(c.name);
+  const words = key.split(/\s+/);
+  return SUGGESTED_EMOJI.find(([name]) => words.some(w => w === name || w === `${name}s`))?.[1] ?? '';
+}
+
+/** Name preceded by its emoji, for a list of options or a legend. */
+export const categoryLabel = (c: Pick<Category, 'name' | 'emoji'>): string => [categoryEmoji(c), c.name].filter(Boolean).join(' ');
+
+/** Emojis offered when choosing one for a category. */
+export const EMOJI_CHOICES: readonly string[] = [
+  '🛒', '🍽️', '☕', '🏠', '💡', '🚗', '🚌', '⛽', '🎮', '🎉', '🎬', '📚', '🩺', '💊', '🔁', '📱', '👕', '🎁', '✈️', '🏖️', '🎓', '🐾', '🧾', '🛡️',
+  '🧸', '🏃', '💇', '🔧', '🛋️', '💰', '🏦', '📦',
+];
+
 /** Name compared without case, accents and outer spaces (RG1). */
 export const normalizeCategoryName = (name: string): string =>
   name.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
@@ -42,7 +66,7 @@ export function parseCategoryName(text: string, categories: Category[], exceptId
 export function defaultCategories(): Category[] {
   const list: Category[] = [];
   DEFAULT_CATEGORY_NAMES.forEach(name => {
-    list.push({ id: `cat-${normalizeCategoryName(name)}`, name, hue: nextCategoryHue(list) });
+    list.push({ id: `cat-${normalizeCategoryName(name)}`, name, hue: nextCategoryHue(list), emoji: categoryEmoji({ name }) });
   });
   return list;
 }

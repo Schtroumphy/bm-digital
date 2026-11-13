@@ -1,3 +1,4 @@
+import { categoryLabel } from '../../domain/categories';
 import { AccountDot } from '../components/AccountPicker';
 import { OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, chooseEnvelope, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
@@ -324,7 +325,7 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
           >
             <option value="">Sans catégorie</option>
             {(data.categories ?? []).map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{categoryLabel(c)}</option>
             ))}
           </select>
         </div>

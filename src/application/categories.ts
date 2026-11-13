@@ -26,6 +26,18 @@ export function renameCategory(d: BudgetData, id: string, name: string): string 
   return null;
 }
 
+/** Sets the emoji of a category ('' = back to the one suggested by its name). Returns an error message, or null when applied. */
+export function setCategoryEmoji(d: BudgetData, id: string, emoji: string): string | null {
+  const list = d.categories ?? [];
+  if (!list.some(c => c.id === id)) return 'Catégorie introuvable';
+  d.categories = list.map(c => {
+    if (c.id !== id) return c;
+    const { emoji: _old, ...rest } = c;
+    return emoji ? { ...rest, emoji } : rest;
+  });
+  return null;
+}
+
 /** Message shown on the disabled « Supprimer » button of a used category (RG5). */
 export const usedMessage = (count: number): string => `Utilisée par ${count} dépense${count > 1 ? 's' : ''}`;
 

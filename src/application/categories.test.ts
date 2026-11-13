@@ -95,7 +95,7 @@ describe('gérer la liste (RG1, RG3 à RG5)', () => {
     addTransaction(d, tx('a', 10, { categoryId: ALI }));
     const hue = d.categories![0].hue;
     expect(renameCategory(d, ALI, 'Courses')).toBeNull();
-    expect(d.categories![0]).toEqual({ id: ALI, name: 'Courses', hue });
+    expect(d.categories![0]).toEqual({ id: ALI, name: 'Courses', hue, emoji: '🛒' });
     expect(d.transactions[0].categoryId).toBe(ALI);
     expect(renameCategory(d, ALI, 'logement')).toMatch(/existe déjà/);
     expect(renameCategory(d, ALI, 'COURSES')).toBeNull();

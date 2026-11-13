@@ -44,19 +44,23 @@ export function YearLineChart({ series, color, currentMonth, label }: Props) {
   const H = size.h;
   const BOTTOM = H - AXIS_H;
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
-  const max = Math.max(0, ...series.flatMap(s => s.values.filter((v): v is number => v !== null)));
-  const step = niceStep(max);
-  const top = Math.max(step, Math.ceil(max / step) * step);
+  const values = series.flatMap(s => s.values.filter((v): v is number => v !== null));
+  const max = Math.max(0, ...values);
+  const min = Math.min(0, ...values);
+  // The axis spans negative values too (e.g. a savings withdrawal): graduations run from the lowest multiple of the step up to the highest.
+  const step = niceStep(max - min);
+  const top = max > 0 ? Math.ceil(max / step) * step : min < 0 ? 0 : step;
+  const bottomValue = Math.floor(min / step) * step;
   const X = (i: number) => LEFT + ((i + 0.5) * (W - LEFT)) / 12;
-  const Y = (v: number) => BOTTOM - (v / top) * (BOTTOM - TOP);
-  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, j) => j * step);
+  const Y = (v: number) => BOTTOM - ((v - bottomValue) / (top - bottomValue)) * (BOTTOM - TOP);
+  const ticks = Array.from({ length: Math.round((top - bottomValue) / step) + 1 }, (_, j) => bottomValue + j * step);
 
   return (
     <div className="ya-chart-box" ref={boxRef}>
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="ya-chart" role="img" aria-label={label}>
         {ticks.map(t => (
           <g key={t}>
-            <line x1={LEFT} x2={W} y1={Y(t)} y2={Y(t)} className="ya-grid" />
+            <line x1={LEFT} x2={W} y1={Y(t)} y2={Y(t)} className="ya-grid" strokeWidth={t === 0 && bottomValue < 0 ? 1.6 : undefined} />
             <text x={LEFT - 8} y={Y(t)} className="ya-axis" textAnchor="end" dominantBaseline="middle">
               {axisLabel(t)}
             </text>

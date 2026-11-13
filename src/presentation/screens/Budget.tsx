@@ -411,12 +411,12 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                 <div className="rel">
                   {/* Read only (spec 0019, RG19, RG24): the actual is the sum of the entries of the line. Its count is in the tooltip of the row;
                       screen readers get the same text through a visually hidden span (no layout effect). */}
-                  {/* Clicking an actual opens the Opérations tab filtered on the entries of the line (savings blocks are transfers, not operations). */}
+                  {/* Clicking an actual opens the Opérations tab filtered on the entries of the line (savings blocks: the transfers aimed at the line). */}
                   <div
                     className={`cell is-readonly${l.actual !== null ? ' has-actual' : ''}`}
-                    style={{ color: l.actual === null ? MUTED : undefined, cursor: l.actual !== null && !isSavings ? 'pointer' : undefined }}
+                    style={{ color: l.actual === null ? MUTED : undefined, cursor: l.actual !== null ? 'pointer' : undefined }}
                     aria-describedby={`entries:${l.key}`}
-                    onClick={l.actual !== null && !isSavings ? () => onOpenOperations({ type: block === 'var' ? 'var' : block === 'rev' ? 'rev' : 'fix', target: l.key, label: l.name }) : undefined}
+                    onClick={l.actual !== null ? () => onOpenOperations(isSavings ? { movementLine: l.key, label: l.name } : { type: block === 'var' ? 'var' : block === 'rev' ? 'rev' : 'fix', target: l.key, label: l.name }) : undefined}
                   >
                     {l.actual === null ? '—' : money(l.actual)}
                   </div>

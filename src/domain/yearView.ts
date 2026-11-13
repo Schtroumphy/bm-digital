@@ -4,7 +4,7 @@ import { bankDateOf } from './lineExpenses';
 import { goalsOfYear } from './goals';
 import { compareMonths, monthKey, round2 } from './format';
 import { monthAlloc, type Ledger } from './ledger';
-import type { BlockKey, BudgetData, MonthKey } from './types';
+import type { BlockKey, BudgetData, MonthKey, TxType } from './types';
 
 /*
  * Vue annuelle (spec 0044). Read-only assembly of existing calculations (`monthSummary`, `blockTotals`, `budgetLines`, the envelope months of the
@@ -337,4 +337,37 @@ export function yearLineDetails(d: BudgetData, year: number, block: YearBlockId,
       return `${dd}/${mm} · ${t.label} · ${t.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €${t.detail ? `\n${t.detail}` : ''}`;
     })
     .join('\n\n');
+}
+
+/** Entries of one line of the annual table for one month: the filter the Opérations tab opens with, and a recap for the tooltip. */
+export interface YearCellEntries {
+  type: TxType;
+  target: string;
+  count: number;
+  total: number;
+  /** The biggest entries of the month, at most `TOP_ENTRIES`. */
+  top: { label: string; amount: number; date: string }[];
+}
+
+const TOP_ENTRIES = 5;
+
+/** Entry type written by the lines of a block; null for the blocks whose entries are not shown in Opérations (savings, investments, planned). */
+const TX_TYPE_OF_BLOCK: Partial<Record<YearBlockId, TxType>> = { rev: 'rev', var: 'var', fix: 'fix', cre: 'fix', env: 'env' };
+
+/** Entries behind the cell (line `name` of `block`/`section`, `month`); null when the block has no entries to show or the line does not exist that month. */
+export function yearCellEntries(d: BudgetData, month: MonthKey, block: YearBlockId, section: string, name: string): YearCellEntries | null {
+  const type = TX_TYPE_OF_BLOCK[block];
+  if (!type) return null;
+  const target =
+    block === 'env'
+      ? d.envelopes.find(e => e.name === name)?.id
+      : budgetLines(d, month).find(l => l.block === block && l.section === section && l.name === name)?.key;
+  if (!target) return null;
+  const txs = d.transactions.filter(t => t.month === month && t.type === type && t.target === target);
+  if (txs.length === 0) return null;
+  const top = [...txs]
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, TOP_ENTRIES)
+    .map(t => ({ label: t.label, amount: t.amount, date: bankDateOf(t, d) }));
+  return { type, target, count: txs.length, total: round2(txs.reduce((a, t) => a + t.amount, 0)), top };
 }
