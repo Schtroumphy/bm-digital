@@ -13,17 +13,17 @@ import { newId, useStore } from '../state/store';
 
 type CategoriesTab = 'repartition' | 'indicateurs' | 'gerer';
 const TABS: { id: CategoriesTab; label: string }[] = [
-  { id: 'repartition', label: 'Répartition' },
   { id: 'indicateurs', label: 'Indicateurs' },
+  { id: 'repartition', label: 'Répartition' },
   { id: 'gerer', label: 'Gérer' },
 ];
 
 /**
- * Screen « Catégories » (spec 0046, RG27): three sub-tabs, « Répartition » (open by default: the month's breakdown, read only), « Indicateurs » (the month against its yearly average, spec 0052, read only) and « Gérer » (the list).
- * Same `tabs` look as the rest of the app; arrow keys move between the tabs. The last tab is not remembered: the screen opens on « Répartition ».
+ * Screen « Catégories » (spec 0046, RG27): three sub-tabs, « Indicateurs » (open by default: the month against its yearly average, spec 0052, read only), « Répartition » (the month's breakdown, read only) and « Gérer » (the list).
+ * Same `tabs` look as the rest of the app; arrow keys move between the tabs. The last tab is not remembered: the screen opens on « Indicateurs ».
  */
 export function CategoriesScreen({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
-  const [tab, setTab] = useState<CategoriesTab>('repartition');
+  const [tab, setTab] = useState<CategoriesTab>('indicateurs');
   const move = (e: React.KeyboardEvent, from: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
@@ -41,8 +41,8 @@ export function CategoriesScreen({ month, onOpenOperations }: { month: MonthKey;
         ))}
       </div>
       <div id={`cat-panel-${tab}`} role="tabpanel" aria-labelledby={`cat-tab-${tab}`}>
-        {tab === 'repartition' && <BreakdownSection key={month} month={month} onOpenOperations={onOpenOperations} />}
         {tab === 'indicateurs' && <IndicatorsSection month={month} onOpenOperations={onOpenOperations} />}
+        {tab === 'repartition' && <BreakdownSection key={month} month={month} onOpenOperations={onOpenOperations} />}
         {tab === 'gerer' && <ManageSection onOpenOperations={onOpenOperations} />}
       </div>
     </>
@@ -126,12 +126,19 @@ function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle, on
 const signed = (n: number, text: string) => (n > 0 ? `+${text}` : text);
 const spendGapColor = (delta: number) => (delta > 0 ? BAD : delta < 0 ? GOOD : undefined);
 
-/** « +21,3 % », « −60,0 % », « nouveau » or nothing; never colour alone (RG5, RG6). */
-function Gap({ v, cell = false }: { v: Variation; cell?: boolean }) {
+/** « +85,00 € · +21,3 % » or « 0,00 € »: the sign is always written, never colour alone (RG5, RG6). */
+const fullGapText = (v: Variation) => `${money(v.delta, true)}${v.isNew ? ' · nouveau' : v.percent !== null ? ` · ${signed(v.percent, percent(v.percent).replace('-', '−'))}` : ''}`;
+/** What is shown: a new line (average 0) only says « nouveau »; the amount stays in the hidden text (`SrGap`). */
+const gapText = (v: Variation) => (v.isNew ? 'nouveau' : fullGapText(v));
+/** Hidden complement for screen readers: the visible « nouveau » plus this gives « nouveau, +X € », once. */
+const SrGap = ({ v }: { v: Variation }) => (v.isNew ? <span className="sr-only">, {money(v.delta, true)}</span> : null);
+
+/** Chip of a gap: red above the average, green below, neutral when equal (RG6). */
+function GapChip({ v, cell = false }: { v: Variation; cell?: boolean }) {
   return (
-    <span role={cell ? 'cell' : undefined} className="num cat-gap" style={{ color: spendGapColor(v.delta) }}>
-      <b>{money(v.delta, true)}</b>
-      {v.isNew ? ' nouveau' : v.percent !== null ? ` ${signed(v.percent, percent(v.percent).replace('-', '−'))}` : ''}
+    <span role={cell ? 'cell' : undefined} className={`state-chip ${v.isNew ? 'is-violet' : v.delta > 0 ? 'is-red' : v.delta < 0 ? 'is-green' : 'is-neutral'}`}>
+      {gapText(v)}
+      <SrGap v={v} />
     </span>
   );
 }
@@ -158,102 +165,125 @@ function IndicatorsSection({ month, onOpenOperations }: { month: MonthKey; onOpe
   const s = r.summary;
   const hasReference = r.reference.length > 0;
   const labels = r.trendMonths.map(m => `${MONTH_SHORT[parseMonth(m).month]} ${m.slice(0, 4)}`);
-  const pick = (row: IndicatorRow | null, empty: string) =>
-    !hasReference ? NO_REFERENCE : row && row.variation ? (
-      <>
-        <b>{rowName(row)}</b>
-        <Gap v={row.variation} />
-      </>
-    ) : (
-      <span className="cat-noref">{empty}</span>
-    );
-  return (
-    <section className="panel cat-panel" aria-label="Indicateurs du mois">
-      <div className="cat-head">
-        <div className="cat-title">Indicateurs du mois</div>
-        <span>{hasReference ? `Référence : moyenne ${referenceLabel(r.reference)}` : 'Référence : aucune'}</span>
+  // Two parts side by side, in the order of the sort: the first half on the left, the rest (« Sans catégorie » last) on the right.
+  const half = Math.ceil(r.rows.length / 2);
+  const parts = [r.rows.slice(0, half), r.rows.slice(half)].filter(p => p.length > 0);
+  const open = (row: IndicatorRow) => {
+    const name = row.category?.name ?? 'Sans catégorie';
+    onOpenOperations(row.category ? { categoryId: row.category.id, label: name } : { uncategorized: true, label: name });
+  };
+  /** Rise / fall column of the strip: the category is a button (RG16); « — » and a message when there is nothing to click. */
+  const pick = (label: string, row: IndicatorRow | null, empty: string) => {
+    const clickable = hasReference && row !== null && row.variation !== null;
+    return (
+      <div className="dash-kpi">
+        <div className="kpi-label">{label}</div>
+        <div className="dash-val cat-kpi-name">
+          {clickable ? (
+            <button type="button" className="cat-kpi-btn" aria-label={`Voir les dépenses : ${row.category?.name}`} title="Voir les dépenses" onClick={() => open(row)}>
+              {rowName(row)}
+            </button>
+          ) : (
+            '—'
+          )}
+        </div>
+        <div className="dash-sub" style={{ color: clickable ? (row.variation!.isNew ? 'var(--violet-ink)' : spendGapColor(row.variation!.delta)) : undefined }}>
+          {clickable ? <>{gapText(row.variation!)}<SrGap v={row.variation!} /></> : hasReference ? empty : 'pas de référence'}
+        </div>
       </div>
-      {r.empty ? (
-        <div className="empty">Aucune dépense pour {monthLabel(month)}</div>
-      ) : (
-        <>
-          <div className="cat-kpis">
-            <div className="cat-kpi">
-              <span className="cat-kpi-label">Dépenses du mois</span>
-              <b className="cat-kpi-value">{money(s.total)}</b>
-              {s.average !== null && s.variation ? (
-                <>
-                  <span className="cat-count">moy. {money(s.average)}</span>
-                  <Gap v={s.variation} />
-                </>
-              ) : (
-                NO_REFERENCE
-              )}
-            </div>
-            <div className="cat-kpi">
-              <span className="cat-kpi-label">Plus forte hausse</span>
-              {pick(s.topRise, 'Aucune catégorie au-dessus de sa moyenne')}
-            </div>
-            <div className="cat-kpi">
-              <span className="cat-kpi-label">Plus forte baisse</span>
-              {pick(s.topFall, 'Aucune catégorie en dessous de sa moyenne')}
-            </div>
-            <div className="cat-kpi">
-              <span className="cat-kpi-label">Sans catégorie</span>
-              <b className="cat-kpi-value">{money(s.uncategorizedAmount)}</b>
-              <span className="cat-count">
-                {s.uncategorizedCount} écriture{s.uncategorizedCount > 1 ? 's' : ''}
-              </span>
-            </div>
-          </div>
-          <div className="cat-ind-table" role="table" aria-label="Indicateurs par catégorie">
-          <div role="rowgroup">
-          <div className="cat-ind-row is-head" role="row">
-            <span aria-hidden="true" />
-            <span role="columnheader">Catégorie</span>
-            <span role="columnheader" className="num">Mois</span>
-            <span role="columnheader" className="num">Moyenne</span>
-            <span role="columnheader" className="num">Écart</span>
-            <span role="columnheader">Tendance (6 mois)</span>
-            <span aria-hidden="true" />
-          </div>
-          </div>
-          <div role="rowgroup">
-          {r.rows.map(row => {
-            const name = row.category?.name ?? 'Sans catégorie';
-            const color = row.category ? tone(row.category.hue).base : 'var(--neutral-fill)';
-            return (
-              <div key={row.category?.id ?? 'none'} className={`cat-ind-row${row.category ? '' : ' is-none'}`} role="row">
-                <span className="dot is-9" aria-hidden="true" style={{ background: color }} />
-                <span role="cell" className="cat-name">{rowName(row)}</span>
-                <b role="cell" className="num">{money(row.amount)}</b>
-                {row.average !== null && row.variation ? (
+    );
+  };
+  return (
+    <>
+      <section className="panel cat-panel is-ind" aria-label="Indicateurs du mois">
+        <div className="cat-head is-ind">
+          <div className="cat-title">Indicateurs du mois</div>
+          <span className="state-chip is-violet">{hasReference ? `Moyenne ${referenceLabel(r.reference)}` : 'Aucune référence'}</span>
+        </div>
+        {r.empty ? (
+          <div className="empty">Aucune dépense pour {monthLabel(month)}</div>
+        ) : (
+          <div className="dash-kpis cat-kpis">
+            <div className="dash-kpi is-hero">
+              <div className="kpi-label">Dépenses du mois</div>
+              <div className="dash-hero">{money(s.total)}</div>
+              <div className="dash-sub">
+                {s.average !== null && s.variation ? (
                   <>
-                    <span role="cell" className="num">{money(row.average)}</span>
-                    <Gap v={row.variation} cell />
+                    moy. {money(s.average)} <GapChip v={s.variation} />
                   </>
                 ) : (
-                  <>
-                    {NO_REFERENCE_CELL}
-                    {NO_REFERENCE_CELL}
-                  </>
+                  NO_REFERENCE
                 )}
-                <span role="cell">
-                  <Sparkline values={row.trend} labels={labels} color={color} />
-                </span>
-                <span role="cell">
-                <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${name}`} title="Voir les dépenses" onClick={() => onOpenOperations(row.category ? { categoryId: row.category.id, label: name } : { uncategorized: true, label: name })}>
-                  <Icon name="list" size={15} />
-                </button>
-                </span>
               </div>
-            );
-          })}
+            </div>
+            {pick('Plus forte hausse', s.topRise, 'Aucune catégorie au-dessus de sa moyenne')}
+            {pick('Plus forte baisse', s.topFall, 'Aucune catégorie en dessous de sa moyenne')}
+            <div className="dash-kpi">
+              <div className="kpi-label">Sans catégorie</div>
+              <div className="dash-val" style={{ color: s.uncategorizedAmount === 0 ? 'var(--muted)' : undefined }}>{money(s.uncategorizedAmount)}</div>
+              <div className="dash-sub">
+                {s.uncategorizedCount} écriture{s.uncategorizedCount > 1 ? 's' : ''}
+              </div>
+            </div>
           </div>
+        )}
+      </section>
+      {!r.empty && (
+        <section className="panel cat-panel is-ind" aria-label="Par catégorie">
+          <div className="cat-title">Par catégorie</div>
+          <div className="cat-ind-parts">
+            {parts.map((part, i) => (
+              <div key={i} role="table" aria-label={`Indicateurs par catégorie, partie ${i + 1}`}>
+                <div role="rowgroup">
+                  <div className="cat-ind-row is-head" role="row">
+                    <span role="presentation" aria-hidden="true" />
+                    <span role="columnheader">Catégorie</span>
+                    <span role="columnheader" className="num">Mois</span>
+                    <span role="columnheader" className="num">Moyenne</span>
+                    <span role="columnheader">Écart</span>
+                    <span role="columnheader">Tendance</span>
+                    <span role="presentation" aria-hidden="true" />
+                  </div>
+                </div>
+                <div role="rowgroup">
+                  {part.map(row => {
+                    const name = row.category?.name ?? 'Sans catégorie';
+                    const color = row.category ? tone(row.category.hue).base : 'var(--neutral-fill)';
+                    return (
+                      <div key={row.category?.id ?? 'none'} className={`cat-ind-row${row.category ? '' : ' is-none'}`} role="row">
+                        <span className="dot is-9" role="presentation" aria-hidden="true" style={{ background: color }} />
+                        <span role="cell" className="cat-name" title={rowName(row)}>{rowName(row)}</span>
+                        <b role="cell" className="num">{money(row.amount)}</b>
+                        {row.average !== null && row.variation ? (
+                          <>
+                            <span role="cell" className="num cat-avg">{money(row.average)}</span>
+                            <GapChip v={row.variation} cell />
+                          </>
+                        ) : (
+                          <>
+                            {NO_REFERENCE_CELL}
+                            {NO_REFERENCE_CELL}
+                          </>
+                        )}
+                        <span role="cell">
+                          <Sparkline values={row.trend} labels={labels} color={color} width={86} />
+                        </span>
+                        <span role="cell">
+                          <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${name}`} title="Voir les dépenses" onClick={() => open(row)}>
+                            <Icon name="list" size={15} />
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        </>
+        </section>
       )}
-    </section>
+    </>
   );
 }
 

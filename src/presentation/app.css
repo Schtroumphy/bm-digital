@@ -771,6 +771,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .state-chip.is-gray { background: rgba(32, 30, 29, 0.12); color: rgba(32, 30, 29, 0.6); }
 .state-chip.is-info { background: oklch(0.94 0.04 245); color: oklch(0.4 0.1 245); }
 .state-chip.is-violet { background: oklch(0.94 0.04 300); color: oklch(0.4 0.1 300); }
+.state-chip.is-red { background: oklch(0.95 0.04 25); color: oklch(0.45 0.17 25); }
 .state-chip.is-green { background: oklch(0.94 0.06 150); color: oklch(0.38 0.09 150); }
 .import-remember { display: flex; align-items: center; gap: 8px; padding: 0 0 4px 34px; font-size: 12px; color: rgba(32, 30, 29, 0.7); }
 .import-footer { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 12px 22px; margin: 0 -22px -18px; background: #fff; border-top: 1px solid rgba(32, 30, 29, 0.1); box-shadow: 0 -4px 12px rgba(32, 30, 29, 0.05); }
@@ -1450,17 +1451,34 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .line-row.is-unfunded .line-name-wrap, .line-row.is-partial .line-name-wrap { min-height: 22px; }
 
 /* Indicateurs des catégories (spec 0052) */
-.cat-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
-.cat-kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 10px; font-size: 13px; }
-.cat-kpi-label { font-size: 12px; color: var(--muted); }
-.cat-kpi-value { font-size: 18px; }
-.cat-gap { font-size: 12.5px; }
-.cat-gap b { font-weight: 700; }
+.cat-head.is-ind { align-items: center; }
+.cat-head.is-ind .cat-title { margin-bottom: 0; }
+.cat-panel.is-ind { padding: 12px 18px; margin-bottom: 10px; }
+.cat-panel.is-ind .cat-title { margin-bottom: 6px; }
+.cat-head .state-chip, .cat-kpis .state-chip, .cat-ind-row .state-chip { display: inline-flex; align-items: center; line-height: 1.4; padding-top: 2px; padding-bottom: 2px; width: fit-content; white-space: nowrap; }
+.cat-ind-row .state-chip { justify-self: start; }
+.cat-kpis { grid-template-columns: 1.5fr repeat(3, 1fr); }
+.cat-kpis .dash-hero { font-size: 25px; }
+.cat-kpi-name { min-width: 0; }
+/* Looks like plain text, still a real button (keyboard, label); on hover the same rounded background as the editable amounts of Budget (`.cell`: padding 2px 5px, radius 6px, rgba(32,30,29,.06)), and a focus ring. */
+.cat-kpi-btn { appearance: none; -webkit-appearance: none; display: inline-block; vertical-align: top; max-width: 100%; margin: 0 -5px; padding: 2px 5px; border: 0; border-radius: 6px; background: none; box-shadow: none; font: inherit; letter-spacing: inherit; color: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-kpi-btn:hover { background: rgba(32, 30, 29, 0.06); }
+.cat-kpi-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .cat-noref { color: var(--muted); font-size: 12px; font-style: italic; }
-.cat-ind-row { display: grid; grid-template-columns: 14px 190px 100px 100px 190px 110px 28px; align-items: center; gap: 12px; padding: 6px 0; font-size: 13px; min-width: 880px; }
-.cat-ind-row.is-head { font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--hairline); }
+.cat-ind-parts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; align-items: start; }
+.cat-ind-parts > :nth-child(2) { padding-left: 28px; border-left: 1px solid var(--hairline); }
+.cat-ind-parts > :nth-child(1):not(:last-child) { padding-right: 28px; }
+@media (max-width: 1100px) {
+  .cat-ind-parts { grid-template-columns: minmax(0, 1fr); }
+  .cat-ind-parts > :nth-child(1):not(:last-child) { padding-right: 0; }
+  .cat-ind-parts > :nth-child(2) { padding-left: 0; border-left: 0; border-top: 1px solid var(--hairline); margin-top: 10px; padding-top: 6px; }
+}
+.cat-ind-row { display: grid; grid-template-columns: 12px minmax(72px, 1fr) 74px 74px minmax(148px, max-content) 86px 24px; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; border-radius: 8px; }
+.cat-ind-row .cat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-ind-row:not(.is-head):hover { background: rgba(32, 30, 29, 0.04); }
+.cat-ind-row.is-head { font-size: 11.5px; font-weight: 600; color: var(--muted); border-radius: 0; border-bottom: 1px solid var(--hairline); }
 .cat-ind-row.is-none .cat-name { color: var(--muted); }
-.cat-ind-table { overflow-x: auto; }
+.cat-avg { color: var(--muted); }
 .cat-ind-row .num { text-align: right; }
 
 .tx-pill-field { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(32, 30, 29, 0.05); font-size: 13.5px; color: rgba(32, 30, 29, 0.4); }

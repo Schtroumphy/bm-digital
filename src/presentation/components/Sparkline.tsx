@@ -1,14 +1,15 @@
 import { money } from '../../domain/format';
 
-const W = 96;
-const H = 26;
+const W_DEFAULT = 110;
+const H = 28;
 const PAD = 4;
 
 /**
  * Hand-written SVG trend of a category (spec 0052, RG9): one point per month, the last one (the month shown) in full colour, the others faded.
  * A `null` value is a future month: no point, and the line stops there. The alternative text lists the amounts month by month.
  */
-export function Sparkline({ values, labels, color }: { values: (number | null)[]; labels: string[]; color: string }) {
+export function Sparkline({ values, labels, color, width = W_DEFAULT }: { values: (number | null)[]; labels: string[]; color: string; width?: number }) {
+  const W = width;
   const max = Math.max(...values.map(v => v ?? 0), 0);
   const x = (i: number) => PAD + (i * (W - 2 * PAD)) / Math.max(values.length - 1, 1);
   const y = (v: number) => (max > 0 ? H - PAD - (v / max) * (H - 2 * PAD) : H - PAD);
@@ -19,7 +20,9 @@ export function Sparkline({ values, labels, color }: { values: (number | null)[]
     <svg className="cat-spark" width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`6 derniers mois : ${text}`}>
       {points.length > 1 && <polyline points={points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeOpacity={0.45} strokeWidth={1.5} strokeLinejoin="round" />}
       {points.map(p => (
-        <circle key={p.i} cx={p.x} cy={p.y} r={p.i === last ? 3.5 : 2} fill={color} fillOpacity={p.i === last ? 1 : 0.4} />
+        <circle key={p.i} cx={p.x} cy={p.y} r={p.i === last ? 4.5 : 2} fill={color} fillOpacity={p.i === last ? 1 : 0.4}>
+          <title>{`${labels[p.i]} : ${money(p.v)}`}</title>
+        </circle>
       ))}
     </svg>
   );
