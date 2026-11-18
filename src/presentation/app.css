@@ -1402,3 +1402,9 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .fab-back:hover { filter: brightness(1.15); }
+
+.tx-pill-field { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(32, 30, 29, 0.05); font-size: 13.5px; color: rgba(32, 30, 29, 0.4); }
+.tx-pill-label { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.tx-pill-field input { border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ink); height: 28px; padding: 0; min-width: 0; outline: none; }
+.tx-pill-field input[type="date"] { width: 118px; }
+.tx-pill-field input.is-amount { width: 64px; text-align: right; }

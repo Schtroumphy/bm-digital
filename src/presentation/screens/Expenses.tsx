@@ -181,7 +181,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const [bulkMessage, setBulkMessage] = useState('');
   // Layout: the creation form lives in a right-hand panel opened by « Nouvelle opération »; the less used filters fold behind « Plus de filtres ».
   const [formOpen, setFormOpen] = useState(false);
-  const [moreFilters, setMoreFilters] = useState(false);
   const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
   const saveDetail = () => {
     if (!editingDetail) return;
@@ -554,11 +553,23 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
             ))}
           </div>
           <input className="text-input tx-search tx-search-inline" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
-          <span style={{ flex: 1 }} />
-          <button type="button" className={`btn-outline tx-more${moreFilters ? ' is-on' : ''}`} onClick={() => setMoreFilters(m => !m)}>
-              <Icon name="list" size={14} />
-              Plus de filtres
-            </button>
+          <span className="tx-pill-field">
+            <span className="tx-pill-label">Période</span>
+            <input type="date" aria-label="Du" value={filter.from} max={filter.to || undefined} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
+            <span aria-hidden="true">→</span>
+            <input type="date" aria-label="Au" value={filter.to} min={filter.from || undefined} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} />
+          </span>
+          <span className="tx-pill-field">
+            <span className="tx-pill-label">Montant</span>
+            <input className="is-amount" aria-label="Montant minimum" value={filter.min} placeholder="min" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, min: sanitizeAmountInput(e.target.value) }))} />
+            <span aria-hidden="true">→</span>
+            <input className="is-amount" aria-label="Montant maximum" value={filter.max} placeholder="max" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, max: sanitizeAmountInput(e.target.value) }))} />
+          </span>
+          {(filter.from || filter.to || filter.min || filter.max) && (
+            <span className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '' }))}>
+              Effacer ✕
+            </span>
+          )}
           </div>
           <div className="tx-toolbar">
             {view === 'ops' && (
@@ -599,6 +610,24 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 />
               </div>
             )}
+            {view === 'ops' && (
+              <Menu
+                pill
+                options={[['all', 'Tous les types'], ...(Object.keys(TYPE_LABEL) as TxType[]).map(t => [t, TYPE_LABEL[t]] as [string, string])]}
+                value={filter.type}
+                onPick={id => setFilter(f => ({ ...f, type: id as TxType | 'all' }))}
+                render={(_id, name) => name}
+              />
+            )}
+            {view === 'ops' && (
+              <Menu
+                pill
+                options={[['all', 'Toutes les lignes'], ...lineOptions.map(([key, name]) => [key, name] as [string, string])]}
+                value={filter.line || 'all'}
+                onPick={id => setFilter(f => ({ ...f, line: id === 'all' ? '' : id }))}
+                render={(_id, name) => name}
+              />
+            )}
             {view === 'ops' && <span className="tx-divider" aria-hidden="true" />}
             {view === 'ops' && (
               <div className="chips">
@@ -613,54 +642,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               </span>
             )}
           </div>
-          {moreFilters && <div className="tx-filters">
-            {view === 'ops' && <div className="tx-f">
-              <span className="tx-f-label">Type</span>
-              <select className="text-input" value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value as TxType | 'all' }))}>
-                <option value="all">Tous les types</option>
-                {(Object.keys(TYPE_LABEL) as TxType[]).map(t => (
-                  <option key={t} value={t}>
-                    {TYPE_LABEL[t]}
-                  </option>
-                ))}
-              </select>
-            </div>}
-            {view === 'ops' && <div className="tx-f">
-              <span className="tx-f-label">Ligne</span>
-              <select className="text-input" value={filter.line} onChange={e => setFilter(f => ({ ...f, line: e.target.value }))}>
-                <option value="">Toutes les lignes</option>
-                {lineOptions.map(([key, name]) => (
-                  <option key={key} value={key}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>}
-            <div className="tx-f">
-              <span className="tx-f-label">Période</span>
-              <div className="tx-f-pair">
-                <input className="text-input" type="date" aria-label="Du" value={filter.from} max={filter.to || undefined} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
-                <span>→</span>
-                <input className="text-input" type="date" aria-label="Au" value={filter.to} min={filter.from || undefined} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} />
-              </div>
-            </div>
-            <div className="tx-f">
-              <span className="tx-f-label">Montant</span>
-              <div className="tx-f-pair">
-                <input className="text-input is-amount" aria-label="Montant minimum" value={filter.min} placeholder="min" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, min: sanitizeAmountInput(e.target.value) }))} />
-                <span>→</span>
-                <input className="text-input is-amount" aria-label="Montant maximum" value={filter.max} placeholder="max" inputMode="decimal" onChange={e => setFilter(f => ({ ...f, max: sanitizeAmountInput(e.target.value) }))} />
-              </div>
-            </div>
-            {(filter.from || filter.to || filter.min || filter.max) && (
-              <div className="tx-f">
-                <span className="tx-f-label">&nbsp;</span>
-                <button type="button" className="btn-outline tx-clear" onClick={() => setFilter(f => ({ ...f, from: '', to: '', min: '', max: '' }))}>
-                  Effacer
-                </button>
-              </div>
-            )}
-          </div>}
           {view === 'ops' && <>
           {isFiltered && (
             <div className="tx-bulk">
