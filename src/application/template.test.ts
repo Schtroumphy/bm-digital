@@ -3,7 +3,9 @@ import { emptyData } from '../domain/empty';
 import { templateSummary } from '../domain/budget';
 import { applyTemplate } from './actions';
 import { addEnvelope } from './envelopes';
-import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, updateTemplateLine } from './template';
+import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, setTemplateLinePayment, updateTemplateLine } from './template';
+import { addBankAccount, setBankAccountInBudget } from './bankAccounts';
+import { CASH_ACCOUNT_ID, isLineInBudget } from '../domain/bank';
 
 const base = () => {
   const d = emptyData();
@@ -71,5 +73,28 @@ describe('budget model indications', () => {
     set('s', 300);
     setTemplateAllocation(d, 'e1', 100);
     expect(templateSummary(d)).toEqual({ remaining: 500, savingsRate: (400 / 1500) * 100 });
+  });
+});
+
+describe('setTemplateLinePayment', () => {
+  it('puts a variable model line out of the budget through an out-of-budget account, and back', () => {
+    const d = base();
+    addBankAccount(d, 'swile', 'Swile');
+    setBankAccountInBudget(d, 'swile', false);
+    addTemplateLine(d, 'var', 'v');
+    const line = () => ({ ...d.template.lines.find(l => l.key === 'v')!, actual: null });
+    expect(isLineInBudget(d, line())).toBe(true);
+    expect(setTemplateLinePayment(d, 'v', { accountId: 'swile' })).toBe(true);
+    expect(isLineInBudget(d, line())).toBe(false);
+    expect(setTemplateLinePayment(d, 'v', { accountId: null })).toBe(true);
+    expect(isLineInBudget(d, line())).toBe(true);
+  });
+
+  it('refuses a non-variable line, an unknown account and cash', () => {
+    const d = base();
+    addTemplateLine(d, 'var', 'v');
+    expect(setTemplateLinePayment(d, 'b', { accountId: null })).toBe(false);
+    expect(setTemplateLinePayment(d, 'v', { accountId: 'nope' })).toBe(false);
+    expect(setTemplateLinePayment(d, 'v', { accountId: CASH_ACCOUNT_ID })).toBe(false);
   });
 });

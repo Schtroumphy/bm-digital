@@ -66,6 +66,7 @@ export function PayModePicker({ data, box, disabled, onChange }: Props) {
                   <span className="acc-item">
                     <AccountDot account={a} />
                     {a.name}
+                    {!a.inBudget && <span className="popmenu-tag">hors budget</span>}
                     {a.archived && <span className="popmenu-tag">archivé</span>}
                   </span>
                 </div>

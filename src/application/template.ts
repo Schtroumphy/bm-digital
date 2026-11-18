@@ -1,5 +1,7 @@
 import { round2 } from '../domain/format';
 import type { BlockKey, BudgetData, TemplateLine } from '../domain/types';
+import { CASH_ACCOUNT_ID, isEnvelopeAccount } from '../domain/bank';
+import type { PaymentPatch } from './payment';
 
 /*
  * Edition of the budget model (`BudgetData.template`) from the « Modèle » screen.
@@ -23,6 +25,20 @@ export function updateTemplateLine(d: BudgetData, key: string, patch: Partial<Pi
   if (!l || (patch.budget !== undefined && !(patch.budget >= 0))) return false;
   Object.assign(l, patch);
   if (patch.budget !== undefined) l.budget = round2(patch.budget);
+  return true;
+}
+
+/**
+ * Payment mode and/or account of a variable model line. An account out of the budget makes the line « hors budget » (spec 0009, RG114).
+ * Only the model changes. Refused for another block, an unknown line, « Espèces » as account or an envelope's account.
+ */
+export function setTemplateLinePayment(d: BudgetData, key: string, patch: PaymentPatch): boolean {
+  const l = d.template.lines.find(x => x.block === 'var' && x.key === key);
+  if (!l) return false;
+  if (patch.accountId != null && (patch.accountId === CASH_ACCOUNT_ID || !d.accounts.some(a => a.id === patch.accountId && !isEnvelopeAccount(a)))) return false;
+  if (patch.payMode !== undefined) l.payMode = patch.payMode;
+  if (patch.accountId === null) delete l.accountId;
+  else if (patch.accountId !== undefined) l.accountId = patch.accountId;
   return true;
 }
 

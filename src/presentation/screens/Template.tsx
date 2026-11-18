@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { Icon } from '../components/Icon';
+import { PayModePicker } from '../components/PayModePicker';
 import { BAD, GOOD, tone, toneVars } from '../components/tone';
 import { applyTemplate, saveAsTemplate } from '../../application/actions';
-import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, updateTemplateLine } from '../../application/template';
+import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, setTemplateLinePayment, updateTemplateLine } from '../../application/template';
 import { isAccountTransfer, isLineInBudget, lineDisplayName } from '../../domain/bank';
 import { blockTotals, templateSummary } from '../../domain/budget';
 import { money, monthLabel, percent } from '../../domain/format';
@@ -122,9 +123,12 @@ export function TemplateScreen({ month }: { month: MonthKey }) {
                         className={`line-grid line-row is-tpl${inBudget(l) ? '' : ' is-off-budget'}`}
                         onContextMenu={e => openMenu(e, lineDisplayName(data, l), [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => void deleteTemplateLine(d, key)) }])}
                       >
-                        <EditableText id={`tn:${key}`} value={l.name} onCommit={name => update(d => void updateTemplateLine(d, key, { name }))} className="line-name" inputClassName="cell-input is-text" title={lineDisplayName(data, l)}>
-                          {lineDisplayName(data, l)}
-                        </EditableText>
+                        <div className="line-name-wrap">
+                          {block === 'var' && <PayModePicker data={data} box={l} onChange={patch => update(d => void setTemplateLinePayment(d, key, patch))} />}
+                          <EditableText id={`tn:${key}`} value={l.name} onCommit={name => update(d => void updateTemplateLine(d, key, { name }))} className="line-name" inputClassName="cell-input is-text" title={lineDisplayName(data, l)}>
+                            {lineDisplayName(data, l)}
+                          </EditableText>
+                        </div>
                         <EditableAmount id={`tb:${key}`} value={l.budget} onCommit={v => update(d => void updateTemplateLine(d, key, { budget: v ?? 0 }))} className="cell" inputClassName="cell-input" hint="right">
                           {money(l.budget)}
                         </EditableAmount>
