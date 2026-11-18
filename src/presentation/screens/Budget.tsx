@@ -19,7 +19,7 @@ import { LineQuickEntry } from '../components/LineQuickEntry';
 import { LineScheduleMeta } from '../components/LineSchedule';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
-import { addEnvelope, renameEnvelope } from '../../application/envelopes';
+import { renameEnvelope } from '../../application/envelopes';
 import { setLinePayment } from '../../application/payment';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, updateLine } from '../../application/actions';
 import { envelopeSplitRefusal, setEnvelopeSplit, type EnvelopeSplitRefusal } from '../../application/cash';
@@ -760,6 +760,9 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
   const alerts = envelopeAlerts(data, ledger, year, m0);
   const alloc = monthAlloc(data, month);
   const vio = tone(HUE.epa);
+  const figures = data.envelopes.map(e => envelopeAllocationFigures(data, ledger, e.id, month));
+  const totalVirtual = round2(figures.reduce((a, f) => a + (f?.virtualAllocation ?? 0), 0));
+  const totalCash = round2(figures.reduce((a, f) => a + (f?.cashAllocation ?? 0), 0));
   const alertText = alerts
     .map(a => {
       const env = data.envelopes.find(e => e.id === a.envelopeId)!;
@@ -869,16 +872,15 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
             </div>
           );
         })}
-        <div
-          className={`env-add${data.envelopes.length % 2 === 0 ? ' is-row' : ''}`}
-          onClick={() => {
-            const id = newId('env');
-            update(d => void addEnvelope(d, id));
-            setEditing(`en:${id}`);
-          }}
-        >
-          <Icon name="plus" size={14} stroke={3} />
-          Ajouter
+        <div className={`env-total${data.envelopes.length % 2 === 0 ? ' is-row' : ''}`}>
+          <div className="env-tile-mode">
+            <span className="env-tile-mode-label"><span aria-hidden>💳</span>Total virtuel</span>
+            <span className="env-tile-solde">{money(totalVirtual)}</span>
+          </div>
+          <div className="env-tile-mode">
+            <span className="env-tile-mode-label"><span aria-hidden>💵</span>Total espèces</span>
+            <span className="env-tile-solde">{money(totalCash)}</span>
+          </div>
         </div>
       </div>
     </div>

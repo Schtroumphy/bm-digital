@@ -331,9 +331,12 @@ input, button { font-family: inherit; }
   border-radius: 12px; border: 1.5px dashed oklch(0.82 0.06 300); display: flex; align-items: center; justify-content: center;
   gap: 5px; color: oklch(0.45 0.1 300); font-weight: 600; cursor: pointer; min-height: 62px;
 }
-.env-add:hover { background: oklch(0.97 0.025 300); }
-/* Alone on its row: a slim full-width strip instead of a whole tile. */
-.env-add.is-row { grid-column: 1 / -1; min-height: 32px; }
+/* Totals tile closing the grid; alone on its row, it spans the full width. */
+.env-total {
+  border-radius: 12px; border: 1.5px dashed oklch(0.82 0.06 300); display: flex; flex-direction: column; justify-content: center;
+  gap: 4px; padding: 8px 10px; min-height: 62px;
+}
+.env-total.is-row { grid-column: 1 / -1; flex-direction: row; justify-content: space-around; min-height: 32px; }
 
 /* jour prévu et mode d'exécution (spec 0009) ; encart « À venir ce mois-ci » (spec 0043) */
 .check-meta { flex: none; font-size: 10.5px; font-weight: 600; color: rgba(32, 30, 29, 0.55); cursor: pointer; border-radius: 99px; padding: 1px 5px; white-space: nowrap; }
