@@ -124,13 +124,31 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   const [simDraft, setSimDraft] = useState<SimulationDraft | null>(null);
   // Filter handed to the Opérations tab when a real amount is clicked elsewhere; the tab reads it when it opens.
   const [focus, setFocus] = useState<OperationsFocus | null>(null);
+  // Where a click on a real amount came from, so the Opérations tab can offer a way back (floating button).
+  const [backTo, setBackTo] = useState<{ screen: Screen; month: string } | null>(null);
   const go = (s: Screen) => {
-    if (s !== 'dep') setFocus(null);
+    if (s !== 'dep') {
+      setFocus(null);
+      setBackTo(null);
+    }
     // First visit: a new simulation started from the budget model (RG20).
     if (s === 'simulation' && simDraft === null) setSimDraft(newSimulation('model', data, () => newId('sr')));
     setScreen(s);
     setEditing(null);
     setMonthMenu(false);
+  };
+  const openOperations = (from: Screen, f: OperationsFocus, targetMonth?: string) => {
+    const origin = { screen: from, month };
+    go('dep');
+    if (targetMonth) setMonth(targetMonth);
+    setFocus(f);
+    setBackTo(origin);
+  };
+  const goBack = () => {
+    if (!backTo) return;
+    const { screen: s, month: m } = backTo;
+    setMonth(m);
+    go(s);
   };
   // The « Démarrage » assistant is only for starting out: it goes away once the first month is closed.
   const started = data.firstMonth !== null && isMonthLocked(data, data.firstMonth);
@@ -270,11 +288,17 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
           <DashboardScreen
             month={month}
             onOpen={(t: DashboardTarget) => go(t)}
-            onOpenOperations={f => { go('dep'); setFocus(f); }}
+            onOpenOperations={f => openOperations('dashboard', f)}
           />
         )}
-        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
+        {screen === 'budget' && <BudgetScreen month={month} onOpenGoals={() => go('goals')} onOpenOperations={f => openOperations('budget', f)} />}
         {screen === 'dep' && <ExpensesScreen month={month} statementSource={statementSource} focus={focus} />}
+        {screen === 'dep' && backTo && (
+          <button type="button" className="fab-back" onClick={goBack}>
+            <Icon name="chevronLeft" size={18} stroke={2} />
+            Retour · {TITLES[backTo.screen]}
+          </button>
+        )}
         {screen === 'releve' && (
           <ReleveScreen
             key={month}
@@ -286,11 +310,11 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             }}
           />
         )}
-        {screen === 'categories' && <CategoriesScreen month={month} onOpenOperations={f => { go('dep'); setFocus(f); }} />}
+        {screen === 'categories' && <CategoriesScreen month={month} onOpenOperations={f => openOperations('categories', f)} />}
         {screen === 'env' && <EnvelopesScreen month={month} />}
         {screen === 'comptes' && <AccountsScreen month={month} />}
         {screen === 'prevAnn' && <PlanningScreen year={year} />}
-        {screen === 'yearView' && <YearViewScreen year={year} onOpenOperations={(m, f) => { setMonth(m); go('dep'); setFocus(f); }} />}
+        {screen === 'yearView' && <YearViewScreen year={year} onOpenOperations={(m, f) => openOperations('yearView', f, m)} />}
         {screen === 'template' && <TemplateScreen month={month} />}
         {screen === 'setup' && (
           <SetupScreen

@@ -1381,3 +1381,24 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .amount-link { all: unset; cursor: pointer; border-bottom: 1px dotted currentColor; }
 .amount-link:hover { opacity: 0.7; }
 .amount-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Floating « Retour » button shown on Opérations after opening it from an amount elsewhere. */
+.fab-back {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 10px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #1f2430;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.fab-back:hover { filter: brightness(1.15); }
