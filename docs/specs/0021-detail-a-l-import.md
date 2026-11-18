@@ -1,6 +1,6 @@
 # 0021 — Détail des lignes de l'import
 
-- Statut : validée
+- Statut : obsolète, voir [0051](0051-fusion-detail-dans-annotation-des-operations.md) (jamais implémentée ; le texte libre d'une opération est son annotation)
 - Date : 2026-10-23
 - Branche prévue : feat/detail_import
 - Dépend de : 0020 (champ « Détail » sur les écritures et règles communes RG1 à RG4).

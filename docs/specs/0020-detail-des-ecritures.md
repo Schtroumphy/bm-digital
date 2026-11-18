@@ -1,6 +1,6 @@
 # 0020 — Détail des écritures (écran Saisie)
 
-- Statut : validée
+- Statut : validée, amendée par 0051 (le détail est fusionné dans l'annotation de l'opération ; RG5 à RG11 retirées, voir [0051](0051-fusion-detail-dans-annotation-des-operations.md))
 - Date : 2026-10-23
 - Branche prévue : feat/detail_ecritures
 - Ordre : 1re des 4 specs « détail » (0020 écritures, 0021 import, 0022 lignes du budget, 0023 enveloppes). Les autres s'appuient sur les règles communes ci-dessous (RG1 à RG4).
@@ -26,13 +26,13 @@ Règles communes à toutes les specs « détail » (0020 à 0023)
 - RG4. Le détail est de l'information : il n'entre dans aucun calcul (budget, soldes, bilans).
 
 Écritures
-- RG5. Le formulaire d'ajout de l'écran Saisie propose un champ « Détail » (facultatif) à côté du libellé.
-- RG6. Une écriture existante (`Transaction` ou `AccountMovement`) peut voir son détail ajouté, modifié ou vidé, dans le même mode de modification que son libellé. Aucune autre donnée n'est touchée. Le point d'entrée est découvrable : une icône crayon (bouton réel, `aria-label` « Ajouter un détail » ou « Modifier le détail ») apparaît à côté du libellé au survol de la ligne et au focus clavier, sur les lignes avec ou sans détail ; le clic souris sur le libellé reste possible, mais seul le crayon est un arrêt clavier (amendement 2026-10-23).
-- RG7. Le détail s'applique à chaque écriture individuellement. Dans un virement lié (spec 0016), chaque écriture a son propre détail : modifier l'un ne modifie pas l'autre.
-- RG8. Le détail n'entre pas dans l'empreinte d'une écriture importée (spec 0013, RG20) ni dans son rang ; le modifier ne rend jamais une écriture « nouvelle » au prochain import.
-- RG9. La recherche existante de Saisie (« Rechercher un libellé ») portait sur le libellé seul. Elle porte aussi sur le détail (placeholder « Rechercher un libellé ou un détail »). Aucun nouveau filtre.
-- RG10. Les écritures sans détail (existantes, importées avant la spec, créées par une autre voie) restent valides et s'affichent comme avant. Aucune migration visible.
-- RG11. Mois verrouillé ou clos : le détail reste modifiable, car c'est une information sans effet sur les chiffres.
+- RG5. (Retirée par 0051) Le formulaire d'ajout de l'écran Saisie propose un champ « Détail » (facultatif) à côté du libellé.
+- RG6. (Retirée par 0051) Une écriture existante (`Transaction` ou `AccountMovement`) peut voir son détail ajouté, modifié ou vidé, dans le même mode de modification que son libellé. Aucune autre donnée n'est touchée. Le point d'entrée est découvrable : une icône crayon (bouton réel, `aria-label` « Ajouter un détail » ou « Modifier le détail ») apparaît à côté du libellé au survol de la ligne et au focus clavier, sur les lignes avec ou sans détail ; le clic souris sur le libellé reste possible, mais seul le crayon est un arrêt clavier (amendement 2026-10-23).
+- RG7. (Retirée par 0051) Le détail s'applique à chaque écriture individuellement. Dans un virement lié (spec 0016), chaque écriture a son propre détail : modifier l'un ne modifie pas l'autre.
+- RG8. (Retirée par 0051) Le détail n'entre pas dans l'empreinte d'une écriture importée (spec 0013, RG20) ni dans son rang ; le modifier ne rend jamais une écriture « nouvelle » au prochain import.
+- RG9. (Retirée par 0051) La recherche existante de Saisie (« Rechercher un libellé ») portait sur le libellé seul. Elle porte aussi sur le détail (placeholder « Rechercher un libellé ou un détail »). Aucun nouveau filtre.
+- RG10. (Retirée par 0051) Les écritures sans détail (existantes, importées avant la spec, créées par une autre voie) restent valides et s'affichent comme avant. Aucune migration visible.
+- RG11. (Retirée par 0051) Mois verrouillé ou clos : le détail reste modifiable, car c'est une information sans effet sur les chiffres.
 
 ## Parcours utilisateur
 

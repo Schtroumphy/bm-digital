@@ -1,6 +1,6 @@
 # 0022 — Détail des lignes du budget
 
-- Statut : validée
+- Statut : obsolète, voir [0051](0051-fusion-detail-dans-annotation-des-operations.md) (jamais implémentée ; le texte libre d'une opération est son annotation)
 - Date : 2026-10-23
 - Branche prévue : feat/detail_lignes_budget
 - Dépend de : 0020 (règles communes RG1 à RG4 du détail).
