@@ -10,7 +10,7 @@ import { accountComingUp } from '../domain/comingUp';
 import { emptyData } from '../domain/empty';
 import { budgetGap, budgetLockReason, isValidTransferTargets, proposableLines } from '../domain/movementLines';
 import { migrateMovementTargets } from '../domain/migrate';
-import { leftOfLine } from '../domain/comingUp';
+import { leftOfLine, partiallyFundedLines } from '../domain/comingUp';
 import type { BlockKey, BudgetData, Line, MovementTarget } from '../domain/types';
 
 /* Spec 0045 : virement associé à plusieurs lignes variables. */
@@ -341,5 +341,29 @@ describe('lignes associées exclues du « à sortir » (RG17, CA17)', () => {
     const d = started();
     transfer(d, lines('ali'));
     expect(leftOfLine(d, d.months[M].lines[0])).toBe(200);
+  });
+});
+
+describe('lignes financées en partie', () => {
+  it('un virement inférieur au budget de ses lignes signale chaque ligne avec ce qui manque ; égal ou supérieur : rien', () => {
+    const d = started();
+    // A transfer from the bank file keeps its amount whatever lines are attached.
+    const mv = imported(d, 100);
+    expect(edit(d, mv.id, { targets: lines('ali', 'loi') })).toBe(true);
+    const total = 280;
+    const flagged = partiallyFundedLines(d, M);
+    expect([...flagged.keys()].sort()).toEqual(['ali', 'loi']);
+    expect(flagged.get('ali')!.missing).toBe(total - 100);
+    mv.amount = total;
+    expect(partiallyFundedLines(d, M).size).toBe(0);
+  });
+
+  it('une ligne d’épargne dont le viré est inférieur au prévu est signalée', () => {
+    const d = started();
+    const l = d.months[M].lines;
+    l.push(ln('trav', 'epa', 1600, { linkedAccountId: BOU }));
+    transfer(d, lines('trav'), { amount: 300 });
+    const f = partiallyFundedLines(d, M).get('trav');
+    expect(f && [f.amount, f.missing]).toEqual([300, 1300]);
   });
 });

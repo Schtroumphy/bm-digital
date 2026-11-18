@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { addNote, deleteNote, toggleNote } from '../../application/monthNotes';
-import { DETAIL_MAX } from '../../domain/detail';
+import { NOTE_MAX } from '../../domain/note';
 import type { DashboardNotes } from '../../domain/dashboard';
 import type { MonthKey } from '../../domain/types';
 import { newId, useStore } from '../state/store';
@@ -35,7 +35,7 @@ export function MonthNotes({ month, notes }: { month: MonthKey; notes: Dashboard
         ))}
         <label className="dash-note-add">
           <Icon name="plus" size={13} stroke={2.4} />
-          <input value={text} maxLength={DETAIL_MAX} placeholder="Ajouter une note, puis Entrée" onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
+          <input value={text} maxLength={NOTE_MAX} placeholder="Ajouter une note, puis Entrée" onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
         </label>
       </div>
     </div>

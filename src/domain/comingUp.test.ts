@@ -5,7 +5,7 @@ import { addTransaction, applyTemplate } from '../application/actions';
 import { addTransfer } from '../application/accountMovements';
 import { CASH_ACCOUNT_ID, MAIN_ACCOUNT_ID, defaultBankAccounts } from './bank';
 import { CASH_ID } from './internalTransfers';
-import { accountComingUp, comingUpAccounts, leftLineKeys, groupOfMode, isLate, lateCount, leftOfAllocation, leftOfLine, lineTooltip } from './comingUp';
+import { unfundedSpentLines, accountComingUp, comingUpAccounts, leftLineKeys, groupOfMode, isLate, lateCount, leftOfAllocation, leftOfLine, lineTooltip } from './comingUp';
 import { round2 } from './format';
 import { emptyData } from './empty';
 import { Ledger } from './ledger';
@@ -71,7 +71,7 @@ describe('reste d’une ligne (RG5, CA3, CA4)', () => {
     expect(d.months[M].lines.map(l => leftOfLine(d, l))).toEqual([0, 0, 0]);
   });
 
-  it('CA4c : une ligne var du compte principal garde budget − réel ; une ligne var à compte dédié suit la nouvelle règle', () => {
+  it('CA4c : une ligne var du compte principal garde budget − réel ; une ligne var à compte dédié garde son budget entier tant qu’aucun virement ne la couvre (même déjà dépensée)', () => {
     const d = started([ln('ali', 'var', 200), ln('sw', 'var', 100, { accountId: SWILE })]);
     const [ali, sw] = d.months[M].lines;
     expect(leftOfLine(d, ali)).toBe(200);
@@ -79,9 +79,16 @@ describe('reste d’une ligne (RG5, CA3, CA4)', () => {
     ali.actual = 150;
     sw.actual = 20;
     expect(leftOfLine(d, ali)).toBe(50);
-    expect(leftOfLine(d, sw)).toBe(0);
+    expect(leftOfLine(d, sw)).toBe(100);
     ali.actual = 260;
     expect(leftOfLine(d, ali)).toBe(0);
+  });
+
+  it('une ligne var à compte dédié déjà dépensée sans virement est signalée « non financée » ; pas les autres', () => {
+    const d = started([ln('sw', 'var', 100, { accountId: SWILE }), ln('sw2', 'var', 100, { accountId: SWILE }), ln('ali', 'var', 200)]);
+    d.months[M].lines.forEach(l => { l.actual = 30; });
+    d.months[M].lines[1].actual = null;
+    expect([...unfundedSpentLines(d, M).entries()]).toEqual([['sw', 30]]);
   });
 
   it('CA8 : une ligne var du compte principal de 200 € avec 150 € de dépenses = 50 €', () => {

@@ -150,8 +150,8 @@ export interface Transaction {
   rank?: number;
   /** Category given by the bank aggregator (Linxo), kept as information only: not part of the fingerprint (spec 0013, RG37). */
   category?: string;
-  /** Free context shown under the label (spec 0020): at most 200 characters, trimmed, absent when empty. Not part of the fingerprint. */
-  detail?: string;
+  /** Written summary of this operation (spec 0047): at most 500 characters, trimmed, line breaks kept, absent when empty. Information only: touches no figure, not part of the fingerprint. Follows the operation, never copied to another month. Replaces the former `detail` (spec 0051). */
+  annotation?: string;
   /** Real date at the bank, `YYYY-MM-DD` (imported entries): balances rank and date the entry by it; the budget follows `month`. Absent = `month`/`day` (spec 0015, RG1, RG2). */
   bankDate?: string;
   /** `env` expenses only: `especes` = paid with the cash of the envelope (spec 0026, RG5, RG6). Absent = `virtuel`. */
@@ -212,8 +212,8 @@ export interface AccountMovement {
   fingerprint?: string;
   rank?: number;
   category?: string;
-  /** Free context shown under the label (spec 0020), same rule as `Transaction.detail`. */
-  detail?: string;
+  /** Written summary of this transfer (spec 0047), same rule as `Transaction.annotation`. */
+  annotation?: string;
   /** Real date at the bank (spec 0015, RG1); absent = `month`/`day`. */
   bankDate?: string;
   /**

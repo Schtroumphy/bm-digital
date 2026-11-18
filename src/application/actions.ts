@@ -1,7 +1,7 @@
 import { BANK_HUES, CASH_ACCOUNT_ID, accountIdOf, canAssignTo, defaultBankAccounts, defaultTransactionAccountId, envelopeEntryAccount, fixedTransactionAccountId, offBudgetEntryAccount, freeEnvelopeAccountId, transactionBox, isAssignableType, isEnvelopeAccount, newEnvelopeAccount, isSavingsWithdrawalAllowed, kindForBlock, MAIN_ACCOUNT_ID, savingsExpenseAccountId } from '../domain/bank';
-import { applyDetail, normalizeDetail } from '../domain/detail';
+import { isAnnotationTooLong, withAnnotation } from '../domain/annotation';
 import { addMonths, compareMonths, currentMonthKey, round2 } from '../domain/format';
-import { syncLineActual } from '../domain/lineActuals';
+import { syncAssignedLines, syncLineActual } from '../domain/lineActuals';
 import { expenseLineBlocker, expenseLine, revenueLine, expenseLineAccountId } from '../domain/lineExpenses';
 import { cashPartAbove } from '../domain/cash';
 import { exceedsEnvelopeCash } from '../domain/envelopeCash';
@@ -283,6 +283,8 @@ const withoutAccount = ({ accountId: _accountId, ...rest }: Transaction): Transa
  */
 export function addTransaction(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
+  // The annotation is refused over 500 characters, never cut (spec 0047, RG2; spec 0051, RG6).
+  if (input.annotation !== undefined && isAnnotationTooLong(input.annotation)) return false;
   if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
   // A category goes only on an expense of a categorisable type, and must exist (spec 0046, RG6, RG7).
   if (input.categoryId !== undefined && (!isCategorizableType(input.type) || !(d.categories ?? []).some(c => c.id === input.categoryId))) return false;
@@ -307,12 +309,12 @@ export function addTransaction(d: BudgetData, input: Transaction, keepAssignment
     : varInCash ? withoutAccount(input)
     : input.accountId === undefined && input.type !== 'epa' ? { ...input, accountId: defaultTransactionAccountId(d, input) } : input;
   if (t.assignedAccountId !== undefined && !canAssignTo(d, t.type, accountIdOf(d, t.accountId), t.assignedAccountId, keepAssignment)) return false;
-  const detail = normalizeDetail(input.detail);
-  const { detail: _raw, payMode: _mode, ...base } = t;
+  const { payMode: _mode, ...base } = t;
   const rest = inCash ? { ...base, payMode: 'especes' as const } : base;
-  d.transactions.push(detail === undefined ? rest : { ...rest, detail });
+  d.transactions.push(withAnnotation(rest));
   // A variable expense always counts in its line's actual, whatever the paying account (spec 0008, RG2).
   if (t.type === 'var') syncLineActual(d, t.month, t.target);
+  syncAssignedLines(d, t.month, t.assignedAccountId);
   return true;
 }
 
@@ -324,9 +326,8 @@ export function addTransaction(d: BudgetData, input: Transaction, keepAssignment
 function addEnvelopeInflow(d: BudgetData, input: Transaction): boolean {
   const account = envelopeEntryAccount(d, input.target);
   if (!account || !d.months[input.month]?.initialized || !(input.amount > 0) || !Number.isInteger(input.day) || input.day < 1 || input.day > 31) return false;
-  const detail = normalizeDetail(input.detail);
-  const { detail: _raw, payMode: _mode, ...rest } = input;
-  d.transactions.push(detail === undefined ? { ...rest, accountId: account.id } : { ...rest, accountId: account.id, detail });
+  const { payMode: _mode, ...rest } = input;
+  d.transactions.push(withAnnotation({ ...rest, accountId: account.id }));
   return true;
 }
 
@@ -339,9 +340,8 @@ function addEnvelopeInflow(d: BudgetData, input: Transaction): boolean {
 function addAccountInflow(d: BudgetData, input: Transaction): boolean {
   const account = offBudgetEntryAccount(d, input.target);
   if (!account || !d.months[input.month]?.initialized || !(input.amount > 0) || !Number.isInteger(input.day) || input.day < 1 || input.day > 31) return false;
-  const detail = normalizeDetail(input.detail);
-  const { detail: _raw, payMode: _mode, ...rest } = input;
-  d.transactions.push(detail === undefined ? { ...rest, accountId: account.id } : { ...rest, accountId: account.id, detail });
+  const { payMode: _mode, ...rest } = input;
+  d.transactions.push(withAnnotation({ ...rest, accountId: account.id }));
   return true;
 }
 
@@ -356,10 +356,10 @@ function addLineExpense(d: BudgetData, input: Transaction, keepAssignment?: stri
   if (input.accountId !== undefined && input.accountId !== accountId) return false;
   if (isEnvelopeAccount(d.accounts.find(a => a.id === accountId))) return false;
   if (input.assignedAccountId !== undefined && !canAssignTo(d, input.type, accountId, input.assignedAccountId, keepAssignment)) return false;
-  const detail = normalizeDetail(input.detail);
-  const { detail: _raw, payMode: _mode, ...rest } = input;
-  d.transactions.push(detail === undefined ? { ...rest, accountId } : { ...rest, accountId, detail });
+  const { payMode: _mode, ...rest } = input;
+  d.transactions.push(withAnnotation({ ...rest, accountId }));
   syncLineActual(d, input.month, input.target);
+  syncAssignedLines(d, input.month, input.assignedAccountId);
   return true;
 }
 
@@ -371,17 +371,8 @@ function addLineExpense(d: BudgetData, input: Transaction, keepAssignment?: stri
 function addSavingsExpense(d: BudgetData, input: Transaction): boolean {
   const payer = savingsExpenseAccountId(d, input.month, input.target);
   if (payer === undefined || (input.accountId !== undefined && input.accountId !== payer)) return false;
-  const detail = normalizeDetail(input.detail);
-  const { detail: _raw, payMode: _mode, ...rest } = input;
-  d.transactions.push(detail === undefined ? { ...rest, accountId: payer } : { ...rest, accountId: payer, detail });
-  return true;
-}
-
-/** Sets, changes or clears (empty text) the detail of a transaction, nothing else. Allowed on a locked month: it changes no figure (spec 0020, RG6, RG11). */
-export function setTransactionDetail(d: BudgetData, id: string, detail: string): boolean {
-  const t = d.transactions.find(x => x.id === id);
-  if (!t) return false;
-  applyDetail(t, detail);
+  const { payMode: _mode, ...rest } = input;
+  d.transactions.push(withAnnotation({ ...rest, accountId: payer }));
   return true;
 }
 
@@ -400,7 +391,8 @@ export interface TransactionPatch {
   amount: number;
   /** `YYYY-MM-DD`. */
   date: string;
-  detail?: string;
+  /** Annotation (spec 0047, 0051): undefined = keep the current one, empty = remove it, over 500 characters = refused. */
+  annotation?: string;
   type: TxType;
   target: string;
   /** Savings account the operation is assigned to (spec 0028, RG18): undefined = keep the current one, null = remove it. */
@@ -412,7 +404,7 @@ export interface TransactionPatch {
 }
 
 /**
- * Rewrites an expense or an entry (label, amount, bank date, detail, nature, imputation) under the rules of `addTransaction`: it is removed and
+ * Rewrites an expense or an entry (label, amount, bank date, annotation, nature, imputation) under the rules of `addTransaction`: it is removed and
  * added again, and put back untouched when the new version is refused. Its month of attachment, its account (unless the imputation changes it) and
  * its import trace (deduplication) are kept. A date that the month of attachment and the day cannot give back (outside its period, or the other occurrence of a day that exists twice in it) becomes its bank date (spec 0015, RG4; spec 0039, RG11a). Refused (false) on a locked month.
  */
@@ -426,13 +418,13 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   if ((old.type === 'epd') !== (patch.type === 'epd')) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
-  const { bankDate: _b, detail: _d, accountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, ...kept } = old;
+  const { bankDate: _b, accountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, ...kept } = old;
   const category = patch.categoryId === undefined ? old.categoryId : (patch.categoryId ?? undefined);
   const assigned = patch.assignedAccountId === undefined ? old.assignedAccountId : (patch.assignedAccountId ?? undefined);
   const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), detail: patch.detail ?? old.detail, ...(category !== undefined && isCategorizableType(patch.type) ? { categoryId: category } : {}), ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), ...(patch.annotation !== undefined ? { annotation: patch.annotation } : {}), ...(category !== undefined && isCategorizableType(patch.type) ? { categoryId: category } : {}), ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;
@@ -441,6 +433,7 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   const added = d.transactions.pop()!;
   d.transactions.splice(index, 0, added);
   if (!same && (old.type === 'var' || old.type === 'fix' || old.type === 'rev')) syncLineActual(d, old.month, old.target);
+  syncAssignedLines(d, old.month, old.assignedAccountId);
   return true;
 }
 
@@ -450,6 +443,7 @@ export function deleteTransaction(d: BudgetData, id: string): boolean {
   d.transactions = d.transactions.filter(x => x.id !== id);
   // The actual follows the entries left; the last one removed empties it (spec 0019, RG20).
   if (t.type === 'var' || t.type === 'fix' || t.type === 'rev') syncLineActual(d, t.month, t.target);
+  syncAssignedLines(d, t.month, t.assignedAccountId);
   return true;
 }
 
@@ -470,11 +464,11 @@ export function monthCsv(lines: Line[], blockTitles: Record<BlockKey, string>, i
 }
 
 /** One exported operation (`amount` signed: + credit, − debit): every field already resolved to its display text. */
-export interface TransactionCsvRow { date: string; label: string; detail: string; type: string; imputation: string; account: string; assignedTo: string; offBudget: boolean; amount: number }
+export interface TransactionCsvRow { date: string; label: string; annotation: string; type: string; imputation: string; account: string; assignedTo: string; offBudget: boolean; amount: number }
 
 /** CSV of the selected expenses and entries, in the same French spreadsheet dialect as `monthCsv`. */
 export function transactionsCsv(rows: TransactionCsvRow[]): string {
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const body = rows.map(r => [r.date, q(r.label), q(r.detail), q(r.type), q(r.imputation), q(r.account), q(r.assignedTo), r.offBudget ? 'oui' : 'non', `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
-  return '\uFEFF' + ['Date;Libellé;Détail;Nature;Imputation;Compte;Affectée à;Hors budget;Montant', ...body].join('\r\n');
+  const body = rows.map(r => [r.date, q(r.label), q(r.annotation), q(r.type), q(r.imputation), q(r.account), q(r.assignedTo), r.offBudget ? 'oui' : 'non', `${r.amount > 0 ? '+' : ''}${String(r.amount).replace('.', ',')}`].join(';'));
+  return '\uFEFF' + ['Date;Libellé;Annotation;Nature;Imputation;Compte;Affectée à;Hors budget;Montant', ...body].join('\r\n');
 }

@@ -724,7 +724,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .import-remember { display: flex; align-items: center; gap: 8px; padding: 0 0 6px 34px; font-size: 12px; color: rgba(32, 30, 29, 0.7); }
 .import-remember .text-input { width: 240px; height: 26px; }
 .import-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.mv-grid { display: grid; grid-template-columns: 54px minmax(0, 1fr) 220px 96px 190px; column-gap: 10px; padding: 0 22px; align-items: center; }
+.mv-grid { display: grid; grid-template-columns: 54px 20px minmax(100px, 0.7fr) minmax(220px, 1fr) minmax(190px, 1fr) 96px 120px; column-gap: 10px; padding: 0 22px; align-items: center; }
 .import-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .links-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 220px 90px; column-gap: 10px; align-items: center; }
 .import-pairs { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: oklch(0.96 0.04 90); }
@@ -790,17 +790,18 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 /* Texte réservé aux lecteurs d'écran : hors flux, aucun effet sur la mise en page */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
-/* Détail d'une écriture (spec 0020) : seconde ligne grise tronquée, sans place réservée quand il n'y a pas de détail. */
+/* Libellé d'une écriture ; `entry-detail` est la ligne grise d'annotation (specs 0047 et 0051), sans place réservée quand il n'y en a pas. */
 .entry-cell { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.entry-label { min-width: 0; padding: 3px 0; cursor: text; }
+.entry-label { min-width: 0; padding: 3px 0; }
 .entry-detail { font-size: 11.5px; line-height: 1.3; color: rgba(32, 30, 29, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.detail-input { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-.detail-input .text-input { height: 30px; min-width: 0; flex: 1; }
-.detail-count { font-size: 10.5px; color: rgba(32, 30, 29, 0.45); white-space: nowrap; }
+.annot-inline { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.annot-inline .text-input { height: 30px; min-width: 0; flex: 1; }
+.annot-inline-count { font-size: 10.5px; color: rgba(32, 30, 29, 0.45); white-space: nowrap; }
+.annot-inline-count.is-over { color: oklch(0.54 0.18 25); font-weight: 700; }
 .tx-actions { display: inline-flex; align-items: center; gap: 4px; justify-self: end; }
 .tx-edit { display: flex; flex-direction: column; gap: 10px; padding: 12px 22px 14px 86px; background: var(--page); border-radius: 12px; margin: 2px 8px 8px; }
 .tx-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.detail-edit { display: flex; align-items: center; gap: 8px; padding: 4px 22px 8px 86px; }
+.annot-edit { display: flex; align-items: center; gap: 8px; padding: 4px 22px 8px 86px; }
 .cell.is-readonly { cursor: default; }
 .cell.has-actual { font-weight: 800; color: var(--violet-ink); }
 
@@ -875,7 +876,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cpt-hist-row { padding: 10px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 6px; }
 .cpt-hist-row.is-current { background: var(--t-bg); }
 .cpt-hist-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.field-w .detail-input .text-input { height: 36px; }
+.field-w .annot-inline .text-input { height: 36px; }
 /* En-têtes alignés sur les cellules : case sans marge native, pastille du compte sans son retrait. */
 .tx-grid input[type="checkbox"] { margin: 0; width: 16px; height: 16px; justify-self: start; }
 .tx-grid { grid-template-columns: 16px 54px minmax(0, 1fr) 240px 170px 190px 120px 90px; column-gap: 24px; }
@@ -1382,6 +1383,92 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .amount-link:hover { opacity: 0.7; }
 .amount-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
+/* ── annotation d'une ligne du budget (spec 0047) ─────────── */
+.annot-backdrop { position: fixed; inset: 0; background: rgba(32, 30, 29, 0.25); z-index: 90; display: flex; align-items: center; justify-content: center; }
+.annot-modal { width: 480px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.annot-title { font-weight: 800; font-size: 15px; }
+.annot-input { height: auto; padding: 8px 10px; font: inherit; font-size: 13.5px; line-height: 1.4; resize: vertical; }
+.annot-count { align-self: flex-end; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.annot-count.is-over { color: oklch(0.54 0.18 25); font-weight: 700; }
+.annot-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.annot-actions .btn-dark:disabled { opacity: 0.4; cursor: not-allowed; }
+.annot-badge { display: inline-flex; align-items: center; flex: none; margin-left: 4px; padding: 0; border: 0; background: none; color: var(--muted); opacity: 0.55; cursor: pointer; }
+.annot-badge:hover { opacity: 1; }
+.entry-detail.is-annotation { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-style: italic; }
+.annot-reminder { display: block; width: 100%; box-sizing: border-box; padding: 0 22px 6px 140px; margin-top: -2px; border: 0; background: none; text-align: left; font: inherit; cursor: pointer; }
+.annot-reminder:hover .entry-detail { color: var(--ink); }
+.annot-add { opacity: 0.5; border: 0; background: none; padding: 0; }
+.annot-add:hover { opacity: 1; }
+.annot-modal.is-wide { width: 560px; }
+.annot-empty { font-size: 13px; color: var(--muted); padding: 6px 0; }
+.annot-ops-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); }
+.annot-ops { display: flex; flex-direction: column; max-height: 240px; overflow-y: auto; border-top: 1px solid rgba(32, 30, 29, 0.08); }
+.annot-op { display: grid; grid-template-columns: 18px 44px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(32, 30, 29, 0.05); font-size: 13px; cursor: pointer; }
+.annot-op-date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.annot-op-current { grid-column: 3 / -1; font-size: 11.5px; color: rgba(32, 30, 29, 0.55); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.annot-list { display: flex; flex-direction: column; max-height: 360px; overflow-y: auto; }
+.annot-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid rgba(32, 30, 29, 0.06); font-size: 13px; }
+.annot-item-label { color: var(--muted); font-size: 11.5px; grid-column: 2; }
+.annot-item-text { grid-column: 2; white-space: pre-wrap; }
+.annot-item-actions { grid-column: 3; grid-row: 1 / span 2; display: flex; gap: 6px; align-self: center; }
+.annot-reminder.is-mv { padding-left: 116px; }
+
+/* Savings blocks: « Virements » (Prévu, Viré) and « Dépenses » (Réel) side by side. */
+.line-grid.is-sav { grid-template-columns: minmax(0, 1fr) 62px 62px 84px; }
+.line-grid.is-sav.no-actual { grid-template-columns: minmax(0, 1fr) 62px; }
+.sav-groups { padding-top: 6px; padding-bottom: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.sav-group { padding: 0 0 2px; border-bottom: 2px solid; text-align: center; white-space: nowrap; }
+.sav-group.is-in { color: oklch(0.45 0.12 150); border-color: oklch(0.55 0.14 150); }
+.sav-group.is-out { color: oklch(0.5 0.14 50); border-color: oklch(0.65 0.15 50); }
+.cell.is-spent { color: oklch(0.52 0.19 25); font-weight: 600; }
+
+/* Ligne de transfert : les comptes concernés sont le point focal, le reste reste discret. */
+.mv-accounts { display: grid; grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr); align-items: center; gap: 6px; min-width: 0; }
+.mv-acc { font-size: 13px; font-weight: 700; color: var(--ink); justify-self: start; max-width: 100%; padding: 2px 8px; border-radius: 8px; background: rgba(32, 30, 29, 0.06); }
+.mv-arrow { color: var(--muted); font-weight: 700; text-align: center; }
+.annot-badge.is-open { opacity: 1; color: var(--ink); }
+.mv-meta .state-chip { white-space: normal; }
+.mv-meta > span { margin-left: 0 !important; max-width: 100%; }
+.mv-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.mv-annot { display: flex; align-items: center; justify-content: center; }
+.mv-annot .annot-badge { margin-left: 0; }
+.mv-lines { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 0 22px 6px 116px; margin-top: -2px; }
+.mv-lines-title { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.popmenu-group { margin-top: 6px; padding: 10px 12px 4px; border-top: 1px solid rgba(32, 30, 29, 0.12); font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.popmenu > .popmenu-group:first-child { margin-top: 0; border-top: 0; }
+.line-row.is-unfunded { background: oklch(0.95 0.07 60 / 0.8); }
+.unfunded-badge { flex: none; margin-left: 4px; padding: 0 6px; border-radius: 99px; background: oklch(0.88 0.1 60); color: oklch(0.38 0.1 55); font-size: 10px; font-weight: 700; white-space: nowrap; cursor: help; }
+.line-row.is-partial { background: oklch(0.95 0.04 245 / 0.8); }
+.partial-badge { flex: none; margin-left: 4px; padding: 0 6px; border-radius: 99px; background: oklch(0.89 0.06 245); color: oklch(0.38 0.1 245); font-size: 10px; font-weight: 700; white-space: nowrap; cursor: help; }
+/* Pastilles d'alerte de financement : seconde ligne sous le nom, la ligne grandit au besoin. */
+.line-row.is-unfunded, .line-row.is-partial { height: auto; min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+.line-row.is-unfunded .line-name-wrap, .line-row.is-partial .line-name-wrap { flex-wrap: wrap; }
+.line-flags { order: 5; flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.line-flags .unfunded-badge, .line-flags .partial-badge { margin-left: 0; }
+/* Les chiffres restent sur la ligne du nom, la pastille passe dessous. */
+.line-row.is-unfunded, .line-row.is-partial { align-items: start; }
+.line-row.is-unfunded .line-name-wrap, .line-row.is-partial .line-name-wrap { min-height: 22px; }
+
+/* Indicateurs des catégories (spec 0052) */
+.cat-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.cat-kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 10px; font-size: 13px; }
+.cat-kpi-label { font-size: 12px; color: var(--muted); }
+.cat-kpi-value { font-size: 18px; }
+.cat-gap { font-size: 12.5px; }
+.cat-gap b { font-weight: 700; }
+.cat-noref { color: var(--muted); font-size: 12px; font-style: italic; }
+.cat-ind-row { display: grid; grid-template-columns: 14px 190px 100px 100px 190px 110px 28px; align-items: center; gap: 12px; padding: 6px 0; font-size: 13px; min-width: 880px; }
+.cat-ind-row.is-head { font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--hairline); }
+.cat-ind-row.is-none .cat-name { color: var(--muted); }
+.cat-ind-table { overflow-x: auto; }
+.cat-ind-row .num { text-align: right; }
+
+.tx-pill-field { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(32, 30, 29, 0.05); font-size: 13.5px; color: rgba(32, 30, 29, 0.4); }
+.tx-pill-label { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.tx-pill-field input { border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ink); height: 28px; padding: 0; min-width: 0; outline: none; }
+.tx-pill-field input[type="date"] { width: 118px; }
+.tx-pill-field input.is-amount { width: 64px; text-align: right; }
+
 /* Floating « Retour » button shown on Opérations after opening it from an amount elsewhere. */
 .fab-back {
   position: fixed;
@@ -1402,9 +1489,3 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .fab-back:hover { filter: brightness(1.15); }
-
-.tx-pill-field { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(32, 30, 29, 0.05); font-size: 13.5px; color: rgba(32, 30, 29, 0.4); }
-.tx-pill-label { font-weight: 600; color: var(--ink); white-space: nowrap; }
-.tx-pill-field input { border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ink); height: 28px; padding: 0; min-width: 0; outline: none; }
-.tx-pill-field input[type="date"] { width: 118px; }
-.tx-pill-field input.is-amount { width: 64px; text-align: right; }

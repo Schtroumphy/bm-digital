@@ -30,11 +30,11 @@ describe('saisie (RG1 à RG3)', () => {
     expect(d.transactions.at(-1)).toMatchObject({ type: 'envin', accountId: 'acc-env-voiture' });
   });
 
-  it('RG2 : le compte donné est ignoré, c’est toujours celui de l’enveloppe ; source et détail sont gardés', () => {
+  it('RG2 : le compte donné est ignoré, c’est toujours celui de l’enveloppe ; source et annotation sont gardées', () => {
     const d = seedData();
-    addTransaction(d, envin({ accountId: MAIN_ACCOUNT_ID, source: 'Garage', detail: ' Pneu avant ', payMode: 'especes' }));
+    addTransaction(d, envin({ accountId: MAIN_ACCOUNT_ID, source: 'Garage', annotation: ' Pneu avant ', payMode: 'especes' }));
     const t = d.transactions.at(-1)!;
-    expect(t).toMatchObject({ accountId: 'acc-env-voiture', source: 'Garage', detail: 'Pneu avant' });
+    expect(t).toMatchObject({ accountId: 'acc-env-voiture', source: 'Garage', annotation: 'Pneu avant' });
     expect(t.payMode).toBeUndefined();
   });
 

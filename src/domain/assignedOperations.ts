@@ -14,7 +14,6 @@ export interface AssignedOperation {
   /** `YYYY-MM-DD` (date at the bank). */
   date: string;
   label: string;
-  detail?: string;
   amount: number;
   /** Name of the line the operation targets (empty when it was deleted). */
   imputation: string;
@@ -32,7 +31,6 @@ export function assignedOperations(d: BudgetData, accountId: string, m: MonthKey
       id: t.id,
       date: bankDateOf(t, d),
       label: t.label,
-      ...(t.detail ? { detail: t.detail } : {}),
       amount: t.type === 'rev' ? t.amount : -t.amount,
       imputation: lines.find(l => l.key === t.target)?.name ?? 'Supprimé',
       type: t.type,

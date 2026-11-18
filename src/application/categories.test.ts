@@ -157,7 +157,7 @@ describe('catégoriser une dépense (RG6, RG7, RG10, RG11)', () => {
 
   it('CA16 : changer la catégorie depuis le tableau ne modifie que la catégorie', () => {
     const d = budget();
-    addTransaction(d, tx('a', 12.5, { detail: 'note' }));
+    addTransaction(d, tx('a', 12.5, { annotation: 'note' }));
     const before = structuredClone(d.transactions[0]);
     expect(setTransactionCategory(d, 'a', TRA)).toBeNull();
     expect(d.transactions[0]).toEqual({ ...before, categoryId: TRA });

@@ -10,7 +10,7 @@ export const OFF_BUDGET_CHOICE = 'hors-budget';
  */
 export function AssignPicker({ accounts, value, disabled, onChange }: { accounts: BankAccount[]; value: string; disabled?: boolean; onChange: (choice: string) => void }) {
   const chip = (choice: string, content: React.ReactNode) => (
-    <div key={choice} className={`chip${value === choice ? ' is-on' : ''}${disabled ? ' is-disabled' : ''}`} onClick={disabled ? undefined : () => onChange(choice)}>
+    <div key={choice} className={`chip${value === choice ? ' is-on' : ''}${disabled ? ' is-disabled' : ''}`} onClick={disabled ? undefined : () => onChange(value === choice ? '' : choice)}>
       {content}
     </div>
   );

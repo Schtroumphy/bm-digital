@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addTransaction, deleteTransaction, setTransactionDetail, updateTransaction } from '../application/actions';
+import { addTransaction, deleteTransaction, updateTransaction } from '../application/actions';
+import { setOperationAnnotation } from '../application/operationAnnotations';
 import { archiveBankAccount } from '../application/bankAccounts';
 import { changeNature, lineProblem, prepareImport, validateImport, withValidAssignment, type PreviewLine } from '../application/statementImport';
 import { MAIN_ACCOUNT_ID, CASH_ACCOUNT_ID, assignableAccounts, canAssignTo, defaultBankAccounts, newEnvelopeAccount } from './bank';
@@ -9,6 +10,7 @@ import { attachedMovements } from './bankMovements';
 import { dashboardView, hasMovement } from './dashboard';
 import { emptyData } from './empty';
 import { Ledger } from './ledger';
+import { lineSpentNet } from './lineActuals';
 import { fingerprintOf, type StatementRow } from './statement';
 import type { BudgetData, Line, Transaction } from './types';
 
@@ -84,13 +86,15 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
 
   it('CA7 : le détail du compte liste les opérations affectées avec leurs totaux', () => {
     const d = budget();
-    addTransaction(d, tx('v', 'var', 'imp', 708.03, { assignedAccountId: LDDS, detail: 'Carrelage', label: 'Leroy Merlin' }));
+    addTransaction(d, tx('v', 'var', 'imp', 708.03, { assignedAccountId: LDDS, annotation: 'Carrelage', label: 'Leroy Merlin' }));
     addTransaction(d, tx('w', 'fix', 'rcj', 142.5, { assignedAccountId: LDDS }));
     addTransaction(d, tx('r', 'rev', 'rbt', 212.5, { assignedAccountId: LDDS }));
     addTransaction(d, tx('n', 'var', 'imp', 5));
     const ops = assignedOperations(d, LDDS, M);
     expect(ops).toHaveLength(3);
-    expect(ops.find(o => o.id === 'v')).toMatchObject({ amount: -708.03, imputation: 'imp', detail: 'Carrelage', ownAccountName: 'Compte principal' });
+    expect(ops.find(o => o.id === 'v')).toMatchObject({ amount: -708.03, imputation: 'imp', ownAccountName: 'Compte principal' });
+    // Spec 0051, RG10 : l'écran Comptes n'expose plus aucun texte libre (ni détail, ni annotation).
+    expect(ops.every(o => !('detail' in o) && !('annotation' in o))).toBe(true);
     expect(assignedTotals(ops)).toEqual({ count: 3, expenses: 850.53, entries: 212.5, net: -638.03 });
     expect(assignedOperations(d, LDDS, '2026-11')).toEqual([]);
   });
@@ -109,7 +113,7 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
     expect(availableReal(d, M)).toBe(avail);
   });
 
-  it('CA9 : refusé sur un mois clos (opération inchangée), mais le détail reste modifiable', () => {
+  it('CA9 : refusé sur un mois clos (opération inchangée), mais l’annotation reste modifiable', () => {
     const d = budget();
     addTransaction(d, tx('v', 'var', 'imp', 50));
     d.months[M].closed = true;
@@ -117,7 +121,7 @@ describe('opérations affectées à un compte d’épargne (spec 0028)', () => {
     expect(updateTransaction(d, 'v', { label: 'v', amount: 50, date: '2026-10-12', type: 'var', target: 'imp', assignedAccountId: LDDS })).toBe(false);
     expect(d.transactions).toEqual(before);
     expect(addTransaction(d, tx('w', 'var', 'imp', 5, { assignedAccountId: LDDS }))).toBe(false);
-    expect(setTransactionDetail(d, 'v', 'précision')).toBe(true);
+    expect(setOperationAnnotation(d, { kind: 'tx', id: 'v' }, 'précision')).toBe(true);
   });
 
   it('CA10 : compte propre, courant, invest, enveloppe, archivé, ou type env/epa refusés', () => {
@@ -318,5 +322,19 @@ describe('import avec affectation (spec 0028, RG17, CA11)', () => {
     expect(withValidAssignment({ ...l, target: { kind: 'env', id: 'v' } })).not.toHaveProperty('assignedAccountId');
     expect(withValidAssignment(changeNature(d, l, 'retrait'))).not.toHaveProperty('assignedAccountId');
     expect(withValidAssignment({ ...l, target: { kind: 'line', key: 'rcj' } }).assignedAccountId).toBe(LDDS);
+  });
+});
+
+describe('réel d’une ligne d’épargne et opérations affectées à son compte', () => {
+  it('le réel suit l’affectation (ajout, suppression) et le dépensé net est exposé à part', () => {
+    const d = budget();
+    d.months[M].lines.push(ln('trv', 'epa', 1600, { linkedAccountId: LDDS }));
+    expect(lineSpentNet(d, M, line(d, 'trv'))).toBeNull();
+    addTransaction(d, tx('a', 'var', 'imp', 750, { assignedAccountId: LDDS }));
+    addTransaction(d, tx('b', 'rev', 'rbt', 9.38, { assignedAccountId: LDDS }));
+    expect(line(d, 'trv').actual).toBe(740.62);
+    expect(lineSpentNet(d, M, line(d, 'trv'))).toBe(740.62);
+    deleteTransaction(d, 'a');
+    expect(line(d, 'trv').actual).toBe(-9.38);
   });
 });

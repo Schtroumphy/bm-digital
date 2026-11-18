@@ -59,13 +59,13 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
 }
 
 /**
- * « Détails » of a line (white bubble of the Budget screen): the detail field of each real entry of the line in the month, one block per entry
- * (date and amount on the first line, then the label, then the detail; the « : » makes the bubble draw the first line as a row). An entry without detail is listed too (date, label, amount only); empty text when the line has no entry.
+ * « Détails » of a line (white bubble of the Budget screen): the annotation of each real entry of the line in the month, one block per entry
+ * (date and amount on the first line, then the label, then the annotation; the « : » makes the bubble draw the first line as a row). An entry without annotation is listed too (date, label, amount only); empty text when the line has no entry.
  */
 export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): string {
   // Same sources as `lineEntryAmounts`, so the list always holds as many entries as the count shown in the tooltip. `credit` is the direction for the line
   // (money coming in: a revenue, a transfer received, an entry assigned to the account); a negative amount (refund) flips it. Shown as « + » or « − ».
-  type Entry = { day: number; label: string; amount: number; detail?: string; credit: boolean };
+  type Entry = { day: number; label: string; amount: number; annotation?: string; credit: boolean };
   let entries: Entry[];
   if (isSavingsBlock(l.block)) {
     const e = savingsLineEntries(d, m, l);
@@ -82,7 +82,7 @@ export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
   const fmt = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return entries
     .sort((a, b) => a.day - b.day)
-    .map(e => `${dayLabel(m, e.day)} : ${e.credit !== e.amount < 0 ? '+' : '−'}${fmt(Math.abs(e.amount))} €\n${e.label}${e.detail ? `\n${e.detail}` : ''}`)
+    .map(e => `${dayLabel(m, e.day)} : ${e.credit !== e.amount < 0 ? '+' : '−'}${fmt(Math.abs(e.amount))} €\n${e.label}${e.annotation ? `\n${e.annotation}` : ''}`)
     .join('\n\n');
 }
 
@@ -102,6 +102,36 @@ const isStale = (d: BudgetData, m: MonthKey, l: Line): boolean => l.actual !== d
 export function syncLineActual(d: BudgetData, m: MonthKey, key: string): void {
   const l = d.months[m]?.lines.find(x => x.key === key);
   if (l) l.actual = derivedActual(d, m, l);
+}
+
+/**
+ * Rewrites the actual of the savings/investment lines of a month whose dedicated account is `accountId`: what a use case calls after an operation is assigned
+ * to, moved off or removed from that account (spec 0028, RG26), since such an operation counts in the actual of those lines.
+ */
+export function syncAssignedLines(d: BudgetData, m: MonthKey, accountId: string | undefined): void {
+  if (!accountId) return;
+  for (const l of d.months[m]?.lines ?? []) if (isSavingsBlock(l.block) && l.linkedAccountId === accountId) l.actual = derivedActual(d, m, l);
+}
+
+/**
+ * What a savings/investment line paid out of its own account, net: the operations assigned to its dedicated account, an expense in positive and an entry
+ * of money in negative (spec 0028, RG26). Null when the line has no dedicated account or no such operation. Shown beside the actual, never added to it twice.
+ */
+export function lineSpentNet(d: BudgetData, m: MonthKey, l: Pick<Line, 'block'> & { linkedAccountId?: string }): number | null {
+  if (!isSavingsBlock(l.block) || !l.linkedAccountId) return null;
+  const amounts = assignedAmounts(d, m, l.linkedAccountId);
+  return amounts.length ? round2(amounts.reduce((s, a) => s + a, 0)) : null;
+}
+
+/**
+ * Money transferred to a savings/investment line in the month, net of what its account passes on to other savings lines: the « Viré » of the line.
+ * Null when there is no such transfer. The operations assigned to its account are not in it (see `lineSpentNet`).
+ */
+export function lineTransferredNet(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number | null {
+  if (!isSavingsBlock(l.block)) return null;
+  const e = savingsLineEntries(d, m, l);
+  const amounts = [...e.toLine.map(mv => mv.amount), ...e.passedOn.map(mv => -mv.amount)];
+  return amounts.length ? round2(amounts.reduce((s, a) => s + a, 0)) : null;
 }
 
 /** Rewrites the actual of every line of every month from its entries (idempotent). Called after every change of an entry. */

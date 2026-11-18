@@ -1,4 +1,4 @@
-import { DETAIL_MAX, normalizeDetail } from '../domain/detail';
+import { NOTE_MAX, normalizeNote } from '../domain/note';
 import type { BudgetData, MonthKey, MonthNote } from '../domain/types';
 
 /*
@@ -6,15 +6,13 @@ import type { BudgetData, MonthKey, MonthNote } from '../domain/types';
  * uninitialized month. The first note of a month that has no record creates it, without initializing it.
  */
 
-/** Longest note (same rule as an entry detail, spec 0020). */
-export const NOTE_MAX = DETAIL_MAX;
 
 /** Notes of a month, in creation order. */
 export const monthNotes = (d: BudgetData, m: MonthKey): MonthNote[] => d.months[m]?.notes ?? [];
 
 /** Adds a note at the end of the month's list. Refused (false) when the text is empty once trimmed, longer than 200 characters (refused, not cut), or the id is already used in the month. */
 export function addNote(d: BudgetData, m: MonthKey, id: string, text: string): boolean {
-  const clean = normalizeDetail(text);
+  const clean = normalizeNote(text);
   if (clean === undefined || text.trim().length > NOTE_MAX || monthNotes(d, m).some(n => n.id === id)) return false;
   const md = (d.months[m] ??= { initialized: false, lines: [], alloc: {}, transfersDone: {} });
   (md.notes ??= []).push({ id, text: clean, done: false });

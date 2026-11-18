@@ -578,7 +578,7 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
   // Categories kept by the filter of the movements (empty = no filter). Reset when the account or the month changes.
   const [kept, setKept] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
-  // Rows opened by a click: full label and detail instead of the truncated line.
+  // Rows opened by a click: full label instead of the truncated line.
   const [opened, setOpened] = useState<string[]>([]);
   const toggle = (k: string) => setOpened(o => (o.includes(k) ? o.filter(x => x !== k) : [...o, k]));
   useEffect(() => { setKept([]); setFilterOpen(false); setOpened([]); }, [account.id, month]);
@@ -693,7 +693,6 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
                     <span className="cpt-move-label">
                       <span className={opened.includes(`assigned:${op.id}`) ? 'wrap' : 'ellipsis'}>{markedLabel(op.label)}</span>
                       <span className={`muted is-small ${opened.includes(`assigned:${op.id}`) ? 'wrap' : 'ellipsis'}`}>{op.type === 'rev' ? 'Entrée' : 'Dépense'} · {op.imputation} · {op.type === 'rev' ? 'reçue sur' : 'payée avec'} {op.ownAccountName}</span>
-                      {op.detail && <span className={`muted is-small ${opened.includes(`assigned:${op.id}`) ? 'wrap' : 'ellipsis'}`}>{op.detail}</span>}
                     </span>
                     <span className="num">
                       {money(op.amount, true)}
@@ -712,7 +711,6 @@ function AccountPanel({ account, month, tab, setTab, onClose }: { account: BankA
                       {mv.beforeBudget && <span className="cpt-tag" style={{ marginRight: 6 }}>Hors période</span>}
                       {mv.imputation ? `${categoryOf(mv)} · ${mv.imputation.name}` : categoryOf(mv)}
                     </span>
-                    {mv.detail && <span className={`muted is-small ${opened.includes(`mv:${i}`) ? 'wrap' : 'ellipsis'}`}>{mv.detail}</span>}
                   </span>
                   <b className="num" style={mv.amount > 0 ? { color: GOOD } : undefined}>{money(mv.amount, true)}</b>
                 </li>

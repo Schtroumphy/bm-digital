@@ -3,9 +3,9 @@ import { EXEC_MODES, effectiveDueDay, payerAccountId, realBalanceOn, realMonthBa
 import { compareMonths, round2 } from './format';
 import { hasEnvelopesDebit, movementAccountName } from './internalTransfers';
 import { cashWithdrawalSummary, envelopeCashPart } from './cash';
-import { lineEntriesNote } from './lineActuals';
+import { lineEntriesNote, lineTransferredNet } from './lineActuals';
 import { isMonthLocked, monthLines } from './ledger';
-import { linkedLines, movementsLinkedTo } from './movementLines';
+import { budgetGap, linkedLines, movementsLinkedTo } from './movementLines';
 import { isDedicatedVarLine } from './transfers';
 import { transfersTargeting } from './movementTargets';
 import { realMovements } from './bankMovements';
@@ -19,12 +19,15 @@ import type { BankAccount, BudgetData, ExecMode, Line, MonthKey } from './types'
  */
 
 /**
- * Rest of a line (RG5, amended 2026-11-05). Fixed and credit lines, and variable lines of a dedicated account: the whole budget while the line has no
- * entry; as soon as it has one, nothing is left, because the unspent part of what was budgeted is a bonus, not something still to pay. Every other line
+ * Rest of a line (RG5, amended 2026-11-05). Fixed and credit lines: the whole budget while the line has no entry; as soon as it has one, nothing is left,
+ * because the unspent part of what was budgeted is a bonus, not something still to pay. Variable lines of a dedicated account: always the whole budget,
+ * spent or not, since the money still has to be sent to that account; once a transfer is attached the line is covered by it and no longer listed
+ * (spec 0045, RG17). Every other line
  * (variable of the main account, revenue, savings, investment): budget − actual. Never negative: an overrun lowers no other rest.
  */
 export function leftOfLine(d: BudgetData, l: Pick<Line, 'key' | 'block' | 'budget' | 'actual' | 'accountId' | 'payMode'>): number {
-  const bonusRule = l.block === 'fix' || l.block === 'cre' || (l.block === 'var' && isDedicatedVarLine(d, l as Line));
+  if (l.block === 'var' && isDedicatedVarLine(d, l as Line)) return Math.max(round2(l.budget), 0);
+  const bonusRule = l.block === 'fix' || l.block === 'cre';
   if (bonusRule && l.actual !== null && l.actual !== undefined) return 0;
   return Math.max(round2(l.budget - (bonusRule ? 0 : l.actual ?? 0)), 0);
 }
@@ -155,6 +158,48 @@ export function leftLineKeys(d: BudgetData, m: MonthKey, today: string): Set<str
     for (const g of accountComingUp(d, m, a.id, today)?.groups ?? []) for (const x of g.items) if (x.kind === 'line') keys.add(x.id);
   }
   return keys;
+}
+
+/**
+ * Variable lines of a dedicated account that already have expenses while no transfer is attached to them: the account has paid out money it has not
+ * received yet. Maps the line key to what was spent. Always flagged in the Budget, whatever the highlight toggle says.
+ */
+export function unfundedSpentLines(d: BudgetData, m: MonthKey): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const l of monthLines(d, m)) {
+    if (l.block === 'var' && isLineInBudget(d, l) && isDedicatedVarLine(d, l) && (l.actual ?? 0) > 0 && movementsLinkedTo(d, m, l).length === 0) out.set(l.key, l.actual ?? 0);
+  }
+  return out;
+}
+
+/** A transfer that covers its lines only in part: what it sends against the budget of the lines it is attached to. */
+export interface PartialFunding {
+  label: string;
+  budget: number;
+  amount: number;
+  /** budget − amount (> 0). */
+  missing: number;
+}
+
+/**
+ * Variable lines attached to a transfer smaller than the sum of their budgets, and savings lines whose « Viré » is under their budget: funded, but not
+ * enough. Maps each line key to its transfer (the first one when a line is on several). A transfer larger than the budgets is not a shortfall.
+ */
+export function partiallyFundedLines(d: BudgetData, m: MonthKey): Map<string, PartialFunding> {
+  const out = new Map<string, PartialFunding>();
+  for (const mv of d.accountMovements ?? []) {
+    if (mv.month !== m) continue;
+    const gap = budgetGap(d, mv);
+    if (!gap || gap.budget <= gap.amount) continue;
+    for (const l of linkedLines(d, mv)) if (!out.has(l.key)) out.set(l.key, { label: mv.label, budget: gap.budget, amount: gap.amount, missing: round2(gap.budget - gap.amount) });
+  }
+  // A savings line (« Viré » column): something was transferred, less than its budget.
+  for (const l of monthLines(d, m)) {
+    if (l.block !== 'epa' || !isLineInBudget(d, l) || l.execMode === 'informatif') continue;
+    const sent = lineTransferredNet(d, m, l);
+    if (sent !== null && sent > 0 && sent < l.budget) out.set(l.key, { label: 'Virements du mois', budget: l.budget, amount: sent, missing: round2(l.budget - sent) });
+  }
+  return out;
 }
 
 /** The lines paid out of an account that can have something left: no revenue, no « informatif », a variable line only when it counts in the budget (RG6). */

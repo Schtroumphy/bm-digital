@@ -26,11 +26,11 @@ const bank = (d: BudgetData, id: string) => new Ledger(d, M).bankMonth(id, M)!;
 
 describe('saisie (RG1 à RG3, RG5, RG6)', () => {
 
-  it('le compte donné est ignoré (celui du compte cible) ; source et détail gardés, mode de paiement retiré', () => {
+  it('le compte donné est ignoré (celui du compte cible) ; source et annotation gardées, mode de paiement retiré', () => {
     const d = seedWithSwile();
-    addTransaction(d, accin({ accountId: MAIN_ACCOUNT_ID, source: 'Employeur', detail: ' Novembre ', payMode: 'especes' }));
+    addTransaction(d, accin({ accountId: MAIN_ACCOUNT_ID, source: 'Employeur', annotation: ' Novembre ', payMode: 'especes' }));
     const t = d.transactions.at(-1)!;
-    expect(t).toMatchObject({ accountId: SWILE, source: 'Employeur', detail: 'Novembre' });
+    expect(t).toMatchObject({ accountId: SWILE, source: 'Employeur', annotation: 'Novembre' });
     expect(t.payMode).toBeUndefined();
   });
 

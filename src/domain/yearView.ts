@@ -311,8 +311,8 @@ function balanceTotal(blocks: YearBlock[]): number | null {
 }
 
 /**
- * « Détails » of a line (right click): the detail field of the real entries of the line over the year, oldest first, one block per entry
- * (date, label, amount, then the detail). An entry without detail is listed too; empty text when the line has no entry.
+ * « Détails » of a line (right click): the real entries of the line over the year, oldest first, one block per entry
+ * (date, label, amount). No free text: the annotation is not shown here (spec 0051, RG10). Empty text when the line has no entry.
  * A budget line is found by its section and name in every month of the year; an envelope (block `env`) by its name.
  */
 export function yearLineDetails(d: BudgetData, year: number, block: YearBlockId, section: string, name: string): string {
@@ -334,7 +334,7 @@ export function yearLineDetails(d: BudgetData, year: number, block: YearBlockId,
   return txs
     .map(t => {
       const [, mm, dd] = bankDateOf(t, d).split('-');
-      return `${dd}/${mm} · ${t.label} · ${t.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €${t.detail ? `\n${t.detail}` : ''}`;
+      return `${dd}/${mm} · ${t.label} · ${t.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
     })
     .join('\n\n');
 }

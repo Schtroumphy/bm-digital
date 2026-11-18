@@ -1,4 +1,4 @@
-import { applyDetail, normalizeDetail } from '../domain/detail';
+import { applyAnnotation, isAnnotationTooLong, normalizeAnnotation } from '../domain/annotation';
 import { round2 } from '../domain/format';
 import { daysInMonth } from '../domain/checkoff';
 import { isMonthLocked } from '../domain/ledger';
@@ -50,7 +50,8 @@ export interface NewTransfer {
    * account. A transfer typed by hand with variable lines takes the sum of their budgets as its amount (RG4).
    */
   targets?: MovementTarget[];
-  detail?: string;
+  /** Annotation (spec 0047, 0051): refused over 500 characters. */
+  annotation?: string;
 }
 
 /**
@@ -70,12 +71,13 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
   if (!isValidTransferTargets(d, input.month, input.toAccountId, targets)) return false;
   const lines = varLineKeys(d, input.month, input.toAccountId, targets);
   const fromLines = lines.length > 0 ? amountForLines(d, input.month, input.toAccountId, lines) : 0;
-  const detail = normalizeDetail(input.detail);
+  if (input.annotation !== undefined && isAnnotationTooLong(input.annotation)) return false;
+  const annotation = normalizeAnnotation(input.annotation);
   const mv: AccountMovement = {
     id: input.id, month: input.month, day: input.day, ...(input.bankDate ? { bankDate: input.bankDate } : {}), label, amount: fromLines > 0 ? fromLines : round2(input.amount),
     fromAccountId: input.fromAccountId, toAccountId: input.toAccountId,
     ...(targets.length > 0 ? { targets } : {}),
-    ...(detail === undefined ? {} : { detail }),
+    ...(annotation === undefined ? {} : { annotation }),
   };
   (d.accountMovements ??= []).push(mv);
   syncTargets(d, mv.month, mv.targets);
@@ -83,7 +85,7 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
 }
 
 /**
- * Changes the label and the amount of a transfer, and its detail when `patch.detail` is given (spec 0020, RG6; empty clears it).
+ * Changes the label and the amount of a transfer, and its annotation when `patch.annotation` is given (spec 0051, RG7; empty clears it; refused over 500 characters).
  * Refused (false) on a locked month, an empty label or an amount that is not positive, and for a changed amount on a transfer linked to
  * two lines of the bank file (« Lié »): both lines have that amount, the transfer has to be unlinked or deleted first (spec 0016, RG15).
  * `date` (`YYYY-MM-DD`, a real date) changes its bank date, as for an expense: the month of attachment stays; the date is kept only when the day alone does not give it.
@@ -94,10 +96,11 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
  * that has variable lines is the sum of their budgets, fixed when a line is added (RG5) and when the destination drops lines (RG13); `patch.amount` is then
  * ignored. Removing a line, or all of them, leaves the amount as it is (RG5, RG6). An imported transfer keeps its amount whatever its lines (RG7).
  */
-export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; detail?: string; date?: string; fromAccountId?: string; toAccountId?: string; targets?: MovementTarget[] }): boolean {
+export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; annotation?: string; date?: string; fromAccountId?: string; toAccountId?: string; targets?: MovementTarget[] }): boolean {
   const mv = d.accountMovements?.find(x => x.id === id);
   const label = patch.label.trim();
   if (!mv || isMonthLocked(d, mv.month) || !label || !(patch.amount > 0)) return false;
+  if (patch.annotation !== undefined && isAnnotationTooLong(patch.annotation)) return false;
   if (linkStateOf(mv) === 'lie' && round2(patch.amount) !== mv.amount) return false;
   if (patch.date !== undefined && !isRealDate(patch.date)) return false;
   const from = patch.fromAccountId ?? mv.fromAccountId;
@@ -129,7 +132,7 @@ export function updateAccountMovement(d: BudgetData, id: string, patch: { label:
     if (patch.date === deducedDate(d, mv.month, mv.day)) delete mv.bankDate;
     else mv.bankDate = patch.date;
   }
-  if (patch.detail !== undefined) applyDetail(mv, patch.detail);
+  if (patch.annotation !== undefined) applyAnnotation(mv, patch.annotation);
   syncTargets(d, mv.month, before);
   syncTargets(d, mv.month, mv.targets);
   return true;
@@ -143,14 +146,6 @@ export function setTransferTargets(d: BudgetData, id: string, targets: MovementT
   const mv = d.accountMovements?.find(x => x.id === id);
   if (!mv) return false;
   return updateAccountMovement(d, id, { label: mv.label, amount: mv.amount, targets });
-}
-
-/** Sets, changes or clears (empty text) the detail of a movement. Allowed on a locked month: it changes no figure (spec 0020, RG11). */
-export function setAccountMovementDetail(d: BudgetData, id: string, detail: string): boolean {
-  const mv = d.accountMovements?.find(x => x.id === id);
-  if (!mv) return false;
-  applyDetail(mv, detail);
-  return true;
 }
 
 export function deleteAccountMovement(d: BudgetData, id: string): boolean {

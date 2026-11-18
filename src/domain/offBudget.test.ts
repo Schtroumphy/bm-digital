@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addTransaction, deleteTransaction, setTransactionDetail, transactionsCsv, updateTransaction } from '../application/actions';
+import { addTransaction, deleteTransaction, transactionsCsv, updateTransaction } from '../application/actions';
+import { setOperationAnnotation } from '../application/operationAnnotations';
 import { prepareImport, validateImport, withValidAssignment, lineProblem, type PreviewLine } from '../application/statementImport';
 import { MAIN_ACCOUNT_ID, defaultBankAccounts, isTransactionInBudget, newEnvelopeAccount } from './bank';
 import { assignedOperations } from './assignedOperations';
@@ -80,7 +81,7 @@ describe('opération hors budget (spec 0031)', () => {
     expect(updateTransaction(d, 'w', patch(before[1], { offBudget: false }))).toBe(false);
     expect(addTransaction(d, tx('x', 'var', 'imp', 5, { offBudget: true }))).toBe(false);
     expect(d.transactions).toEqual(before);
-    expect(setTransactionDetail(d, 'w', 'précision')).toBe(true);
+    expect(setOperationAnnotation(d, { kind: 'tx', id: 'w' }, 'précision')).toBe(true);
   });
 
   it('CA5 : une opération env ou epa ne peut pas être hors budget', () => {
@@ -133,9 +134,9 @@ describe('opération hors budget (spec 0031)', () => {
   });
 
   it('RG6 : l’export CSV a une colonne « Hors budget » (oui / non)', () => {
-    const row = { date: '2026-10-12', label: 'a', detail: '', type: 'Dépense', imputation: 'Imprévus', account: 'Compte principal', assignedTo: '', offBudget: true, amount: -10 };
+    const row = { date: '2026-10-12', label: 'a', annotation: '', type: 'Dépense', imputation: 'Imprévus', account: 'Compte principal', assignedTo: '', offBudget: true, amount: -10 };
     const [head, a, b] = transactionsCsv([row, { ...row, offBudget: false }]).replace('﻿', '').split('\r\n');
-    expect(head).toBe('Date;Libellé;Détail;Nature;Imputation;Compte;Affectée à;Hors budget;Montant');
+    expect(head).toBe('Date;Libellé;Annotation;Nature;Imputation;Compte;Affectée à;Hors budget;Montant');
     expect(a.split(';')[7]).toBe('oui');
     expect(b.split(';')[7]).toBe('non');
   });

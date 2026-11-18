@@ -2,12 +2,12 @@ import { Fragment, useEffect, useState } from 'react';
 import { AccountDot, AccountPicker } from '../components/AccountPicker';
 import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { CategorySelect, LOCKED_HINT } from '../components/CategorySelect';
-import { DetailInput } from '../components/DetailInput';
+import { AnnotationInput } from '../components/AnnotationInput';
 import { EntryDate } from '../components/EntryDate';
 import { Icon } from '../components/Icon';
 import { MovementGap, MovementLines } from '../components/MovementLines';
 import { GOOD, HUE, tone } from '../components/tone';
-import { deleteTransaction, deleteTransactions, transactionsCsv, updateTransaction, setTransactionDetail, setTransactionFlag } from '../../application/actions';
+import { deleteTransaction, deleteTransactions, transactionsCsv, updateTransaction, setTransactionFlag } from '../../application/actions';
 import { setCategoryOnSelection, setTransactionCategory, groupedMessage } from '../../application/categories';
 import { categoryLabel, isCategorizableType, isUncategorized } from '../../domain/categories';
 import { addManualTransaction, addManualTransfer } from '../../application/manualEntry';
@@ -15,22 +15,24 @@ import type { StatementSource } from '../../application/ports';
 import { ImportWizard } from './ImportWizard';
 import { bankDateOf, expenseLineBlocker, isExpenseLineBlock } from '../../domain/lineExpenses';
 import { transferItems } from '../../domain/transfers';
-import { amountForLines, budgetGap, budgetOf, isManualMovement, proposableLines } from '../../domain/movementLines';
+import { amountForLines, budgetGap, budgetOf, isManualMovement, linkedLines, proposableLines } from '../../domain/movementLines';
 import { savingsLineEntries } from '../../domain/lineActuals';
 import { lineKeysOf, targetsOf } from '../../domain/movementTargets';
-import { deleteAccountMovement, setAccountMovementDetail, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
+import { deleteAccountMovement, unlinkMovementFace, updateAccountMovement } from '../../application/accountMovements';
 import { CASH_ID, CASH_LABEL, creditDateOf, debitDateOf, envelopeSplit, isEnvelopesPool, linkStateOf, movementAccountName } from '../../domain/internalTransfers';
 import { setTransactionAccount } from '../../application/bankAccounts';
 import { activeBankAccounts, assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, isAssignableType, isTransactionOffBudget, CASH_ACCOUNT_ID, defaultTransactionAccountId, fixedTransactionAccountId, isAccountInBudget, isEnvelopeAccount, isLineInBudget, transactionBox, savingsExpenseLines } from '../../domain/bank';
 import { isoDate } from '../../domain/checkoff';
 import { defaultEntryDate, isRealDate } from '../../domain/periods';
-import { matchesEntrySearch } from '../../domain/detail';
+import { isAnnotationTooLong, matchesEntrySearch } from '../../domain/annotation';
+import { useOperationAnnotation } from '../components/useOperationAnnotation';
 import { monthSummary, variableRemaining } from '../../domain/budget';
 import { exceedsEnvelopeCash } from '../../domain/envelopeCash';
 import { money, monthLabel, parseAmount, round2, sanitizeAmountInput } from '../../domain/format';
 import { isMonthLocked, monthLines } from '../../domain/ledger';
-import type { AccountMovement, MonthKey, MovementTarget, PayMode, TxType } from '../../domain/types';
+import type { AccountKind, AccountMovement, MonthKey, MovementTarget, PayMode, TxType } from '../../domain/types';
 import { newId, useStore } from '../state/store';
+import { useUi } from '../state/ui';
 
 /** Prefix of the choice of an envelope among the targets of an entry of money (spec 0036): a line key never contains a colon. */
 const ENVELOPE_PREFIX = 'env:';
@@ -77,21 +79,25 @@ export function ExpensesScreen({ month, statementSource, focus }: { month: Month
   );
 }
 
-/** Libellé d'une écriture (+ détail) : clic sur le libellé pour ajouter ou modifier le détail (le crayon de fin de ligne modifie toute l'écriture). */
-/** `attach`: where the entry is attached (budget line, or the link of a transfer), shown under the detail. */
-function EntryLabel({ entry, attach, hideDetail, onOpen }: { entry: { id: string; label: string; detail?: string }; attach?: string; hideDetail?: boolean; onOpen: (id: string, detail?: string) => void }) {
-  const open = () => onOpen(entry.id, entry.detail);
-  const editLabel = entry.detail ? 'Modifier le détail' : 'Ajouter un détail';
+/** Label of an entry. Its free text is its annotation, shown as a grey line under the row (`AnnotationLine`, spec 0051, RG8). */
+function EntryLabel({ entry }: { entry: { label: string } }) {
   return (
     <div className="entry-cell">
-      <div className="entry-label" title={[entry.label, entry.detail, attach].filter(Boolean).join('\n') || editLabel} onClick={open}>
+      <div className="entry-label" title={entry.label}>
         <div className="ellipsis" style={{ fontWeight: 500 }}>
           {entry.label}
         </div>
-        {entry.detail && !hideDetail && <div className="entry-detail">{entry.detail}</div>}
-        {attach && !hideDetail && <div className="entry-detail is-attach">{attach}</div>}
       </div>
     </div>
+  );
+}
+
+/** Grey reminder under an annotated operation, 2 lines at most, full text in the tooltip; a click opens its edit (spec 0047, RG12). */
+function AnnotationLine({ text, kind, onEdit }: { text: string; kind: 'tx' | 'mv'; onEdit: () => void }) {
+  return (
+    <button type="button" className={`annot-reminder is-${kind}`} title={text} aria-label={`Annotation : ${text}. Modifier`} onClick={onEdit}>
+      <span className="entry-detail is-annotation">{text}</span>
+    </button>
   );
 }
 
@@ -131,7 +137,7 @@ function Choice({ options, value, onPick, render }: { options: [string, string][
 }
 
 /** Drop-down menu whose entries keep the chip content (e.g. the account dot), which a native `<select>` cannot show. */
-function Menu({ options, value, onPick, render, pill }: { options: [string, string][]; value: string; onPick: (id: string) => void; render: (id: string, name: string) => React.ReactNode; pill?: boolean }) {
+function Menu({ options, value, onPick, render, pill, groupOf }: { options: [string, string][]; value: string; onPick: (id: string) => void; render: (id: string, name: string) => React.ReactNode; pill?: boolean; /** Heading of the group an option belongs to; options must already be sorted by group. */ groupOf?: (id: string) => string | undefined }) {
   const [open, setOpen] = useState(false);
   const current = options.find(o => o[0] === value);
   return (
@@ -150,11 +156,17 @@ function Menu({ options, value, onPick, render, pill }: { options: [string, stri
         <>
           <div className="backdrop" onClick={() => setOpen(false)} />
           <div className="popmenu acc-menu">
-            {options.map(([id, name]) => (
-              <div key={id} className={`popmenu-item${id === value ? ' is-active' : ''}`} onClick={() => { setOpen(false); onPick(id); }}>
-                {render(id, name)}
-              </div>
-            ))}
+            {options.map(([id, name], i) => {
+              const group = groupOf?.(id);
+              return (
+                <Fragment key={id}>
+                  {group && group !== (i > 0 ? groupOf?.(options[i - 1][0]) : undefined) && <div className="popmenu-group">{group}</div>}
+                  <div className={`popmenu-item${id === value ? ' is-active' : ''}`} onClick={() => { setOpen(false); onPick(id); }}>
+                    {render(id, name)}
+                  </div>
+                </Fragment>
+              );
+            })}
           </div>
         </>
       )}
@@ -162,32 +174,31 @@ function Menu({ options, value, onPick, render, pill }: { options: [string, stri
   );
 }
 
+const ACCOUNT_GROUPS = ['Courant', 'Épargne', 'Enveloppes'] as const;
+/** Theme of an account in the filter list: current accounts, savings (and investments), envelopes. */
+const accountGroupOf = (a?: { kind?: AccountKind }): (typeof ACCOUNT_GROUPS)[number] => (a?.kind === 'enveloppe' ? 'Enveloppes' : a?.kind === 'epargne' || a?.kind === 'invest' ? 'Épargne' : 'Courant');
+
 function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | null }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
-  const [form, setForm] = useState<{ label: string; detail: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string; categoryId: string }>({ label: '', detail: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' });
-  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; categoryId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; showDetail: boolean; from: string; to: string; min: string; max: string; target: string; line: string; movementLine: string }>({ q: '', type: focus?.type ?? 'all', accountId: focus?.accountId ?? 'all', categoryId: focus?.categoryId ?? 'all', flaggedOnly: false, uncategorizedOnly: focus?.uncategorized ?? false, showDetail: true, from: '', to: '', min: '', max: '', target: focus?.target ?? '', line: '', movementLine: focus?.movementLine ?? '' });
+  const [form, setForm] = useState<{ label: string; annotation: string; amount: string; type: TxType; target: string; accountId: string; payMode: PayMode; assignedAccountId: string; date: string; source: string; categoryId: string }>({ label: '', annotation: '', amount: '', type: 'var', target: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' });
+  const [filter, setFilter] = useState<{ q: string; type: TxType | 'all'; accountId: string; categoryId: string; flaggedOnly: boolean; uncategorizedOnly: boolean; from: string; to: string; min: string; max: string; target: string; line: string; movementLine: string }>({ q: '', type: focus?.type ?? 'all', accountId: focus?.accountId ?? 'all', categoryId: focus?.categoryId ?? 'all', flaggedOnly: false, uncategorizedOnly: focus?.uncategorized ?? false, from: '', to: '', min: '', max: '', target: focus?.target ?? '', line: '', movementLine: focus?.movementLine ?? '' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Accounts of the filter list, sorted by theme (the sort is stable: the order inside a theme is unchanged).
+  const accountFilterOptions = data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID && (!a.archived || a.id === filter.accountId)).sort((a, b) => ACCOUNT_GROUPS.indexOf(accountGroupOf(a)) - ACCOUNT_GROUPS.indexOf(accountGroupOf(b)));
   // The list below the form is split in two tabs: the transactions and the transfers (account movements); the filters apply to both.
   const [view, setView] = useState<'ops' | 'transferts'>(focus?.movementLine ? 'transferts' : 'ops');
   // « Transfert » (spec 0019, RG14) is a type of entry of this form, written as an `AccountMovement`; the other types are transactions.
   const [transfer, setTransfer] = useState(false);
-  // Transaction whose detail is being edited (spec 0020, RG6): allowed on a locked month too (RG11).
-  const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
-  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; detail: string; type: TxType; target: string; assignedAccountId: string; categoryId: string } | null>(null);
+  // Annotation of a transaction (spec 0047, RG12): its edit modal; the transfers have their own, in `MovementsBlock`.
+  const annotation = useOperationAnnotation();
+  const [editingTx, setEditingTx] = useState<{ id: string; label: string; amount: string; date: string; annotation: string; type: TxType; target: string; assignedAccountId: string; categoryId: string } | null>(null);
   // Grouped classification (spec 0046, RG12): category chosen in the selection bar ('' = Sans catégorie) and the message of the last application.
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkMessage, setBulkMessage] = useState('');
   // Layout: the creation form lives in a right-hand panel opened by « Nouvelle opération »; the less used filters fold behind « Plus de filtres ».
   const [formOpen, setFormOpen] = useState(false);
-  const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
-  const saveDetail = () => {
-    if (!editingDetail) return;
-    const { id, text } = editingDetail;
-    update(d => void setTransactionDetail(d, id, text));
-    setEditingDetail(null);
-  };
 
   const revenueTargets: [string, string][] = lines.filter(l => l.block === 'rev').map(l => [l.key, `${l.name} (${bankAccount(data, l.accountId)?.name ?? ''})`]);
   // Envelopes without an active account cannot take an entry (spec 0036, RG3).
@@ -291,8 +302,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   };
   const targetsOf = (type: TxType, payerId?: string): [string, string][] =>
     type === 'epd' ? savingsExpenseLines(data, month, bankAccount(data, payerId)?.id ?? '').map(l => [l.key, l.name]) : type === 'var' ? lines.filter(l => l.block === 'var').map(l => [l.key, l.name]) : type === 'env' ? data.envelopes.map(e => [e.id, e.name]) : type === 'fix' ? lines.filter(l => isExpenseLineBlock(l.block)).map(l => [l.key, l.name]) : type === 'rev' ? lines.filter(l => l.block === 'rev').map(l => [l.key, l.name]) : lines.filter(l => l.block === 'epa').map(l => [l.key, l.name]);
-  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t, data), detail: t.detail ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? (t.offBudget ? OFF_BUDGET_CHOICE : ''), categoryId: t.categoryId ?? '' });
-  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, detail: editingTx.detail, type: editingTx.type, target: editingTx.target, assignedAccountId: editingTx.assignedAccountId === OFF_BUDGET_CHOICE ? null : editingTx.assignedAccountId || null, offBudget: editingTx.assignedAccountId === OFF_BUDGET_CHOICE, categoryId: editingTx.categoryId || null };
+  const startEdit = (t: (typeof txs)[number]) => setEditingTx({ id: t.id, label: t.label, amount: String(t.amount).replace('.', ','), date: bankDateOf(t, data), annotation: t.annotation ?? '', type: t.type, target: t.target, assignedAccountId: t.assignedAccountId ?? (t.offBudget ? OFF_BUDGET_CHOICE : ''), categoryId: t.categoryId ?? '' });
+  const editPatch = editingTx && { label: editingTx.label, amount: parseAmount(editingTx.amount) ?? 0, date: editingTx.date, annotation: editingTx.annotation, type: editingTx.type, target: editingTx.target, assignedAccountId: editingTx.assignedAccountId === OFF_BUDGET_CHOICE ? null : editingTx.assignedAccountId || null, offBudget: editingTx.assignedAccountId === OFF_BUDGET_CHOICE, categoryId: editingTx.categoryId || null };
   // The edit is tried on a copy first: a refused version (locked month, imputation or account not allowed) leaves the entry untouched and keeps the form open.
   const editAllowed = !!editingTx && !!editPatch && updateTransaction(structuredClone(data), editingTx.id, editPatch);
   const saveEdit = () => {
@@ -306,7 +317,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
     const rows = [...picked].sort((a, b) => bankDateOf(a, data).localeCompare(bankDateOf(b, data))).map(t => ({
       date: bankDateOf(t, data),
       label: t.label,
-      detail: t.detail ?? '',
+      annotation: t.annotation ?? '',
       type: TYPE_LABEL[t.type],
       imputation: targetName(t.type, t.target),
       account: bankAccount(data, t.accountId)?.name ?? '',
@@ -383,12 +394,12 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
   const categories = data.categories ?? [];
   const formCategory = categories.some(c => c.id === form.categoryId) ? form.categoryId : '';
   const add = () => {
-    if (transfer || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused || !isRealDate(entryDate)) return;
+    if (transfer || isAnnotationTooLong(form.annotation) || !amount || amount < 0 || !target || locked || accountRefused || lineBlocker || cashRefused || !isRealDate(entryDate)) return;
     update(d =>
-      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(txType, txTarget), amount, type: txType, target: txTarget, ...(cashLine ? {} : { accountId }), detail: form.detail, ...(formCategory && isCategorizableType(txType) ? { categoryId: formCategory } : {}), ...((entryEnvelopeId || entryAccountId) && form.source.trim() ? { source: form.source.trim() } : {}), ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
+      addManualTransaction(d, { id: newId('t'), month, label: form.label.trim() || targetName(txType, txTarget), amount, type: txType, target: txTarget, ...(cashLine ? {} : { accountId }), annotation: form.annotation, ...(formCategory && isCategorizableType(txType) ? { categoryId: formCategory } : {}), ...((entryEnvelopeId || entryAccountId) && form.source.trim() ? { source: form.source.trim() } : {}), ...(assignedId === OFF_BUDGET_CHOICE ? { offBudget: true as const } : assignedId ? { assignedAccountId: assignedId } : {}), ...((form.type === 'env' && form.payMode === 'especes') || cashLine ? { payMode: 'especes' as const } : {}) }, entryDate),
     );
     // Picking another account is a one-off: the next expense follows its box again.
-    setForm(f => ({ ...f, label: '', detail: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' }));
+    setForm(f => ({ ...f, label: '', annotation: '', amount: '', accountId: '', payMode: 'virtuel', assignedAccountId: '', date: '', source: '', categoryId: '' }));
   };
 
   const flow: { label: string; value: number; hero?: boolean }[] = [
@@ -434,8 +445,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           <input className="text-input" type="date" value={entryDate} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
         </label>
         <label className="field-w">
-          <span className="field-label">Détail <span className="field-optional">facultatif</span></span>
-          <DetailInput value={form.detail} onChange={detail => setForm(f => ({ ...f, detail }))} onEnter={add} />
+          <span className="field-label">Annotation <span className="field-optional">facultatif</span></span>
+          <AnnotationInput value={form.annotation} onChange={annotation => setForm(f => ({ ...f, annotation }))} onEnter={add} />
         </label>
         {(entryEnvelopeId || entryAccountId) && (
           <label className="field-w">
@@ -457,7 +468,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
           </div>
         </div>
         {transfer ? (
-          <TransferFields month={month} locked={locked} label={form.label} detail={form.detail} amount={amount} date={entryDate} onLinkedAmount={setLinkedSum} onDone={() => setForm(f => ({ ...f, label: '', detail: '', amount: '', date: '' }))} />
+          <TransferFields month={month} locked={locked} label={form.label} annotation={form.annotation} amount={amount} date={entryDate} onLinkedAmount={setLinkedSum} onDone={() => setForm(f => ({ ...f, label: '', annotation: '', amount: '', date: '' }))} />
         ) : (
           <>
         <div>
@@ -552,7 +563,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               </div>
             ))}
           </div>
-          <input className="text-input tx-search tx-search-inline" value={filter.q} placeholder="Rechercher un libellé" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
+          <input className="text-input tx-search tx-search-inline" value={filter.q} placeholder="Rechercher un libellé ou une annotation" onChange={e => setFilter(f => ({ ...f, q: e.target.value }))} />
           <span className="tx-pill-field">
             <span className="tx-pill-label">Période</span>
             <input type="date" aria-label="Du" value={filter.from} max={filter.to || undefined} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
@@ -583,7 +594,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
             <div>
               <Menu
                 pill
-                options={[['all', 'Tous les comptes'], ...data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID && (!a.archived || a.id === filter.accountId)).map(a => [a.id, a.name] as [string, string])]}
+                options={[['all', 'Tous les comptes'], ...accountFilterOptions.map(a => [a.id, a.name] as [string, string])]}
+                groupOf={id => (id === 'all' ? undefined : accountGroupOf(data.accounts.find(a => a.id === id)))}
                 value={filter.accountId}
                 onPick={id => setFilter(f => ({ ...f, accountId: id }))}
                 render={(id, name) => (
@@ -633,7 +645,6 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               <div className="chips">
                 <Chip on={filter.flaggedOnly} onClick={() => setFilter(f => ({ ...f, flaggedOnly: !f.flaggedOnly }))}>Marquées</Chip>
                 <Chip on={filter.uncategorizedOnly} onClick={() => setFilter(f => ({ ...f, uncategorizedOnly: !f.uncategorizedOnly }))}>Sans catégorie</Chip>
-                <Chip on={filter.showDetail} onClick={() => setFilter(f => ({ ...f, showDetail: !f.showDetail }))}>Détails</Chip>
               </div>
             )}
             {focus && (filter.target || filter.movementLine) && (
@@ -691,7 +702,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
               <div className={`tx-grid tx-row${selected.has(t.id) ? ' is-selected' : ''}`}>
                 <input type="checkbox" aria-label={`Sélectionner ${t.label}`} checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                 <EntryDate entry={t} attachedWord="Rattachée" />
-                <EntryLabel entry={t} hideDetail={!filter.showDetail} onOpen={openDetail} />
+                <EntryLabel entry={t} />
                 <span className="tx-target">
                   <span className="dot is-9" style={{ background: tone(targetHue(t.type, t.target)).base }} />
                   <span className="ellipsis">{targetName(t.type, t.target)}</span>
@@ -728,6 +739,12 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 <AccountPicker data={data} accountId={t.accountId} showName disabled={locked || isEnvelopeAccount(bankAccount(data, t.accountId)) || fixedTransactionAccountId(data, t) !== undefined} onPick={id => update(d => setTransactionAccount(d, t.id, id))} />
                 <b className="num" style={signedAmount(t) > 0 ? { color: GOOD } : undefined}>{money(signedAmount(t), true)}</b>
                 <span className="tx-actions">
+                  {/* Spec 0047, RG6, RG12: an annotation changes no figure, so it is available on a locked month too. */}
+                  {!t.annotation && (
+                    <button type="button" className="icon-btn annot-add" title="Ajouter une annotation" aria-label="Ajouter une annotation" onClick={() => annotation.open({ kind: 'tx', id: t.id }, t.label)}>
+                      <Icon name="note" size={13} stroke={2} />
+                    </button>
+                  )}
                   <span className={`icon-btn${t.flagged ? ' is-on' : ''}`} title={t.flagged ? 'Retirer le drapeau' : 'Marquer d’un drapeau (filtre « Marquées »)'} onClick={() => update(d => setTransactionFlag(d, t.id, !t.flagged))}>
                     <Icon name="flag" size={13} stroke={2} />
                   </span>
@@ -741,6 +758,7 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                   </>)}
                 </span>
               </div>
+              {t.annotation && <AnnotationLine kind="tx" text={t.annotation} onEdit={() => annotation.open({ kind: 'tx', id: t.id }, t.label, t.annotation)} />}
               {editingTx?.id === t.id && (
                 <div className="tx-edit">
                   <div className="form-row">
@@ -758,8 +776,8 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                     </label>
                   </div>
                   <label className="field-w">
-                    <span className="field-label">Détail <span className="field-optional">facultatif</span></span>
-                    <DetailInput value={editingTx.detail} onChange={detail => setEditingTx({ ...editingTx, detail })} onEnter={saveEdit} onEscape={() => setEditingTx(null)} />
+                    <span className="field-label">Annotation <span className="field-optional">facultatif</span></span>
+                    <AnnotationInput value={editingTx.annotation} onChange={annotation => setEditingTx({ ...editingTx, annotation })} onEnter={saveEdit} onEscape={() => setEditingTx(null)} />
                   </label>
                   {editingTx.type !== 'rev' && editingTx.type !== 'epd' && (
                     <div>
@@ -795,21 +813,14 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                   </div>
                 </div>
               )}
-              {editingDetail?.id === t.id && (
-                <div className="detail-edit">
-                  <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: t.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />
-                  <span className="icon-btn" title="Enregistrer le détail" onClick={saveDetail}>
-                    <Icon name="check" size={14} />
-                  </span>
-                </div>
-              )}
             </Fragment>
           ))}
           {txs.length > 0 && shown.length === 0 && <div className="empty">Aucune opération ne correspond aux filtres.</div>}
           {txs.length === 0 && <div className="empty">Aucune opération saisie ce mois-ci.</div>}
           <div style={{ height: 8 }} />
           </>}
-          {view === 'transferts' && <MovementsBlock month={month} locked={locked} showDetail={filter.showDetail} movements={shownMovements} total={allMovements.length} />}
+          {annotation.modal}
+          {view === 'transferts' && <MovementsBlock month={month} locked={locked} movements={shownMovements} total={allMovements.length} />}
         </div>
       </div>
     </div>
@@ -817,21 +828,19 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
 }
 
 /** Transfers of the month (spec 0013, RG10d; spec 0019): created by the import or by the « Transfert » form, edited (label, amount) or deleted here. */
-function MovementsBlock({ month, locked, showDetail, movements, total }: { month: MonthKey; locked: boolean; showDetail: boolean; movements: AccountMovement[]; total: number }) {
+function MovementsBlock({ month, locked, movements, total }: { month: MonthKey; locked: boolean; movements: AccountMovement[]; total: number }) {
   const { data, update } = useStore();
+  const { openMenu } = useUi();
   // `keys`: the variable lines checked (spec 0045); `initial`: the ones the transfer had when the edit began (RG5: only an added line recomputes the amount).
-  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; detail: string; date: string; from: string; to: string; keys: string[]; initial: string[] } | null>(null);
-  // Detail-only editing, also on a locked month (spec 0020, RG6, RG11).
-  const [editingDetail, setEditingDetail] = useState<{ id: string; text: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; label: string; amount: string; annotation: string; date: string; from: string; to: string; keys: string[]; initial: string[] } | null>(null);
+  const annotation = useOperationAnnotation();
   if (movements.length === 0) return <div className="empty">{total === 0 ? 'Aucun transfert ce mois-ci.' : 'Aucun transfert ne correspond aux filtres.'}</div>;
-  const openDetail = (id: string, detail?: string) => setEditingDetail({ id, text: detail ?? '' });
-  const saveDetail = () => {
-    if (!editingDetail) return;
-    const { id, text } = editingDetail;
-    update(d => void setAccountMovementDetail(d, id, text));
-    setEditingDetail(null);
-  };
   const nameOf = (id: string) => movementAccountName(data, id);
+  // Pill colours of an account: its own hue (same as its dot); neutral grey for cash and the envelopes pool.
+  const accStyle = (id: string): React.CSSProperties | undefined => {
+    const a = data.accounts.find(x => x.id === id);
+    return a ? { background: tone(a.hue).soft, color: tone(a.hue).ink, boxShadow: `inset 0 0 0 1px ${tone(a.hue).line}` } : undefined;
+  };
   const gapOf = (m: AccountMovement) => budgetGap(data, m);
   // Accounts offered when editing a transfer: active ones, plus the current ones (possibly archived); never the reserved cash account.
   const editableAccounts = data.accounts.filter(a => a.id !== CASH_ACCOUNT_ID && (!a.archived || a.id === editing?.from || a.id === editing?.to));
@@ -877,23 +886,25 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
     setEditing({ ...editing, to, keys, amount: amountAfter(m, keys, to, keys.length < editing.keys.length) });
   };
   const save = () => {
-    if (!editing) return;
+    if (!editing || isAnnotationTooLong(editing.annotation)) return;
     const m = movements.find(x => x.id === editing.id);
     const valid = proposableLines(data, month, editing.to).map(l => l.key);
     const keys = editing.keys.filter(k => valid.includes(k));
     const targets = m && linksLines(m) ? keys.map(key => ({ kind: 'line' as const, key })) : undefined;
-    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, detail: editing.detail, date: editing.date, fromAccountId: editing.from, toAccountId: editing.to, ...(targets ? { targets } : {}) }));
+    update(d => void updateAccountMovement(d, editing.id, { label: editing.label, amount: parseAmount(editing.amount) ?? 0, annotation: editing.annotation, date: editing.date, fromAccountId: editing.from, toAccountId: editing.to, ...(targets ? { targets } : {}) }));
     setEditing(null);
   };
   return (
     <>
       {[...movements]
         .sort((a, b) => bankDateOf(b, data).localeCompare(bankDateOf(a, data)))
-        .map(m =>
-          editing?.id === m.id ? (
+        .map(m => {
+          const linked = linkedLines(data, m);
+          return editing?.id === m.id ? (
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
                 <input className="text-input" type="date" value={editing.date} onChange={e => setEditing({ ...editing, date: e.target.value })} />
+                <span />
                 <input className="text-input" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
                 {!isEnvelopesPool(m.fromAccountId) && !isEnvelopesPool(m.toAccountId) ? (
                   <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -911,31 +922,43 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
                     {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
                   </span>
                 )}
+                <span />
                 <input className="text-input is-amount" value={editing.amount} inputMode="decimal" disabled={linkStateOf(m) === 'lie'} readOnly={editing.keys.length > 0} title={linkStateOf(m) === 'lie' ? 'Montant figé : les deux lignes du fichier ont ce montant. Déliez ou supprimez le virement.' : editing.keys.length > 0 ? 'Montant lié aux lignes associées. Décoche toutes les lignes pour le modifier.' : undefined} onChange={e => setEditing({ ...editing, amount: sanitizeAmountInput(e.target.value) })} />
                 <span className="icon-btn" title="Enregistrer" onClick={save}>
                   <Icon name="check" size={14} />
                 </span>
               </div>
               {linksLines(m) && editing.to !== CASH_ID && !isEnvelopeAccount(data.accounts.find(a => a.id === editing.to)) && !isEnvelopesPool(editing.to) && (
-                <div className="detail-edit">
+                <div className="annot-edit">
                   <MovementLines lines={proposableLines(data, m.month, editing.to)} checked={editing.keys} onToggle={key => toggleKey(m, key)} />
                   {editing.keys.length > 0 && budgetOf(proposableLines(data, m.month, editing.to).filter(l => editing.keys.includes(l.key))) !== (parseAmount(editing.amount) ?? 0) && (
                     <MovementGap budget={budgetOf(proposableLines(data, m.month, editing.to).filter(l => editing.keys.includes(l.key)))} amount={parseAmount(editing.amount) ?? 0} />
                   )}
                 </div>
               )}
-              <div className="detail-edit">
-                <DetailInput value={editing.detail} onChange={detail => setEditing({ ...editing, detail })} onEnter={save} />
+              <div className="annot-edit">
+                <AnnotationInput value={editing.annotation} onChange={annotation => setEditing({ ...editing, annotation })} onEnter={save} />
               </div>
             </Fragment>
           ) : (
             <Fragment key={m.id}>
               <div className="mv-grid tx-row">
                 <EntryDate entry={m} attachedWord="Rattaché" />
-                <EntryLabel entry={m} hideDetail={!showDetail} attach={[targetLabel(targetsOf(m)), linkLabel(m)].filter(Boolean).join(' · ')} onOpen={openDetail} />
-                <span className="muted ellipsis" title={[targetLabel(targetsOf(m)), linkLabel(m)].filter(Boolean).join('\n')}>
-                  {nameOf(m.fromAccountId)} → {nameOf(m.toAccountId)}
-                  {linkLabel(m) && <span className="state-chip is-info" style={{ marginLeft: 6 }}>{linkLabel(m)}</span>}
+                <span className="mv-annot">
+                  {!m.annotation && (
+                    <button type="button" className="annot-badge annot-add" title="Ajouter une annotation" aria-label="Ajouter une annotation" onClick={() => annotation.open({ kind: 'mv', id: m.id }, m.label)}>
+                      <Icon name="note" size={13} />
+                    </button>
+                  )}
+                </span>
+                <EntryLabel entry={m} />
+                <span className="mv-accounts" title={[targetLabel(targetsOf(m)), linkLabel(m)].filter(Boolean).join('\n')}>
+                  <b className="mv-acc ellipsis" style={accStyle(m.fromAccountId)}>{nameOf(m.fromAccountId)}</b>
+                  <span className="mv-arrow" aria-hidden="true">→</span>
+                  <b className="mv-acc ellipsis" style={accStyle(m.toAccountId)}>{nameOf(m.toAccountId)}</b>
+                </span>
+                <span className="mv-meta">
+                  {linkLabel(m) && <span className="state-chip is-neutral" title={linkLabel(m)!}>{linkStateOf(m) === 'lie' ? 'Lié' : linkLabel(m)}</span>}
                   {gapOf(m) && <span style={{ marginLeft: 6 }}><MovementGap {...gapOf(m)!} /></span>}
                   {isEnvelopesPool(m.toAccountId) && m.id === firstPoolId && <span className="state-chip is-neutral" style={{ marginLeft: 6 }} title="Total du mois : tous les virements vers enveloppes et tous les crédits individuels">Réparti : {money(split.distributed)} sur {money(split.sent)}</span>}
                 </span>
@@ -944,34 +967,39 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
                   <span />
                 ) : (
                   <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
-                    <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), detail: m.detail ?? '', date: bankDateOf(m, data), from: m.fromAccountId, to: m.toAccountId, keys: linkedKeys(m), initial: linkedKeys(m) })}>
-                      <span style={{ fontSize: 11 }}>Modifier</span>
+                    {linkStateOf(m) === 'lie' ? (
+                      <span className="icon-btn" title="Délier une face" aria-haspopup="menu" onClick={e => openMenu(e, 'Délier le virement', [
+                        { label: 'Délier le débit (garde la face crédit)', onSelect: () => update(d => void unlinkMovementFace(d, m.id, 'debit')) },
+                        { label: 'Délier le crédit (garde la face débit)', onSelect: () => update(d => void unlinkMovementFace(d, m.id, 'credit')) },
+                      ])}>
+                        <span style={{ fontSize: 14, lineHeight: 1 }}>⋯</span>
+                      </span>
+                    ) : <span className="icon-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />}
+                    <span className="icon-btn" title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), annotation: m.annotation ?? '', date: bankDateOf(m, data), from: m.fromAccountId, to: m.toAccountId, keys: linkedKeys(m), initial: linkedKeys(m) })}>
+                      <Icon name="pencil" size={13} stroke={2} />
                     </span>
-                    {linkStateOf(m) === 'lie' && (
-                      <>
-                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Délier le débit. Retire la ligne du fichier côté débit : le virement garde sa face crédit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'debit'))}>
-                          <span style={{ fontSize: 11 }}>− débit</span>
-                        </span>
-                        <span className="icon-btn" style={{ width: 'auto', padding: '0 6px' }} title="Délier le crédit. Retire la ligne du fichier côté crédit : le virement garde sa face débit" onClick={() => update(d => void unlinkMovementFace(d, m.id, 'credit'))}>
-                          <span style={{ fontSize: 11 }}>− crédit</span>
-                        </span>
-                      </>
-                    )}
                     <span className="icon-btn" title="Supprimer" onClick={() => update(d => void deleteAccountMovement(d, m.id))}>
                       <Icon name="close" size={14} />
                     </span>
                   </span>
                 )}
               </div>
-              {editingDetail?.id === m.id && (
-                <div className="detail-edit">
-                  <DetailInput autoFocus value={editingDetail.text} onChange={text => setEditingDetail({ id: m.id, text })} onEnter={saveDetail} onEscape={() => setEditingDetail(null)} />
+              {linked.length > 0 && (
+                <div className="mv-lines">
+                  <span className="mv-lines-title">Lignes associées</span>
+                  {linked.map(l => (
+                    <span key={l.key} className="state-chip is-neutral" title={`${l.name} · budget ${money(budgetOf([l]))}`}>
+                      {l.name} · {money(budgetOf([l]))}
+                    </span>
+                  ))}
                 </div>
               )}
+              {m.annotation && <AnnotationLine kind="mv" text={m.annotation} onEdit={() => annotation.open({ kind: 'mv', id: m.id }, m.label, m.annotation)} />}
             </Fragment>
-          ),
-        )}
+          );
+        })}
       <div style={{ height: 8 }} />
+      {annotation.modal}
     </>
   );
 }
@@ -979,9 +1007,9 @@ function MovementsBlock({ month, locked, showDetail, movements, total }: { month
 /**
  * Fields of the « Transfert » type (spec 0019, RG14, RG15): source and destination accounts, day and the budget items the transfer stands for
  * (optional): the envelope or the savings line of the destination (one, proposed by default), or several variable lines of the destination (spec 0045:
- * checked boxes, then the amount is their sum, told to the form through `onLinkedAmount`). The label, detail and amount are those of the form.
+ * checked boxes, then the amount is their sum, told to the form through `onLinkedAmount`). The label, annotation and amount are those of the form.
  */
-function TransferFields({ month, locked, label, detail, amount, date, onLinkedAmount, onDone }: { month: MonthKey; locked: boolean; label: string; detail: string; amount: number; date: string; onLinkedAmount: (sum: number | null) => void; onDone: () => void }) {
+function TransferFields({ month, locked, label, annotation, amount, date, onLinkedAmount, onDone }: { month: MonthKey; locked: boolean; label: string; annotation: string; amount: number; date: string; onLinkedAmount: (sum: number | null) => void; onDone: () => void }) {
   const { data, update } = useStore();
   // The reserved « Espèces » account is hidden (spec 0037, RG21).
   const accounts = data.accounts.filter(a => !a.archived && a.id !== CASH_ACCOUNT_ID);
@@ -1007,10 +1035,10 @@ function TransferFields({ month, locked, label, detail, amount, date, onLinkedAm
   const value = toId === CASH_ID || checkedKeys.length > 0 ? '' : chosen !== undefined ? chosen : valueOf(defaultItem);
   const item = items.find(i => valueOf(i.target) === value);
   const toggleLine = (key: string) => setLineKeys(k => (k.includes(key) ? k.filter(x => x !== key) : [...k, key]));
-  const ready = !!fromId && !!toId && (fromId !== toId) && amount > 0 && isRealDate(date) && !locked;
+  const ready = !!fromId && !!toId && (fromId !== toId) && amount > 0 && isRealDate(date) && !locked && !isAnnotationTooLong(annotation);
   const add = () => {
     if (!ready) return;
-    update(d => void addManualTransfer(d, { id: newId('m'), month, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(checkedKeys.length > 0 ? { targets: checkedKeys.map(key => ({ kind: 'line' as const, key })) } : item ? { targets: [item.target] } : {}), detail }, date));
+    update(d => void addManualTransfer(d, { id: newId('m'), month, label: label.trim() || (toId === CASH_ID ? 'Retrait' : 'Transfert'), amount, fromAccountId: fromId, toAccountId: toId, ...(checkedKeys.length > 0 ? { targets: checkedKeys.map(key => ({ kind: 'line' as const, key })) } : item ? { targets: [item.target] } : {}), annotation }, date));
     setChosen(undefined);
     setLineKeys([]);
     onDone();

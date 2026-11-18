@@ -324,17 +324,19 @@ describe('séries, cartes et camembert (RG19 à RG22, CA17, CA18, CA20, CA23)', 
 });
 
 describe('vue annuelle : Détails d’une ligne (clic droit)', () => {
-  const tx = (id: string, month: string, day: number, target: string, detail?: string) =>
-    ({ id, month, day, label: `Op ${id}`, amount: 45, type: 'fix', target, detail }) as BudgetData['transactions'][number];
+  const tx = (id: string, month: string, day: number, target: string, annotation?: string) =>
+    ({ id, month, day, label: `Op ${id}`, amount: 45, type: 'fix', target, annotation }) as BudgetData['transactions'][number];
 
-  it('liste les champs détails des écritures de la ligne sur l’année, par date', () => {
+  it('CA10b : liste date, libellé et montant des écritures de la ligne sur l’année, par date, sans aucun texte libre', () => {
     const d = started();
     d.transactions = [tx('b', '2027-02', 10, 'loyer', 'Régul. charges'), tx('a', '2027-01', 5, 'loyer', 'Janvier'), tx('c', '2027-01', 6, 'loyer'), tx('x', '2027-01', 7, 'cre', 'Autre ligne')];
     const text = yearLineDetails(d, 2027, 'fix', 'Général', 'loyer');
-    expect(text.indexOf('Janvier')).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf('Janvier')).toBeLessThan(text.indexOf('Régul. charges'));
-    expect(text).not.toContain('Autre ligne');
+    expect(text.indexOf('Op a')).toBeLessThan(text.indexOf('Op b'));
+    expect(text).toContain('05/01 · Op a · 45,00 €');
     expect(text).toContain('Op c');
+    expect(text).not.toContain('Autre ligne');
+    expect(text).not.toContain('Janvier');
+    expect(text).not.toContain('Régul. charges');
   });
 
   it('texte vide quand la ligne n’a aucune écriture', () => {

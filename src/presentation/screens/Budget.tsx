@@ -5,11 +5,16 @@ import { PayModePicker } from '../components/PayModePicker';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { goalHue, goalSummaryText } from '../components/goalStyle';
 import { currentYear, firstGoalOfKind, goalView, summaryGoals } from '../../domain/goals';
+import { AnnotationAddModal } from '../components/AnnotationAddModal';
+import { AnnotationListModal, annotationsTooltip } from '../components/AnnotationListModal';
+import { useOperationAnnotation } from '../components/useOperationAnnotation';
+import { annotatedOperations, attachedOperations } from '../../domain/annotation';
+import { alreadyAnnotated, annotateOperations, setOperationAnnotation } from '../../application/operationAnnotations';
 import { DetailsBubble } from '../components/DetailsBubble';
 import { Icon, type IconName } from '../components/Icon';
 import { carriedAccountRefusal, isCarryingBlock, lineExpenses } from '../../domain/lineExpenses';
 import type { OperationsFocus } from './Expenses';
-import { lineEntriesNote, lineEntryDetails } from '../../domain/lineActuals';
+import { lineEntriesNote, lineEntryDetails, lineSpentNet, lineTransferredNet } from '../../domain/lineActuals';
 import { LineQuickEntry } from '../components/LineQuickEntry';
 import { LineScheduleMeta } from '../components/LineSchedule';
 import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/tone';
@@ -24,7 +29,7 @@ import { CashMonthBlock } from '../components/CashMonthBlock';
 import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { isoDate } from '../../domain/checkoff';
 import { budgetLockReason } from '../../domain/movementLines';
-import { leftLineKeys, lineTooltip } from '../../domain/comingUp';
+import { leftLineKeys, lineTooltip, partiallyFundedLines, unfundedSpentLines } from '../../domain/comingUp';
 import { envelopeCash } from '../../domain/envelopeCash';
 import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber, round2 } from '../../domain/format';
@@ -276,13 +281,13 @@ function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: st
   );
 }
 
+/** Explanation of the « Disponible (réel) » figure: the terms of its formula with the month's values. */
 function historyText(d: BudgetData, m: MonthKey, key: string): string {
   const h = lineHistory(d, m, key);
   const year = parseMonth(m).year;
   return [`Budget cumulé ${year} : ${money(h.cumulBudget)}`, `Réel cumulé ${year} : ${money(h.cumul)}`, `Solde mois préc. : ${h.prevGap === null ? '—' : money(h.prevGap, true)}`].join('\n');
 }
 
-/** Explanation of the « Disponible (réel) » figure: the terms of its formula with the month's values. */
 function availableRealText(d: BudgetData, m: MonthKey): string {
   const b = availableRealBreakdown(d, m);
   if (!b) return '';
@@ -300,6 +305,10 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
   const { setEditing, openMenu } = useUi();
   const [details, setDetails] = useState<{ key: string; rect: DOMRect } | null>(null);
   const [horizonOpen, setHorizonOpen] = useState(false);
+  // Key of the line whose annotation is being added (modal with the operations to tick) or whose annotated operations are listed (spec 0047).
+  const [annotating, setAnnotating] = useState<string | null>(null);
+  const [annotList, setAnnotList] = useState<string | null>(null);
+  const operationAnnotation = useOperationAnnotation();
   useEffect(() => {
     if (!horizonOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setHorizonOpen(false);
@@ -307,11 +316,17 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
     return () => window.removeEventListener('keydown', onKey);
   }, [horizonOpen]);
   const meta = BLOCKS[block];
+  // Dedicated variable lines already spent on without a transfer to fund them: flagged in orange with an explanation.
+  const unfunded = unfundedSpentLines(data, month);
+  // Dedicated variable lines whose transfer sends less than their budget: flagged in blue.
+  const partial = partiallyFundedLines(data, month);
   // Revenues, credits and fixed expenses go through a bank account.
   const hasAccount = block === 'rev' || block === 'cre' || block === 'fix';
   // Savings and investments show an estimated balance instead of the gap, and can be tied to a dedicated account (spec 0007).
   const isSavings = block === 'epa' || block === 'inv';
-  const gridClass = `line-grid${isSavings ? ' is-balance' : ''}${hideActual ? ' no-actual' : ''}`;
+  // Only the savings block splits its real into transfers and expenses; investments keep Budget / Réel / Solde estimé.
+  const isSplit = block === 'epa';
+  const gridClass = `line-grid${isSplit ? ' is-sav' : isSavings ? ' is-balance' : ''}${hideActual ? ' no-actual' : ''}`;
   const all = monthLines(data, month);
   const lines = all.filter(l => l.block === block);
   // Lines of an out-of-budget account stay listed but are left out of the totals.
@@ -326,7 +341,12 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
     if (sec) sec.lines.push(l);
     else sections.push({ label: l.section, lines: [l] });
   }
+  // Savings blocks split the real in two: what was transferred in (« Viré ») and what the dedicated accounts paid out (« Réel » of the expenses, negative).
+  const budgetedLines = lines.filter(l => isLineInBudget(data, l));
+  const sumOf = (f: (l: Line) => number | null) => budgetedLines.reduce((n, l) => n + (f(l) ?? 0), 0);
   const estimatedTotal = isSavings ? estimatedBalanceTotal(data, ledger, month, block) : 0;
+  const transferredTotal = isSplit ? sumOf(l => lineTransferredNet(data, month, l)) : 0;
+  const spentTotal = isSplit ? -sumOf(l => lineSpentNet(data, month, l)) : 0;
   if (offBudget.length) sections.push({ label: 'Hors budget', lines: offBudget });
   if (block === 'var') {
     const rest = totals.budget - totals.actual;
@@ -355,11 +375,22 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
           </div>
         )}
       </div>
+      {isSplit && (
+        <div className={`${gridClass} sav-groups`}>
+          <span />
+          <span className="sav-group is-in" style={{ gridColumn: hideActual ? 'span 1' : 'span 2' }}>↑ Virements</span>
+          {!hideActual && <span className="sav-group is-out">↓ Dépenses</span>}
+        </div>
+      )}
       <div className={`${gridClass} line-head`}>
-        <span>Nom</span>
-        <span className="num pad">Budget</span>
-        {!hideActual && <span className="num pad">Réel</span>}
-        <span className="num">{block === 'var' ? 'Restant' : isSavings ? 'Solde estimé' : 'Écart'}</span>
+        <span>{isSplit ? 'Compte' : 'Nom'}</span>
+        <span className="num pad">{isSplit ? 'Prévu' : 'Budget'}</span>
+        {isSplit ? (!hideActual && <><span className="num pad">Viré</span><span className="num pad">Réel</span></>) : (
+          <>
+            {!hideActual && <span className="num pad">Réel</span>}
+            <span className="num">{block === 'var' ? 'Restant' : isSavings ? 'Solde estimé' : 'Écart'}</span>
+          </>
+        )}
       </div>
       {sections.map(sec => (
         <div key={sec.label}>
@@ -368,15 +399,21 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
             // A variable line shows what is left to spend; an empty actual shows the whole budget in grey (spec 0008, RG9, RG11).
             const gap = block === 'var' ? lineRemaining(l) : lineGap(l);
             const est = isSavings ? estimatedBalance(data, ledger, month, l) : null;
+            const transferred = isSplit ? lineTransferredNet(data, month, l) : null;
+            const spent = isSplit ? lineSpentNet(data, month, l) : null;
+            // Operations of the month attached to the line that carry an annotation (spec 0047, RG10).
+            const annotated = annotatedOperations(data, month, l);
             return (
               <div
                 key={l.key}
-                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}${leftKeys?.has(l.key) ? ' is-left' : ''}`}
+                className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}${leftKeys?.has(l.key) ? ' is-left' : ''}${unfunded.has(l.key) ? ' is-unfunded' : ''}${partial.has(l.key) ? ' is-partial' : ''}`}
                 onContextMenu={e => {
                   setDetails(null);
                   const rect = e.currentTarget.getBoundingClientRect();
                   openMenu(e, l.name, [
                     { label: 'Détails', onSelect: () => setDetails({ key: l.key, rect }) },
+                    // Spec 0047, RG6, RG8: an annotation changes no figure, so this entry stays available on a locked month, and whatever the existing ones.
+                    { label: 'Ajouter une annotation', onSelect: () => setAnnotating(l.key) },
                     ...(locked ? [] : [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => deleteLine(d, month, l.key)) }]),
                   ]);
                 }}
@@ -398,6 +435,25 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                       <Icon name="lock" size={11} />
                     </span>
                   )}
+                  {(unfunded.has(l.key) || partial.has(l.key)) && (
+                    <div className="line-flags">
+                    {unfunded.has(l.key) && (
+                      <span className="unfunded-badge" title={`Dépenses déjà saisies (${money(unfunded.get(l.key)!)}) alors qu’aucun virement ne finance cette ligne : le compte a payé avec de l’argent qu’il n’a pas encore reçu. Le budget reste à virer (« À venir »).`}>
+                        Non financée
+                      </span>
+                    )}
+                    {partial.has(l.key) && (
+                      <span className="partial-badge" title={`${partial.get(l.key)!.label} : ${money(partial.get(l.key)!.amount)} viré pour un budget de ${money(partial.get(l.key)!.budget)}. Il manque ${money(partial.get(l.key)!.missing)} à virer.`}>
+                        Financée en partie · manque {money(partial.get(l.key)!.missing)}
+                      </span>
+                    )}
+                    </div>
+                  )}
+                  {annotated.length > 0 && (
+                    <button type="button" className="annot-badge" title={annotationsTooltip(annotated)} aria-label={`Annotations des opérations de ${l.name}`} onClick={() => setAnnotList(l.key)}>
+                      <Icon name="note" size={12} />
+                    </button>
+                  )}
                   {block !== 'var' && <LineScheduleMeta month={month} line={l} locked={locked} today={today} />}
                   <LineQuickEntry month={month} line={l} locked={locked || !data.months[month]?.initialized} />
                 </div>
@@ -407,6 +463,32 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                     {money(l.budget)}
                   </EditableAmount>
                 </div>
+                {isSplit ? (
+                  !hideActual && (
+                    <>
+                      {/* « Viré »: the transfers aimed at the line. Clicking opens them in the Opérations tab. */}
+                      <div className="rel">
+                        <div
+                          className={`cell is-readonly${transferred !== null ? ' has-actual' : ''}`}
+                          style={{ color: transferred === null ? MUTED : undefined, cursor: transferred !== null ? 'pointer' : undefined }}
+                          aria-describedby={`entries:${l.key}`}
+                          title={est ? `Solde estimé : ${money(est.value)}` : undefined}
+                          onClick={transferred !== null ? () => onOpenOperations({ movementLine: l.key, label: l.name }) : undefined}
+                        >
+                          {transferred === null ? '—' : money(transferred)}
+                        </div>
+                        <span className="sr-only" id={`entries:${l.key}`}>{lineEntriesNote(data, month, l)}</span>
+                      </div>
+                      {/* « Réel » of the expenses: what the dedicated account paid out (operations assigned to it, spec 0028), shown as a negative. */}
+                      <div className="rel">
+                        <div className={`cell is-readonly${spent ? ' is-spent' : ''}`} style={{ color: spent === null ? MUTED : undefined }} title={spent === null ? undefined : 'Dépensé depuis ce compte (opérations rattachées)'}>
+                          {spent === null ? '—' : money(-spent)}
+                        </div>
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <>
                 {!hideActual && (
                 <div className="rel">
                   {/* Read only (spec 0019, RG19, RG24): the actual is the sum of the entries of the line. Its count is in the tooltip of the row;
@@ -431,6 +513,29 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                   <div className="num gap" style={{ color: gapColor(block === 'var' && l.actual === null ? null : gap) }}>
                     {gap === null ? '—' : gap === 0 ? money(0) : money(gap, true)}
                   </div>
+                )}
+                  </>
+                )}
+                {annotating === l.key && (
+                  <AnnotationAddModal
+                    title={`Annotation — ${l.name} · ${monthLabel(month)}`}
+                    operations={attachedOperations(data, month, l)}
+                    overwrites={refs => alreadyAnnotated(data, refs)}
+                    onSave={(refs, text) => update(d => void annotateOperations(d, refs, text))}
+                    onClose={() => setAnnotating(null)}
+                  />
+                )}
+                {annotList === l.key && annotated.length > 0 && (
+                  <>
+                    <AnnotationListModal
+                      title={`Annotations — ${l.name} · ${monthLabel(month)}`}
+                      operations={annotated}
+                      onEdit={o => operationAnnotation.open({ kind: o.kind, id: o.id }, o.label, o.annotation)}
+                      onRemove={o => update(d => void setOperationAnnotation(d, { kind: o.kind, id: o.id }, ''))}
+                      onClose={() => setAnnotList(null)}
+                    />
+                    {operationAnnotation.modal}
+                  </>
                 )}
                 {details?.key === l.key && (
                   <DetailsBubble title={l.name} text={[historyText(data, month, l.key), lineTooltip(data, month, l, today), lineEntryDetails(data, month, l)].filter(Boolean).join('\n\n')} rect={details.rect} onClose={() => setDetails(null)} />
@@ -474,15 +579,26 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
           )}
         </div>
         <div className="num pad">{money(totals.budget)}</div>
-        {!hideActual && <div className="num pad">{money(totals.actual)}</div>}
-        {isSavings ? (
-          <div className="num" style={{ color: estimatedTotal < 0 ? BAD : undefined }} title="Somme des soldes estimés (un compte dédié commun n’est compté qu’une fois)">
-            {money(estimatedTotal)}
-          </div>
+        {isSplit ? (
+          !hideActual && (
+            <>
+              <div className="num pad">{money(transferredTotal)}</div>
+              <div className="num pad" style={{ color: spentTotal < 0 ? BAD : undefined }}>{money(spentTotal)}</div>
+            </>
+          )
         ) : (
-          <div className="num" style={{ color: totals.gap >= 0 ? GOOD : BAD }}>
-            {money(totals.gap, true)}
-          </div>
+          <>
+            {!hideActual && <div className="num pad">{money(totals.actual)}</div>}
+            {isSavings ? (
+              <div className="num" style={{ color: estimatedTotal < 0 ? BAD : undefined }} title="Somme des soldes estimés (un compte dédié commun n’est compté qu’une fois)">
+                {money(estimatedTotal)}
+              </div>
+            ) : (
+              <div className="num" style={{ color: totals.gap >= 0 ? GOOD : BAD }}>
+                {money(totals.gap, true)}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

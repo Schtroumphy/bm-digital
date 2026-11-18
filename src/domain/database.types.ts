@@ -49,6 +49,7 @@ export type Database = {
       account_movements: {
         Row: {
           amount: number
+          annotation: string | null
           bank_date: string | null
           category: string | null
           credit_bank_date: string | null
@@ -56,7 +57,6 @@ export type Database = {
           credit_import_account_id: string | null
           credit_rank: number | null
           day: number
-          detail: string | null
           fingerprint: string | null
           from_account_id: string
           id: string
@@ -71,6 +71,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          annotation?: string | null
           bank_date?: string | null
           category?: string | null
           credit_bank_date?: string | null
@@ -78,7 +79,6 @@ export type Database = {
           credit_import_account_id?: string | null
           credit_rank?: number | null
           day: number
-          detail?: string | null
           fingerprint?: string | null
           from_account_id: string
           id: string
@@ -93,6 +93,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          annotation?: string | null
           bank_date?: string | null
           category?: string | null
           credit_bank_date?: string | null
@@ -100,7 +101,6 @@ export type Database = {
           credit_import_account_id?: string | null
           credit_rank?: number | null
           day?: number
-          detail?: string | null
           fingerprint?: string | null
           from_account_id?: string
           id?: string
@@ -789,12 +789,12 @@ export type Database = {
           category_id: string | null
           account_id: string | null
           amount: number
+          annotation: string | null
           assigned_account_id: string | null
           bank_date: string | null
           category: string | null
           created_at: string
           day: number
-          detail: string | null
           fingerprint: string | null
           id: string
           import_account_id: string | null
@@ -814,12 +814,12 @@ export type Database = {
           category_id?: string | null
           account_id?: string | null
           amount: number
+          annotation?: string | null
           assigned_account_id?: string | null
           bank_date?: string | null
           category?: string | null
           created_at?: string
           day: number
-          detail?: string | null
           fingerprint?: string | null
           id: string
           import_account_id?: string | null
@@ -839,12 +839,12 @@ export type Database = {
           category_id?: string | null
           account_id?: string | null
           amount?: number
+          annotation?: string | null
           assigned_account_id?: string | null
           bank_date?: string | null
           category?: string | null
           created_at?: string
           day?: number
-          detail?: string | null
           fingerprint?: string | null
           id?: string
           import_account_id?: string | null
