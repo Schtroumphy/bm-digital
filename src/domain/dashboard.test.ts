@@ -199,7 +199,8 @@ describe('à faire : alertes (CA7)', () => {
 describe('à faire : virements (CA8, spec 0043 CA11)', () => {
   it('à effectuer = reste > 0, triés par jour (sans jour en dernier), total et faits / total', () => {
     const d = started();
-    d.months[M].lines.find(l => l.key === 'lt')!.actual = 300; // fully sent: nothing left
+    d.months[M].lines.find(l => l.key === 'lt')!.linkedAccountId = 'acc-lt';
+    d.accountMovements = [{ id: 'lt-in', month: M, day: 2, label: 'Virement', amount: 300, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-lt', targets: [{ kind: 'line', key: 'lt' }] }]; // fully sent: nothing left
     const t = todo(d);
     expect(t.transfers.map(x => [x.id, x.day, x.amount])).toEqual([
       ['etf', 28, 140],
@@ -228,7 +229,8 @@ describe('à faire : virements (CA8, spec 0043 CA11)', () => {
 
   it('le montant à faire est le reste : le budget moins le réel déjà viré (l’épargne garde cette règle, spec 0043 RG5 amendée)', () => {
     const d = started();
-    d.months[M].lines.find(l => l.key === 'lt')!.actual = 250;
+    d.months[M].lines.find(l => l.key === 'lt')!.linkedAccountId = 'acc-lt';
+    d.accountMovements = [{ id: 'lt-in', month: M, day: 2, label: 'Virement', amount: 250, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-lt', targets: [{ kind: 'line', key: 'lt' }] }];
     expect(todo(d).transfers.find(x => x.id === 'lt')!.amount).toBe(50);
   });
 
@@ -246,7 +248,7 @@ describe('à faire : virements (CA8, spec 0043 CA11)', () => {
   });
 });
 
-// Une ligne d'épargne ou de placement est toujours dans le budget (isLineInBudget ne regarde le compte que pour revenus, fixes et crédits).
+// Une ligne d'épargne ou de placement payée par le principal est dans le budget ; payée par un autre compte (transfert entre comptes, spec 0050) elle est hors totaux mais reste dans les virements à effectuer.
 
 describe('retard', () => {
   it('jour prévu passé dans un mois non clôturé : en retard comme isLate', () => {
@@ -445,5 +447,15 @@ describe('Évolution du patrimoine (spec 0030)', () => {
   it('avant le premier mois : aucune évolution', () => {
     const d = emptyData();
     expect(dashboardView(d, new Ledger(d, '2027-03'), M, TODAY).wealthEvolution).toBeNull();
+  });
+});
+
+describe('reste à virer d’une ligne d’épargne : seules les virements le réduisent (2026-11-21)', () => {
+  it('une dépense affectée au compte de la ligne ne remplace pas le virement attendu', () => {
+    const d = started();
+    const lt = d.months[M].lines.find(l => l.key === 'lt')!;
+    lt.linkedAccountId = 'acc-lt';
+    d.transactions.push({ id: 'dep', month: M, day: 3, label: 'Artisan', amount: 1100, type: 'var', target: 'x', assignedAccountId: 'acc-lt' } as never);
+    expect(todo(d).transfers.find(x => x.id === 'lt')!.amount).toBe(300);
   });
 });

@@ -17,7 +17,13 @@ function budgetWith(...months: string[]): BudgetData {
   const d = emptyData();
   d.firstMonth = months[0];
   addEnvelope(d, 'sante', 'Santé', months[0]);
-  for (const m of months) d.months[m] = { initialized: true, lines: [ln('sal', 1000, 1000), { ...ln('livret', 1000, null), block: 'epa' }], alloc: {}, transfersDone: {} };
+  for (const m of months) {
+    d.months[m] = { initialized: true, lines: [ln('sal', 1000, 1000), { ...ln('livret', 1000, null), block: 'epa' }], alloc: {}, transfersDone: {} };
+    // The savings line has received its budget: only transfers received count in the available amount (2026-11-21).
+    (d.accountMovements ??= []).push({ id: `v-${m}`, month: m, day: 2, label: 'Virement', amount: 1000, fromAccountId: 'acc-main', toAccountId: 'acc-liv', targets: [{ kind: 'line', key: 'livret' }] });
+  }
+  // The transfers make the accounts concerned: their statements are typed so that only the amount left to place decides the closing.
+  for (const m of months) settleStatements(d, m);
   return d;
 }
 

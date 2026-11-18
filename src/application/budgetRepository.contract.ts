@@ -174,6 +174,20 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       expect(await open().load()).toEqual(cleared);
     });
 
+    it('spec 0050 : l’association d’une opération à une ligne de transfert est conservée, puis retirée', async () => {
+      const repo = open();
+      const data = completeData();
+      Object.assign(data.transactions.find(t => t.id === 't-imp')!, { assignedAccountId: 'acc-sav', transferLineKey: 'l-transfert' });
+      await repo.save(data);
+      const loaded = (await repo.load())!;
+      expect(loaded.transactions.find(t => t.id === 't-imp')!.transferLineKey).toBe('l-transfert');
+      expect(loaded.transactions.filter(t => t.id !== 't-imp').every(t => !('transferLineKey' in t))).toBe(true);
+      const cleared = structuredClone(loaded);
+      delete cleared.transactions.find(t => t.id === 't-imp')!.transferLineKey;
+      await repo.save(cleared);
+      expect(await open().load()).toEqual(cleared);
+    });
+
     it('spec 0031 : le marquage « hors budget » d’une opération est conservé, puis retiré', async () => {
       const repo = open();
       const data = completeData();

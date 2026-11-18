@@ -4,7 +4,7 @@ import { Icon } from '../components/Icon';
 import { BAD, GOOD, tone, toneVars } from '../components/tone';
 import { applyTemplate, saveAsTemplate } from '../../application/actions';
 import { addTemplateLine, deleteTemplateLine, setTemplateAllocation, updateTemplateLine } from '../../application/template';
-import { isLineInBudget } from '../../domain/bank';
+import { isAccountTransfer, isLineInBudget, lineDisplayName } from '../../domain/bank';
 import { blockTotals, templateSummary } from '../../domain/budget';
 import { money, monthLabel, percent } from '../../domain/format';
 import { isMonthLocked } from '../../domain/ledger';
@@ -79,11 +79,12 @@ export function TemplateScreen({ month }: { month: MonthKey }) {
         {ORDER.map(block => {
           const meta = BLOCKS[block];
           const lines = t.lines.filter(l => l.block === block);
-          const total = blockTotals(lines.map(l => ({ ...l, actual: null })), block).budget;
+          // A transfer between accounts is listed but out of the totals (spec 0050, RG34).
+          const total = blockTotals(lines.filter(l => !isAccountTransfer(data, l)).map(l => ({ ...l, actual: null })), block).budget;
           const sections: { label: string; keys: string[] }[] = [];
           // As in the monthly budget: variable lines paid from an out-of-budget account are grouped under « Hors budget » (display only).
           const inBudget = (l: (typeof lines)[number]) => isLineInBudget(data, { ...l, actual: null });
-          const offBudget = block === 'var' ? lines.filter(l => !inBudget(l)) : [];
+          const offBudget = block === 'var' || block === 'epa' || block === 'inv' ? lines.filter(l => !inBudget(l)) : [];
           for (const l of lines) {
             if (offBudget.includes(l)) continue;
             const sec = sections.find(s => s.label === l.section);
@@ -119,10 +120,10 @@ export function TemplateScreen({ month }: { month: MonthKey }) {
                       <div
                         key={key}
                         className={`line-grid line-row is-tpl${inBudget(l) ? '' : ' is-off-budget'}`}
-                        onContextMenu={e => openMenu(e, l.name, [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => void deleteTemplateLine(d, key)) }])}
+                        onContextMenu={e => openMenu(e, lineDisplayName(data, l), [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => void deleteTemplateLine(d, key)) }])}
                       >
-                        <EditableText id={`tn:${key}`} value={l.name} onCommit={name => update(d => void updateTemplateLine(d, key, { name }))} className="line-name" inputClassName="cell-input is-text" title={l.name}>
-                          {l.name}
+                        <EditableText id={`tn:${key}`} value={l.name} onCommit={name => update(d => void updateTemplateLine(d, key, { name }))} className="line-name" inputClassName="cell-input is-text" title={lineDisplayName(data, l)}>
+                          {lineDisplayName(data, l)}
                         </EditableText>
                         <EditableAmount id={`tb:${key}`} value={l.budget} onCommit={v => update(d => void updateTemplateLine(d, key, { budget: v ?? 0 }))} className="cell" inputClassName="cell-input" hint="right">
                           {money(l.budget)}

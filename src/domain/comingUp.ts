@@ -1,4 +1,4 @@
-import { CASH_ACCOUNT_ID, accountIdOf, envelopeAccountAt, isEnvelopeAccount, isLineInBudget, isTransactionOffBudget, mainAccount } from './bank';
+import { CASH_ACCOUNT_ID, accountIdOf, isAccountTransfer, isSavingsBlock, envelopeAccountAt, isEnvelopeAccount, isLineInBudget, isTransactionOffBudget, mainAccount } from './bank';
 import { EXEC_MODES, effectiveDueDay, payerAccountId, realBalanceOn, realMonthBalance } from './checkoff';
 import { compareMonths, round2 } from './format';
 import { hasEnvelopesDebit, movementAccountName } from './internalTransfers';
@@ -25,7 +25,10 @@ import type { BankAccount, BudgetData, ExecMode, Line, MonthKey } from './types'
  * (spec 0045, RG17). Every other line
  * (variable of the main account, revenue, savings, investment): budget − actual. Never negative: an overrun lowers no other rest.
  */
-export function leftOfLine(d: BudgetData, l: Pick<Line, 'key' | 'block' | 'budget' | 'actual' | 'accountId' | 'payMode'>): number {
+export function leftOfLine(d: BudgetData, l: Pick<Line, 'key' | 'block' | 'budget' | 'actual' | 'accountId' | 'payMode'> & Partial<Pick<Line, 'linkedAccountId'>>, m?: MonthKey): number {
+  // Savings and investment lines (amended 2026-11-21): what is left is what still has to be TRANSFERRED, so only the « Viré » reduces it. The operations
+  // assigned to the account (spec 0028) are money spent out of it, they do not replace the transfer. Transfers between accounts keep their own rule (spec 0050, RG7).
+  if (m !== undefined && isSavingsBlock(l.block) && !isAccountTransfer(d, l as Line)) return Math.max(round2(l.budget - (lineTransferredNet(d, m, l) ?? 0)), 0);
   if (l.block === 'var' && isDedicatedVarLine(d, l as Line)) return Math.max(round2(l.budget), 0);
   const bonusRule = l.block === 'fix' || l.block === 'cre';
   if (bonusRule && l.actual !== null && l.actual !== undefined) return 0;
@@ -47,15 +50,15 @@ export function leftOfAllocation(d: BudgetData, m: MonthKey, envelopeId: string)
 
 /** « En retard » (RG11): the planned day is over, something is left, the line is not « informatif » and the month is not closed. `today` is `YYYY-MM-DD`. */
 export function isLate(d: BudgetData, m: MonthKey, l: Line, today: string): boolean {
-  if (l.dueDay === undefined || l.execMode === 'informatif' || isMonthLocked(d, m) || !isLineInBudget(d, l) || leftOfLine(d, l) === 0) return false;
+  if (l.dueDay === undefined || l.execMode === 'informatif' || isMonthLocked(d, m) || (!isLineInBudget(d, l) && !isAccountTransfer(d, l)) || leftOfLine(d, l, m) === 0) return false;
   const cmp = compareMonths(m, today.slice(0, 7));
   if (cmp < 0) return true;
   if (cmp > 0) return false;
   return +today.slice(8, 10) > effectiveDueDay(l.dueDay, m);
 }
 
-/** Number of late lines in a month. */
-export const lateCount = (d: BudgetData, m: MonthKey, today: string): number => monthLines(d, m).filter(l => isLate(d, m, l, today)).length;
+/** Number of late lines of « À venir » in a month: the transfers of the « Transferts entre comptes » card count there, not here (spec 0050, RG3). */
+export const lateCount = (d: BudgetData, m: MonthKey, today: string): number => monthLines(d, m).filter(l => !isAccountTransfer(d, l) && isLate(d, m, l, today)).length;
 
 /** The headings the rests are filed under (RG7), in display order. */
 export type LeftGroupId = 'prelevement' | 'virement' | 'retrait' | 'autres';
@@ -202,9 +205,12 @@ export function partiallyFundedLines(d: BudgetData, m: MonthKey): Map<string, Pa
   return out;
 }
 
-/** The lines paid out of an account that can have something left: no revenue, no « informatif », a variable line only when it counts in the budget (RG6). */
+/**
+ * The lines paid out of an account that can have something left: no revenue, no « informatif », a variable line only when it counts in the budget (RG6).
+ * The transfers between accounts have their own card and are left out (spec 0050, RG3).
+ */
 function payLines(d: BudgetData, m: MonthKey, accountId: string): Line[] {
-  return monthLines(d, m).filter(l => l.block !== 'rev' && l.execMode !== 'informatif' && payerAccountId(d, l) === accountId && (l.block !== 'var' || isLineInBudget(d, l)));
+  return monthLines(d, m).filter(l => l.block !== 'rev' && l.execMode !== 'informatif' && payerAccountId(d, l) === accountId && (l.block !== 'var' || isLineInBudget(d, l)) && !isAccountTransfer(d, l));
 }
 
 /** Envelopes whose allocation leaves the main account this month. */
@@ -214,7 +220,7 @@ const allocationEnvelopes = (d: BudgetData, m: MonthKey) => d.envelopes.filter(e
 const cashEnvelopes = (d: BudgetData, m: MonthKey) => d.envelopes.filter(e => !!d.months[m]?.initialized && envelopeCashPart(d, m, e.id) > 0);
 
 const itemOfLine = (d: BudgetData, m: MonthKey, l: Line, today: string): LeftItem => ({
-  id: l.key, kind: 'line', name: l.name, amount: leftOfLine(d, l), budget: l.budget, late: isLate(d, m, l, today),
+  id: l.key, kind: 'line', name: l.name, amount: leftOfLine(d, l, m), budget: l.budget, late: isLate(d, m, l, today),
   ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, m) } : {}),
 });
 

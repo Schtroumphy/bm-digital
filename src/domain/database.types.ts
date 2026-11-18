@@ -51,6 +51,7 @@ export type Database = {
           amount: number
           annotation: string | null
           bank_date: string | null
+          pass_through: boolean
           category: string | null
           credit_bank_date: string | null
           credit_fingerprint: string | null
@@ -73,6 +74,7 @@ export type Database = {
           amount: number
           annotation?: string | null
           bank_date?: string | null
+          pass_through?: boolean
           category?: string | null
           credit_bank_date?: string | null
           credit_fingerprint?: string | null
@@ -95,6 +97,7 @@ export type Database = {
           amount?: number
           annotation?: string | null
           bank_date?: string | null
+          pass_through?: boolean
           category?: string | null
           credit_bank_date?: string | null
           credit_fingerprint?: string | null
@@ -791,6 +794,7 @@ export type Database = {
           amount: number
           annotation: string | null
           assigned_account_id: string | null
+          transfer_line_key: string | null
           bank_date: string | null
           category: string | null
           created_at: string
@@ -816,6 +820,7 @@ export type Database = {
           amount: number
           annotation?: string | null
           assigned_account_id?: string | null
+          transfer_line_key?: string | null
           bank_date?: string | null
           category?: string | null
           created_at?: string
@@ -841,6 +846,7 @@ export type Database = {
           amount?: number
           annotation?: string | null
           assigned_account_id?: string | null
+          transfer_line_key?: string | null
           bank_date?: string | null
           category?: string | null
           created_at?: string

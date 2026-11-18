@@ -3,9 +3,10 @@ import { setEnvelopeAllocation } from './actions';
 import { addEnvelope } from './envelopes';
 import { setLineAccount, setMainBankAccount, setBankAccountInBudget, archiveBankAccount } from './bankAccounts';
 import { CASH_ACCOUNT_ID, defaultBankAccounts, MAIN_ACCOUNT_ID, accountIdOf } from '../domain/bank';
-import { availableReal, monthSummary } from '../domain/budget';
+import { availableReal, availableRealBreakdown, monthSummary } from '../domain/budget';
 import { syncLineActuals } from '../domain/lineActuals';
 import { emptyData } from '../domain/empty';
+import { round2 } from '../domain/format';
 import { Ledger } from '../domain/ledger';
 import type { BlockKey, BudgetData, Line } from '../domain/types';
 
@@ -96,19 +97,24 @@ describe('disponible à placer (réel)', () => {
   });
 
   it('CA11: placer l’argent sur une ligne d’investissement fait revenir le disponible', () => {
-    const d = started([ln('pret', 'rev', 0, 20000), ln('ldds', 'inv', 0, null)]);
+    const d = started([ln('pret', 'rev', 0, 20000), { ...ln('ldds', 'inv', 0, null), linkedAccountId: 'acc-ldds' }]);
     const withIncome = avail(d)!;
     expect(withIncome).toBe(20000);
-    d.months[M].lines[1].actual = 20000;
+    d.accountMovements = [{ id: 'v', month: M, day: 2, label: 'v', amount: 20000, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-ldds', targets: [{ kind: 'line', key: 'ldds' }] }];
+    syncLineActuals(d);
+    d.months[M].lines[0].actual = 20000; // the revenue is typed here, not derived from entries
     expect(avail(d)).toBe(0);
     expect(new Ledger(d, TODAY).accMonth('ldds', M)!.balance).toBe(20000);
   });
 
-  it('CA12: un versement inférieur au budget d’épargne fait monter le disponible ; sans réel, 0', () => {
-    const d = started([ln('livret', 'epa', 300, 200)]);
+  it('CA12: un versement inférieur au budget d’épargne fait monter le disponible ; sans virement, l’écart est 0 − budget', () => {
+    const d = started([{ ...ln('livret', 'epa', 300, null), linkedAccountId: 'acc-liv' }]);
+    d.accountMovements = [{ id: 'v', month: M, day: 2, label: 'v', amount: 200, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-liv', targets: [{ kind: 'line', key: 'livret' }] }];
+    syncLineActuals(d);
     expect(avail(d)).toBe(remaining(d) + 100);
-    d.months[M].lines[0].actual = null;
-    expect(avail(d)).toBe(remaining(d));
+    d.accountMovements = [];
+    syncLineActuals(d);
+    expect(avail(d)).toBe(remaining(d) + 300); // nothing transferred: « 0 − budget »
   });
 
   it('CA14: modifier l’allocation d’une enveloppe fait varier le reste et le disponible du même montant', () => {
@@ -168,15 +174,15 @@ describe('disponible à placer (réel)', () => {
     expect(d.months[M].lines.map(l => l.actual)).toEqual([0, 180, 120]);
     expect(avail(d)).toBe(remaining(d));
   });
-  it('un virement interne sans ligne du compte d’une ligne d’épargne vers le principal sort du réel de la ligne', () => {
+  it('un virement interne sans ligne vers le principal sort du réel de la ligne, mais le disponible ne compte que ce qui est viré (2026-11-21)', () => {
     const d = started([{ ...ln('ldds', 'epa', 0, null), linkedAccountId: 'acc-ldds' }]);
     const mv = (id: string, from: string, to: string, amount: number, key?: string) => ({ id, month: M, day: 2, label: id, amount, fromAccountId: from, toAccountId: to, ...(key ? { targets: [{ kind: 'line' as const, key }] } : {}) });
     d.accountMovements = [mv('in', MAIN_ACCOUNT_ID, 'acc-ldds', 800, 'ldds'), mv('out', 'acc-ldds', MAIN_ACCOUNT_ID, 800)];
     syncLineActuals(d);
     expect(d.months[M].lines[0].actual).toBe(0);
-    expect(avail(d)).toBe(remaining(d));
+    expect(avail(d)).toBe(remaining(d) - 800);
   });
-  it('les opérations affectées au compte d’une ligne d’épargne comptent dans son réel : le disponible ne bouge pas (virement de 800, 354,30 net dépensé)', () => {
+  it('les opérations affectées au compte d’une ligne d’épargne comptent dans son réel mais pas dans le disponible, qui ne compte que les virements reçus (2026-11-21)', () => {
     const d = started([{ ...ln('ldds', 'epa', 0, null), linkedAccountId: 'acc-ldds' }, { ...ln('travaux', 'epa', 0, null), linkedAccountId: 'acc-trav' }, ln('imp', 'var', 0, null)]);
     const mv = (id: string, from: string, to: string, amount: number, key?: string) => ({ id, month: M, day: 2, label: id, amount, fromAccountId: from, toAccountId: to, ...(key ? { targets: [{ kind: 'line' as const, key }] } : {}) });
     d.accountMovements = [mv('out', 'acc-ldds', MAIN_ACCOUNT_ID, 800), mv('in', MAIN_ACCOUNT_ID, 'acc-trav', 445.7, 'travaux')];
@@ -184,6 +190,26 @@ describe('disponible à placer (réel)', () => {
     d.transactions = [tx('a', 'var', 333.78), tx('b', 'var', 29.9), tx('c', 'rev', 9.38)];
     syncLineActuals(d);
     expect(d.months[M].lines.slice(0, 2).map(l => l.actual)).toEqual([-800, 800]);
-    expect(avail(d)).toBe(remaining(d));
+    expect(avail(d)).toBe(round2(remaining(d) - 445.7));
+  });
+});
+
+describe('écart épargne et placements du disponible : viré − budget, par bloc (2026-11-21)', () => {
+  it('chaque bloc compte « viré − budget », une ligne sans virement pour 0 − son budget', () => {
+    const d = started([
+      ln('sal', 'rev', 1000, 1000),
+      { ...ln('livret', 'epa', 500, null), linkedAccountId: 'acc-liv' },
+      { ...ln('pea', 'inv', 400, null), linkedAccountId: 'acc-pea' },
+    ]);
+    d.accountMovements = [
+      { id: 'a', month: M, day: 2, label: 'a', amount: 100, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-pea', targets: [{ kind: 'line', key: 'pea' }] },
+      { id: 'b', month: M, day: 2, label: 'b', amount: 300, fromAccountId: MAIN_ACCOUNT_ID, toAccountId: 'acc-liv', targets: [{ kind: 'line', key: 'livret' }] },
+    ];
+    syncLineActuals(d);
+    d.months[M].lines[0].actual = 1000;
+    const b = availableRealBreakdown(d, M)!;
+    expect(b.paidInInvest).toBe(-300); // 100 − 400
+    expect(b.paidInSavings).toBe(-200); // 300 − 500
+    expect(b.total).toBe(round2(1000 - 400));  // revenus − virements reçus
   });
 });

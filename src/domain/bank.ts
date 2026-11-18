@@ -128,11 +128,30 @@ export function canAssignTo(d: BudgetData, type: Transaction['type'], ownAccount
 }
 
 /**
+ * A « transfert entre comptes » (spec 0050, RG1, RG30): a savings or investment line with a target account whose payer is not the main account.
+ * Defined by block, target and payer only, never by `isLineInBudget` (which reads it). Such a line is out of the budget totals (RG29).
+ */
+export const isAccountTransfer = (d: BudgetData, l: Pick<Line, 'block' | 'accountId' | 'linkedAccountId'>): boolean =>
+  isSavingsBlock(l.block) && !!l.linkedAccountId && accountIdOf(d, l.accountId) !== mainAccount(d).id;
+
+/** Name of an account, or its id when it is unknown. */
+export const nameOfAccount = (d: BudgetData, id: string): string => d.accounts.find(a => a.id === id)?.name ?? id;
+
+/** « Compte débité → Compte cible », always read from the accounts of the line (spec 0050, RG26). */
+export const transferRoute = (d: BudgetData, l: Pick<Line, 'accountId' | 'linkedAccountId'>): string => `${nameOfAccount(d, accountIdOf(d, l.accountId))} → ${nameOfAccount(d, l.linkedAccountId ?? '')}`;
+
+/** Title of a transfer (RG26): its label when it has one, else its route. */
+export const transferTitle = (d: BudgetData, l: Pick<Line, 'name' | 'accountId' | 'linkedAccountId'>): string => l.name.trim() || transferRoute(d, l);
+
+/** Name of any line for the screens that list lines: a transfer without label shows its route (RG26), the others their name. */
+export const lineDisplayName = (d: BudgetData, l: Pick<Line, 'name' | 'block' | 'accountId' | 'linkedAccountId'>): string => (isAccountTransfer(d, l) ? transferTitle(d, l) : l.name);
+
+/**
  * A rev/fix/cre line leaves the budget with its account; a variable line leaves it with the account it is paid from
  * (its resolved account, spec 0009 RG110: it is then informative, in no budget total). Other lines always count.
  */
 export const isLineInBudget = (d: BudgetData, l: Line): boolean =>
-  l.block === 'var' ? isAccountInBudget(d, resolveBoxAccountId(d, l)) : !ACCOUNT_BLOCKS.includes(l.block) || isAccountInBudget(d, l.accountId);
+  isAccountTransfer(d, l) ? false : l.block === 'var' ? isAccountInBudget(d, resolveBoxAccountId(d, l)) : !ACCOUNT_BLOCKS.includes(l.block) || isAccountInBudget(d, l.accountId);
 
 /**
  * The account an expense on a box is paid from (spec 0006, RG3, RG4): « Virtuel » → the account assigned to the box,

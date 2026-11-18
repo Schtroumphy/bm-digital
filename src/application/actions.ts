@@ -9,6 +9,7 @@ import { isMonthLocked } from '../domain/ledger';
 import { isCategorizableType } from '../domain/categories';
 import { deducedDate, validateBudgetStart } from '../domain/periods';
 import { budgetLockReason } from '../domain/movementLines';
+import { canAssociateTransfer, transferLinkHolds } from '../domain/accountTransfers';
 import type { BankAccount, BlockKey, BudgetData, Envelope, EnvHistory, Line, MonthKey, Transaction, TxType } from '../domain/types';
 import type { SetupDraft, SetupRow } from './setup';
 
@@ -279,13 +280,15 @@ const withoutAccount = ({ accountId: _accountId, ...rest }: Transaction): Transa
  * it has no account at all and counts in the actual of its line. The mode is dropped on the other types, and `virtuel` is written as no mode at all.
  * An operation may be assigned to a savings account (`assignedAccountId`, spec 0028): only `var`, `fix` and `rev`, an active savings account other than the
  * operation's own (RG1, RG2, RG20). It may instead be marked « hors budget » (`offBudget`, spec 0031): same types, no account, and never together with an assignment
- * (RG3); `env` and `epa` are refused. An entry of money on an envelope (`envin`, spec 0036) is credited to the account of the envelope; see `addEnvelopeInflow`. `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
+ * (RG3); `env` and `epa` are refused. `transferLineKey` (spec 0050, RG36) associates an assigned operation with ONE transfer line aimed at that account: anything else is refused. An entry of money on an envelope (`envin`, spec 0036) is credited to the account of the envelope; see `addEnvelopeInflow`. `keepAssignment` is an assignment that stands even if its account was archived since (RG4): the unchanged one on an edit.
  */
 export function addTransaction(d: BudgetData, input: Transaction, keepAssignment?: string): boolean {
   if (isMonthLocked(d, input.month) || !isSavingsWithdrawalAllowed(d, input)) return false;
   // The annotation is refused over 500 characters, never cut (spec 0047, RG2; spec 0051, RG6).
   if (input.annotation !== undefined && isAnnotationTooLong(input.annotation)) return false;
   if (input.assignedAccountId !== undefined && !isAssignableType(input.type)) return false;
+  // The association with a transfer line (spec 0050, RG36): only with an assignment to the target account of a transfer of the month.
+  if (input.transferLineKey !== undefined && !canAssociateTransfer(d, input, input.transferLineKey)) return false;
   // A category goes only on an expense of a categorisable type, and must exist (spec 0046, RG6, RG7).
   if (input.categoryId !== undefined && (!isCategorizableType(input.type) || !(d.categories ?? []).some(c => c.id === input.categoryId))) return false;
   if (input.offBudget !== undefined && (!isAssignableType(input.type) || input.assignedAccountId !== undefined)) return false;
@@ -397,6 +400,8 @@ export interface TransactionPatch {
   target: string;
   /** Savings account the operation is assigned to (spec 0028, RG18): undefined = keep the current one, null = remove it. */
   assignedAccountId?: string | null;
+  /** Transfer line the operation is associated with (spec 0050, RG36): undefined = keep the current one when it still holds, null = remove it. */
+  transferLineKey?: string | null;
   /** Marked « hors budget » (spec 0031): undefined = keep the current marking. Dropped when the operation is assigned to an account. */
   offBudget?: boolean;
   /** Category (spec 0046): undefined = keep the current one, null = remove it. Dropped when the new type cannot carry one. */
@@ -418,11 +423,21 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   if ((old.type === 'epd') !== (patch.type === 'epd')) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
-  const { bankDate: _b, accountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, ...kept } = old;
+  const { bankDate: _b, accountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, transferLineKey: _t, ...kept } = old;
   const category = patch.categoryId === undefined ? old.categoryId : (patch.categoryId ?? undefined);
   const assigned = patch.assignedAccountId === undefined ? old.assignedAccountId : (patch.assignedAccountId ?? undefined);
   const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
+  // The link to a transfer line (spec 0050, RG44). The month of an operation never changes here, so a change of month (CA54) cannot happen: the rule holds by
+  // construction. A NEW key (given and different from the current one) must hold now (RG36), else the edit is refused. The link already carried, sent back
+  // unchanged by the form or not mentioned, is not checked again: it stays, even inert when its line is gone (D15), unless the operation no longer fits it
+  // (`transferLinkHolds`: assignment removed or changed, hors budget, type that cannot be assigned, line aimed at another account), then it is dropped.
+  const wanted = patch.transferLineKey;
+  const month = old.month;
+  if (typeof wanted === 'string' && wanted !== old.transferLineKey && !canAssociateTransfer(d, { type: patch.type, month, assignedAccountId: assigned }, wanted)) return false;
+  const isNew = typeof wanted === 'string' && wanted !== old.transferLineKey;
+  const carried = wanted === undefined || wanted === old.transferLineKey ? old.transferLineKey : undefined;
+  const link = isNew ? wanted : carried !== undefined && transferLinkHolds(d, { type: patch.type, month, assignedAccountId: assigned, ...(marked ? { offBudget: true as const } : {}) }, carried, assigned === old.assignedAccountId) ? carried : undefined;
   d.transactions = before.filter(x => x !== old);
   const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), ...(patch.annotation !== undefined ? { annotation: patch.annotation } : {}), ...(category !== undefined && isCategorizableType(patch.type) ? { categoryId: category } : {}), ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
@@ -431,7 +446,9 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   }
   // Same place in the list, and the lines the entry left follow their entries.
   const added = d.transactions.pop()!;
+  if (link !== undefined) added.transferLineKey = link;
   d.transactions.splice(index, 0, added);
+  syncAssignedLines(d, old.month, assigned);
   if (!same && (old.type === 'var' || old.type === 'fix' || old.type === 'rev')) syncLineActual(d, old.month, old.target);
   syncAssignedLines(d, old.month, old.assignedAccountId);
   return true;

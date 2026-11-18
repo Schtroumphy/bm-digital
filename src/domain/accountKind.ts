@@ -1,4 +1,4 @@
-import { CASH_ACCOUNT_ID, isKindFixed, isSavingsBlock, kindForBlock, kindOf } from './bank';
+import { CASH_ACCOUNT_ID, lineDisplayName, isKindFixed, isSavingsBlock, kindForBlock, kindOf } from './bank';
 import type { BankAccount, BudgetData, Line } from './types';
 
 /*
@@ -77,7 +77,7 @@ export function kindMismatches(d: BudgetData): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const l of savingsLines(d)) {
     const a = d.accounts.find(x => x.id === l.linkedAccountId);
-    if (a && isSavingsBlock(l.block) && kindOf(a) !== kindForBlock(l.block)) (out[a.id] ??= []).push(l.name);
+    if (a && isSavingsBlock(l.block) && kindOf(a) !== kindForBlock(l.block)) (out[a.id] ??= []).push(lineDisplayName(d, l));
   }
   return out;
 }

@@ -162,6 +162,12 @@ export interface Transaction {
    */
   assignedAccountId?: string;
   /**
+   * Key of the ONE transfer line (spec 0050, RG36) the operation is associated with: a `var`, `fix` or `rev` operation assigned to the target account of a
+   * « transfert entre comptes » of its month. Only the operations carrying a line's key count in that line's actual and rest. Absent = not associated.
+   * Ignored (never erased) when the line is gone; never copied to another month and never set by the import.
+   */
+  transferLineKey?: string;
+  /**
    * « Hors budget » (spec 0031): a `var`, `fix` or `rev` operation that leaves the budget figures WITHOUT any savings account (money that is not the user's,
    * e.g. a pooled gift). Same effect as an assignment on every figure and balance. Only ever `true`; absent = counted. Exclusive with `assignedAccountId`.
    */
@@ -227,6 +233,12 @@ export interface AccountMovement {
    * that of the credit. Debit trace + credit trace = « Lié »; one of them = « Une face ».
    */
   creditTrace?: ImportTrace;
+  /**
+   * « Simple passage » (spec 0054): the money only goes through the account to reach another one (e.g. savings → main account → works account).
+   * Such a transfer counts nowhere on a savings line: not received (« Viré »), not passed on (« Dépensé »). Also used to cancel a transfer out against its
+   * return. Absent = false.
+   */
+  passThrough?: boolean;
 }
 
 /**

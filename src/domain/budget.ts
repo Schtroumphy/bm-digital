@@ -1,4 +1,4 @@
-import { assignedToSavingsNet } from './lineActuals';
+import { assignedToSavingsNet, lineTransferredNet } from './lineActuals';
 import { isLineInBudget, isOnMainAccount, isSavingsBlock, isTransactionInBudget } from './bank';
 import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, isYearClosed, Ledger, monthAlloc, monthLines } from './ledger';
@@ -56,15 +56,20 @@ export function availableReal(d: BudgetData, m: MonthKey): number | null {
 }
 
 /** The four terms of `availableReal` (shown in its explanation); null for a month that is not initialized. */
-export function availableRealBreakdown(d: BudgetData, m: MonthKey): { remaining: number; elsewhere: number; mainGaps: number; paidIn: number; total: number } | null {
+export function availableRealBreakdown(d: BudgetData, m: MonthKey): { remaining: number; elsewhere: number; mainGaps: number; paidIn: number; paidInSavings: number; paidInInvest: number; total: number } | null {
   if (!d.months[m]?.initialized) return null;
   const lines = budgetLines(d, m);
   const income = lines.filter(l => l.block === 'rev');
   const remaining = remainingToPlace(d, m);
   const elsewhere = sum(income.filter(l => !isOnMainAccount(d, l.accountId)).map(l => l.budget));
   const mainGaps = sum(income.filter(l => isOnMainAccount(d, l.accountId)).map(l => lineGap(l) ?? 0));
-  const paidIn = sum(lines.filter(l => l.block === 'epa' || l.block === 'inv').map(l => lineGap(l) ?? 0));
-  return { remaining, elsewhere, mainGaps, paidIn, total: round2(remaining - elsewhere + mainGaps - paidIn) };
+  // Only what was transferred INTO a savings/investment line counts (amended 2026-11-21): the expenses and transfers out of its account do not make more
+  // money available. Every line counts, one with nothing transferred as « 0 − budget »: the gap is « viré − budget » per block (savings, investments).
+  const paidGap = (block: 'epa' | 'inv') => sum(lines.filter(l => l.block === block).map(l => round2((lineTransferredNet(d, m, l) ?? 0) - l.budget)));
+  const paidInSavings = paidGap('epa');
+  const paidInInvest = paidGap('inv');
+  const paidIn = round2(paidInSavings + paidInInvest);
+  return { remaining, elsewhere, mainGaps, paidIn, paidInSavings, paidInInvest, total: round2(remaining - elsewhere + mainGaps - paidIn) };
 }
 
 /**

@@ -3,7 +3,7 @@ import { round2 } from '../domain/format';
 import { daysInMonth } from '../domain/checkoff';
 import { isMonthLocked } from '../domain/ledger';
 import { deducedDate, isRealDate } from '../domain/periods';
-import { syncLineActual } from '../domain/lineActuals';
+import { syncLineActual, syncLineActuals } from '../domain/lineActuals';
 import { CASH_ID, isEnvelopesPool, linkStateOf } from '../domain/internalTransfers';
 import { isEnvelopeAccount } from '../domain/bank';
 import { amountForLines, isManualMovement, isValidTransferTargets, proposableLines } from '../domain/movementLines';
@@ -50,6 +50,8 @@ export interface NewTransfer {
    * account. A transfer typed by hand with variable lines takes the sum of their budgets as its amount (RG4).
    */
   targets?: MovementTarget[];
+  /** « Simple passage » (spec 0054): the transfer is not deducted from the actual of the savings line of its source account. */
+  passThrough?: boolean;
   /** Annotation (spec 0047, 0051): refused over 500 characters. */
   annotation?: string;
 }
@@ -77,10 +79,12 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
     id: input.id, month: input.month, day: input.day, ...(input.bankDate ? { bankDate: input.bankDate } : {}), label, amount: fromLines > 0 ? fromLines : round2(input.amount),
     fromAccountId: input.fromAccountId, toAccountId: input.toAccountId,
     ...(targets.length > 0 ? { targets } : {}),
+    ...(input.passThrough && !withdrawal ? { passThrough: true as const } : {}),
     ...(annotation === undefined ? {} : { annotation }),
   };
   (d.accountMovements ??= []).push(mv);
   syncTargets(d, mv.month, mv.targets);
+  if (mv.passThrough) syncLineActuals(d);
   return true;
 }
 
@@ -96,7 +100,7 @@ export function addTransfer(d: BudgetData, input: NewTransfer): boolean {
  * that has variable lines is the sum of their budgets, fixed when a line is added (RG5) and when the destination drops lines (RG13); `patch.amount` is then
  * ignored. Removing a line, or all of them, leaves the amount as it is (RG5, RG6). An imported transfer keeps its amount whatever its lines (RG7).
  */
-export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; annotation?: string; date?: string; fromAccountId?: string; toAccountId?: string; targets?: MovementTarget[] }): boolean {
+export function updateAccountMovement(d: BudgetData, id: string, patch: { label: string; amount: number; annotation?: string; date?: string; fromAccountId?: string; toAccountId?: string; targets?: MovementTarget[]; passThrough?: boolean }): boolean {
   const mv = d.accountMovements?.find(x => x.id === id);
   const label = patch.label.trim();
   if (!mv || isMonthLocked(d, mv.month) || !label || !(patch.amount > 0)) return false;
@@ -133,6 +137,13 @@ export function updateAccountMovement(d: BudgetData, id: string, patch: { label:
     else mv.bankDate = patch.date;
   }
   if (patch.annotation !== undefined) applyAnnotation(mv, patch.annotation);
+  if (patch.passThrough !== undefined) {
+    if (patch.passThrough && to !== CASH_ID) mv.passThrough = true;
+    else delete mv.passThrough;
+  }
+  // A transfer to « Espèces » is a real withdrawal, never a passage.
+  if (to === CASH_ID) delete mv.passThrough;
+  syncLineActuals(d);
   syncTargets(d, mv.month, before);
   syncTargets(d, mv.month, mv.targets);
   return true;

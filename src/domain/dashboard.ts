@@ -1,6 +1,6 @@
 import { blockTotals, budgetLines, envelopeAlerts, lineRemaining, monthSummary, variableRemaining, type MonthSummary } from './budget';
 import { assignedOperations, assignedTotals, monthAssignedSummary, type AssignedSummary } from './assignedOperations';
-import { envelopeAccountAt, isLineInBudget, kindOf } from './bank';
+import { envelopeAccountAt, isAccountTransfer, isLineInBudget, kindOf, lineDisplayName } from './bank';
 import { periodTest } from './bankMovements';
 import { creditDateOf, debitDateOf } from './internalTransfers';
 import { envelopeAccountTotal, envelopeConsumption } from './envelopeCash';
@@ -246,11 +246,11 @@ export function monthTransfers(d: BudgetData, month: MonthKey, today: string): D
   if (!d.months[month]?.initialized) return [];
   const out: DashboardTransfer[] = [];
   for (const l of monthLines(d, month)) {
-    if ((l.block !== 'epa' && l.block !== 'inv') || l.execMode === 'informatif' || !isLineInBudget(d, l)) continue;
+    if ((l.block !== 'epa' && l.block !== 'inv') || l.execMode === 'informatif' || (!isLineInBudget(d, l) && !isAccountTransfer(d, l))) continue;
     if (l.budget === 0) continue;
     // A transfer is « faite » when nothing is left of the line (spec 0043, RG13): the amount shown is what is left, or the budget once done.
-    const left = leftOfLine(d, l);
-    out.push({ kind: 'line', id: l.key, name: l.name, ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, month) } : {}), amount: left || l.budget, done: left === 0, late: isLate(d, month, l, today) });
+    const left = leftOfLine(d, l, month);
+    out.push({ kind: 'line', id: l.key, name: lineDisplayName(d, l), ...(l.dueDay !== undefined ? { day: effectiveDueDay(l.dueDay, month) } : {}), amount: left || l.budget, done: left === 0, late: isLate(d, month, l, today) });
   }
   const alloc = monthAlloc(d, month);
   for (const e of d.envelopes) {
@@ -431,9 +431,9 @@ function savingsAccountsOf(d: BudgetData, ledger: Ledger, month: MonthKey): Dash
   };
 }
 
-/** Savings + investments at the end of `ref` (sum of the line balances of the Ledger), over the lines of that month that count in the budget (RG13). */
+/** Savings + investments at the end of `ref` (sum of the line balances of the Ledger), over the lines of that month that count in the budget, plus the transfers between accounts, whose balances do not change (spec 0050, RG35). */
 function wealthAt(d: BudgetData, ledger: Ledger, ref: MonthKey): DashboardWealth {
-  const inMonth = new Map(monthLines(d, ref).filter(l => isLineInBudget(d, l)).map(l => [l.key, l]));
+  const inMonth = new Map(monthLines(d, ref).filter(l => isLineInBudget(d, l) || isAccountTransfer(d, l)).map(l => [l.key, l]));
   const sum = (block: 'epa' | 'inv') => round2(accounts(d).filter(a => a.block === block && inMonth.has(a.key)).reduce((t, a) => t + (ledger.accMonth(a.key, ref)?.balance ?? 0), 0));
   const savings = sum('epa');
   const invest = sum('inv');
@@ -443,7 +443,7 @@ function wealthAt(d: BudgetData, ledger: Ledger, ref: MonthKey): DashboardWealth
 
 /** Balance of each savings or investment account at the end of `m` (lines of that month that count in the budget), flagged real when a statement was entered. */
 function wealthRows(d: BudgetData, ledger: Ledger, m: MonthKey): WealthAccountRow[] {
-  const inMonth = new Set(monthLines(d, m).filter(l => isLineInBudget(d, l)).map(l => l.key));
+  const inMonth = new Set(monthLines(d, m).filter(l => isLineInBudget(d, l) || isAccountTransfer(d, l)).map(l => l.key));
   return accounts(d).filter(a => inMonth.has(a.key)).map(a => {
     const am = ledger.accMonth(a.key, m);
     return { name: a.name, block: a.block, balance: round2(am?.balance ?? 0), real: am?.statement != null };

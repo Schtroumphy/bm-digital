@@ -1,5 +1,5 @@
 import { dayLabel, round2 } from './format';
-import { isSavingsBlock, isTransactionOffBudget } from './bank';
+import { isAccountTransfer, isSavingsBlock, isTransactionOffBudget } from './bank';
 import { ENVELOPES_ID } from './internalTransfers';
 import { lineKeysOf, targetsOf } from './movementTargets';
 import type { AccountMovement, BudgetData, Line, MonthKey, Transaction } from './types';
@@ -15,8 +15,15 @@ import type { AccountMovement, BudgetData, Line, MonthKey, Transaction } from '.
  */
 
 /** Operations of a month assigned to an account (spec 0028, RG26), signed as a payment into it: an expense in positive, an entry of money in negative. */
-const assignedAmounts = (d: BudgetData, m: MonthKey, accountId: string): number[] =>
-  d.transactions.filter(t => t.month === m && t.assignedAccountId === accountId && (t.type === 'var' || t.type === 'fix' || t.type === 'rev')).map(t => (t.type === 'rev' ? -t.amount : t.amount));
+const assignedAmounts = (d: BudgetData, m: MonthKey, accountId: string, onlyLine?: string): number[] =>
+  assignedTransactions(d, m, accountId, onlyLine).map(t => (t.type === 'rev' ? -t.amount : t.amount));
+
+/** What a line reads of the operations assigned to its account: all of them, or for a transfer between accounts only those associated with that line (spec 0050, RG40). */
+type LineRef = Pick<Line, 'key'> & Partial<Pick<Line, 'block' | 'accountId'>> & { linkedAccountId?: string };
+const transferKeyOf = (d: BudgetData, l: LineRef): string | undefined => (l.block !== undefined && isAccountTransfer(d, { block: l.block, accountId: l.accountId, linkedAccountId: l.linkedAccountId }) ? l.key : undefined);
+
+/** A transfer passed on that stands for another savings line (it carries a target), as opposed to a free transfer out of the account. */
+const isPassedToLine = (mv: AccountMovement): boolean => targetsOf(mv).length > 0;
 
 /** Net of the operations assigned to the dedicated account of a savings/investment line of the month: what other accounts paid on behalf of the savings (RG26). */
 export function assignedToSavingsNet(d: BudgetData, m: MonthKey): number {
@@ -25,30 +32,36 @@ export function assignedToSavingsNet(d: BudgetData, m: MonthKey): number {
 }
 
 /** Operations of a month assigned to an account (spec 0028, RG26). */
-const assignedTransactions = (d: BudgetData, m: MonthKey, accountId: string) =>
-  d.transactions.filter(t => t.month === m && t.assignedAccountId === accountId && (t.type === 'var' || t.type === 'fix' || t.type === 'rev'));
+function assignedTransactions(d: BudgetData, m: MonthKey, accountId: string, onlyLine?: string) {
+  return d.transactions.filter(t => t.month === m && t.assignedAccountId === accountId && (t.type === 'var' || t.type === 'fix' || t.type === 'rev') && (onlyLine === undefined || t.transferLineKey === onlyLine));
+}
 
 /**
  * What makes the actual of a savings/investment line: the transfers aimed at it, the transfers its account passes on, and the operations assigned to its account.
+ * Exception (spec 0050, RG46): for a transfer between accounts nothing is deducted, only the transfers aimed at the line count (`passedOn` is empty).
+ * A transfer marked « simple passage » (spec 0054) counts nowhere on the line, neither received nor passed on: the money only goes through the account
+ * (or a transfer out and its return cancel out).
  * Money the line's account passes on leaves this line: to another savings line (it is in that line's actual), or to a plain transfer with no budget item
  * (main account, another account, cash). A transfer to an envelope is excluded: envelopes are counted by their allocations.
  * Operations paid by another account but assigned to this line's account (spec 0028, RG26) count as a payment into it
  * (an expense in positive, an entry of money such as a refund in negative). They stay out of the expenses and of the other budget figures.
  */
-export function savingsLineEntries(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'> & { linkedAccountId?: string }): { toLine: AccountMovement[]; passedOn: AccountMovement[]; assigned: Transaction[] } {
+export function savingsLineEntries(d: BudgetData, m: MonthKey, l: LineRef): { toLine: AccountMovement[]; passedOn: AccountMovement[]; assigned: Transaction[] } {
   const movements = d.accountMovements ?? [];
   const lines = d.months[m]?.lines ?? [];
-  const toLine = movements.filter(mv => mv.month === m && lineKeysOf(mv).includes(l.key));
+  // A transfer marked « simple passage » (spec 0054) counts nowhere on the line: neither received nor passed on (a transfer out and its return cancel out).
+  const toLine = movements.filter(mv => mv.month === m && !mv.passThrough && lineKeysOf(mv).includes(l.key));
   const isOtherSavingsLine = (mv: AccountMovement) => lines.some(o => lineKeysOf(mv).includes(o.key) && isSavingsBlock(o.block));
-  const passedOn = l.linkedAccountId
-    ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && mv.toAccountId !== ENVELOPES_ID && (targetsOf(mv).length > 0 ? targetsOf(mv)[0].kind === 'line' && !lineKeysOf(mv).includes(l.key) && isOtherSavingsLine(mv) : true))
+  // A transfer between accounts counts only what is sent TO it: what its target account passes on to another account is not deducted (spec 0050, RG6, RG46).
+  const passedOn = l.linkedAccountId && transferKeyOf(d, l) === undefined
+    ? movements.filter(mv => mv.month === m && mv.fromAccountId === l.linkedAccountId && !mv.passThrough && mv.toAccountId !== ENVELOPES_ID && (targetsOf(mv).length > 0 ? targetsOf(mv)[0].kind === 'line' && !lineKeysOf(mv).includes(l.key) && isOtherSavingsLine(mv) : true))
     : [];
-  const assigned = l.linkedAccountId ? assignedTransactions(d, m, l.linkedAccountId) : [];
+  const assigned = l.linkedAccountId ? assignedTransactions(d, m, l.linkedAccountId, transferKeyOf(d, l)) : [];
   return { toLine, passedOn, assigned };
 }
 
 /** The entries recorded on a line in a month: amounts and nothing else. */
-export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number[] {
+export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & Partial<Pick<Line, 'accountId'>> & { linkedAccountId?: string }): number[] {
   if (isSavingsBlock(l.block)) {
     const e = savingsLineEntries(d, m, l);
     return [...e.toLine.map(mv => mv.amount), ...e.passedOn.map(mv => -mv.amount), ...e.assigned.map(t => (t.type === 'rev' ? -t.amount : t.amount))];
@@ -62,7 +75,7 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
  * « Détails » of a line (white bubble of the Budget screen): the annotation of each real entry of the line in the month, one block per entry
  * (date and amount on the first line, then the label, then the annotation; the « : » makes the bubble draw the first line as a row). An entry without annotation is listed too (date, label, amount only); empty text when the line has no entry.
  */
-export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): string {
+export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & Partial<Pick<Line, 'accountId'>> & { linkedAccountId?: string }): string {
   // Same sources as `lineEntryAmounts`, so the list always holds as many entries as the count shown in the tooltip. `credit` is the direction for the line
   // (money coming in: a revenue, a transfer received, an entry assigned to the account); a negative amount (refund) flips it. Shown as « + » or « − ».
   type Entry = { day: number; label: string; amount: number; annotation?: string; credit: boolean };
@@ -90,7 +103,7 @@ export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
 export const lineEntryCount = (d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): number => lineEntryAmounts(d, m, l).length;
 
 /** The actual a line must have: the sum of its entries, null when it has none. */
-export function derivedActual(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number | null {
+export function derivedActual(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & Partial<Pick<Line, 'accountId'>> & { linkedAccountId?: string }): number | null {
   const amounts = lineEntryAmounts(d, m, l);
   return amounts.length ? round2(amounts.reduce((s, a) => s + a, 0)) : null;
 }
@@ -117,20 +130,23 @@ export function syncAssignedLines(d: BudgetData, m: MonthKey, accountId: string 
  * What a savings/investment line paid out of its own account, net: the operations assigned to its dedicated account, an expense in positive and an entry
  * of money in negative (spec 0028, RG26). Null when the line has no dedicated account or no such operation. Shown beside the actual, never added to it twice.
  */
-export function lineSpentNet(d: BudgetData, m: MonthKey, l: Pick<Line, 'block'> & { linkedAccountId?: string }): number | null {
+export function lineSpentNet(d: BudgetData, m: MonthKey, l: Pick<Line, 'block' | 'key'> & Partial<Pick<Line, 'accountId'>> & { linkedAccountId?: string }): number | null {
   if (!isSavingsBlock(l.block) || !l.linkedAccountId) return null;
-  const amounts = assignedAmounts(d, m, l.linkedAccountId);
+  // A free transfer out of the account (to the main account, cash, another account: no budget item) counts as spent (amended 2026-11-21). A transfer
+  // to another savings line is a split of money already counted there: it is taken off the « Viré » instead (see `lineTransferredNet`).
+  const amounts = [...assignedAmounts(d, m, l.linkedAccountId, transferKeyOf(d, l)), ...savingsLineEntries(d, m, l).passedOn.filter(mv => !isPassedToLine(mv)).map(mv => mv.amount)];
   return amounts.length ? round2(amounts.reduce((s, a) => s + a, 0)) : null;
 }
 
 /**
- * Money transferred to a savings/investment line in the month, net of what its account passes on to other savings lines: the « Viré » of the line.
- * Null when there is no such transfer. The operations assigned to its account are not in it (see `lineSpentNet`).
+ * Money transferred TO a savings/investment line in the month, net of what its account passes on to other savings lines (a transit account: money in, then
+ * split to the lines it feeds, counted there): the « Viré » of the line, what says whether the budget was respected (amended 2026-11-21).
+ * A free transfer out of the account is not deducted: it counts as spent (see `lineSpentNet`). Null when there is no such transfer.
  */
-export function lineTransferredNet(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): number | null {
+export function lineTransferredNet(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & Partial<Pick<Line, 'accountId'>> & { linkedAccountId?: string }): number | null {
   if (!isSavingsBlock(l.block)) return null;
   const e = savingsLineEntries(d, m, l);
-  const amounts = [...e.toLine.map(mv => mv.amount), ...e.passedOn.map(mv => -mv.amount)];
+  const amounts = [...e.toLine.map(mv => mv.amount), ...e.passedOn.filter(isPassedToLine).map(mv => -mv.amount)];
   return amounts.length ? round2(amounts.reduce((s, a) => s + a, 0)) : null;
 }
 

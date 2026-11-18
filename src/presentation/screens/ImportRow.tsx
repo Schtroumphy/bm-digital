@@ -3,7 +3,7 @@ import { AccountDot } from '../components/AccountPicker';
 import { OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { lineBalanceWarning, canUseEnvelopesPool, destinationAccounts, linkCandidates, linkedPartner, transferAttachment, isIncome, isLocked, lineProblem, NEW_REVENUE_LINE, natureLabel, changeMonth, changeNature, chooseEnvelope, natureOptions, withValidAssignment, type LineNature, type PreviewLine } from '../../application/statementImport';
 import { lineStates, STATE_LABEL, type LineState } from '../../application/importFilters';
-import { assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, fixedTransactionAccountId, isEnvelopeAccount, savingsExpenseLines } from '../../domain/bank';
+import { assignableAccounts, bankAccount, envelopeEntryAccount, offBudgetEntryAccounts, fixedTransactionAccountId, isEnvelopeAccount, savingsExpenseLines, lineDisplayName } from '../../domain/bank';
 import { CASH_LABEL, ENVELOPES_ID, ENVELOPES_LABEL } from '../../domain/internalTransfers';
 import { dayLabel, money, monthLabel } from '../../domain/format';
 import type { ImportTarget, MovementTarget } from '../../domain/types';
@@ -234,7 +234,7 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
                       <optgroup label="Sorties d’épargne du compte" title="Dépense financée par l’épargne : baisse l’épargne réelle, pas le disponible">
                         {savingsLines.map(x => (
                           <option key={x.key} value={`savings:${x.key}`} title="Dépense financée par l’épargne : baisse l’épargne réelle, pas le disponible">
-                            {x.name} (sortie d’épargne)
+                            {lineDisplayName(data, x)} (sortie d’épargne)
                           </option>
                         ))}
                       </optgroup>

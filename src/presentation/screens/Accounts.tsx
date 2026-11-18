@@ -22,7 +22,7 @@ import {
 import { decideAccountKind, linkLineToAccount } from '../../application/accountKinds';
 import { SAVINGS_SECTIONS } from '../../application/actions';
 import { collidingLine, kindCandidates, kindMismatches } from '../../domain/accountKind';
-import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf } from '../../domain/bank';
+import { BANK_HUES, CASH_ACCOUNT_ID, isEnvelopeAccount, isKindFixed, kindOf, lineDisplayName } from '../../domain/bank';
 import { assignedOperations, assignedTotals } from '../../domain/assignedOperations';
 import { MOVE_LEGEND, attachedMovements, beforeBudgetMovements, realMovements } from '../../domain/bankMovements';
 import { movementsToCsv } from '../../domain/movementsCsv';
@@ -296,7 +296,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
     const g = groupOf(a);
     const blocker = archiveBlocker(data, a.id);
     const collision = collidingLine(data, a.name, a.id);
-    const receives = savingsLines.filter(l => l.linkedAccountId === a.id).map(l => l.name);
+    const receives = savingsLines.filter(l => l.linkedAccountId === a.id).map(l => lineDisplayName(data, l));
     // The name, the kind and the budget status of an envelope's account follow its envelope (spec 0011, RG3, RG4).
     const fromEnvelope = g === 'env';
     // The opening cash of the envelope (spec 0026, RG20): same data as in the Enveloppes screen and the assistant. An archived account has no card here (D21).

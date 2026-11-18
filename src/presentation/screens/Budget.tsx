@@ -26,7 +26,7 @@ import { envelopeSplitRefusal, setEnvelopeSplit, type EnvelopeSplitRefusal } fro
 import { envelopeCashPart } from '../../domain/cash';
 import { envelopeAllocationFigures } from '../../domain/envelopeAllocation';
 import { CashMonthBlock } from '../components/CashMonthBlock';
-import { accountIdOf, isLineInBudget, isOnMainAccount } from '../../domain/bank';
+import { accountIdOf, isAccountTransfer, isLineInBudget, isOnMainAccount } from '../../domain/bank';
 import { isoDate } from '../../domain/checkoff';
 import { budgetLockReason } from '../../domain/movementLines';
 import { leftLineKeys, lineTooltip, partiallyFundedLines, unfundedSpentLines } from '../../domain/comingUp';
@@ -36,6 +36,7 @@ import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumb
 import { isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from '../../domain/types';
 import { EnvelopesTotal } from './Envelopes';
+import { AccountTransfersCard } from './AccountTransfersCard';
 import { ComingUpCard } from './ComingUpCard';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
@@ -243,6 +244,7 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
           <div className="budget-col">
             <BlockCard block="epa" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
             <BlockCard block="inv" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+            <AccountTransfersCard month={month} today={today} />
           </div>
           <div className="budget-col">
             <EnvelopesCompact month={month} locked={locked || !data.months[month]?.initialized} />
@@ -294,7 +296,9 @@ function availableRealText(d: BudgetData, m: MonthKey): string {
   const lines = [`Reste à placer prévu : ${money(b.remaining)}`];
   if (b.elsewhere !== 0) lines.push(`− revenus budgétés hors compte principal : ${money(b.elsewhere)}`);
   lines.push(`+ écarts des revenus du compte principal (réel − budget) : ${money(b.mainGaps, true)}`);
-  lines.push(`− écarts épargne et placements (réel − budget) : ${money(b.paidIn, true)}`);
+  lines.push(`− écart épargne (viré − budget) : ${money(b.paidInSavings, true)}`);
+  lines.push(`− écart placements (viré − budget) : ${money(b.paidInInvest, true)}`);
+  lines.push('(seuls les virements reçus comptent ; une ligne sans virement compte pour 0 − son budget)');
   lines.push(`= Disponible (réel) : ${money(b.total)}`);
   lines.push('', b.total < 0 ? 'Négatif : vous avez placé plus que ce que le mois permet, ou perçu moins que prévu.' : 'C’est ce que vous pouvez encore placer maintenant.');
   return lines.join('\n');
@@ -328,7 +332,8 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
   const isSplit = block === 'epa';
   const gridClass = `line-grid${isSplit ? ' is-sav' : isSavings ? ' is-balance' : ''}${hideActual ? ' no-actual' : ''}`;
   const all = monthLines(data, month);
-  const lines = all.filter(l => l.block === block);
+  // A transfer between accounts lives in its own card, not in the savings blocks (spec 0050, RG4, RG31).
+  const lines = all.filter(l => l.block === block && !isAccountTransfer(data, l));
   // Lines of an out-of-budget account stay listed but are left out of the totals.
   const totals = blockTotals(budgetLines(data, month), block);
   const sections: { label: string; lines: Line[] }[] = [];
@@ -481,7 +486,12 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                       </div>
                       {/* « Réel » of the expenses: what the dedicated account paid out (operations assigned to it, spec 0028), shown as a negative. */}
                       <div className="rel">
-                        <div className={`cell is-readonly${spent ? ' is-spent' : ''}`} style={{ color: spent === null ? MUTED : undefined }} title={spent === null ? undefined : 'Dépensé depuis ce compte (opérations rattachées)'}>
+                        <div
+                          className={`cell is-readonly${spent ? ' is-spent' : ''}`}
+                          style={{ color: spent === null ? MUTED : undefined, cursor: spent !== null ? 'pointer' : undefined }}
+                          title={spent === null ? undefined : 'Dépensé depuis ce compte (opérations rattachées) : cliquer pour les voir'}
+                          onClick={spent !== null ? () => onOpenOperations({ movementLine: l.key, tab: 'ops', label: l.name }) : undefined}
+                        >
                           {spent === null ? '—' : money(-spent)}
                         </div>
                       </div>

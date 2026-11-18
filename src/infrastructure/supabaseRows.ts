@@ -183,6 +183,7 @@ export function toRows(d: BudgetData): TableRows {
       source: orNull(t.source),
       pay_mode: orNull(t.payMode),
       assigned_account_id: orNull(t.assignedAccountId),
+      transfer_line_key: orNull(t.transferLineKey),
       off_budget: orNull(t.offBudget),
       flagged: orNull(t.flagged),
       position,
@@ -204,6 +205,7 @@ export function toRows(d: BudgetData): TableRows {
       category: orNull(m.category),
       annotation: orNull(m.annotation),
       bank_date: orNull(m.bankDate),
+      pass_through: m.passThrough === true,
       credit_import_account_id: orNull(m.creditTrace?.importAccountId),
       credit_fingerprint: orNull(m.creditTrace?.fingerprint),
       credit_rank: orNull(m.creditTrace?.rank),
@@ -390,6 +392,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       source: orUndefined(r.source),
       payMode: orUndefined(r.pay_mode) as PayMode | undefined,
       assignedAccountId: orUndefined(r.assigned_account_id),
+      transferLineKey: orUndefined(r.transfer_line_key),
       offBudget: r.off_budget ? true : undefined,
       flagged: r.flagged ? true : undefined,
     }),
@@ -410,6 +413,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
       category: orUndefined(r.category),
       annotation: orUndefined(r.annotation),
       bankDate: orUndefined(r.bank_date),
+      ...(r.pass_through ? { passThrough: true } : {}),
       creditTrace: r.credit_import_account_id !== null && r.credit_fingerprint !== null && r.credit_rank !== null && r.credit_bank_date !== null
         ? { importAccountId: r.credit_import_account_id, fingerprint: r.credit_fingerprint, rank: r.credit_rank, bankDate: r.credit_bank_date }
         : undefined,

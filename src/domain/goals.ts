@@ -1,4 +1,4 @@
-import { isLineInBudget } from './bank';
+import { isAccountTransfer, isLineInBudget } from './bank';
 import { monthSummary } from './budget';
 import { compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
 import { accounts, type Ledger } from './ledger';
@@ -213,7 +213,7 @@ export function goalView(d: BudgetData, ledger: Ledger, goal: Goal, today: Month
   const capMonth = (m: MonthKey) =>
     scope === undefined || !hasData(m)
       ? 0
-      : round2((d.months[m].lines.filter(l => lineMatches(l, scope) && isLineInBudget(d, l)) as Line[]).reduce((s, l) => s + (l.actual ?? 0), 0));
+      : round2((d.months[m].lines.filter(l => lineMatches(l, scope) && (isLineInBudget(d, l) || isAccountTransfer(d, l))) as Line[]).reduce((s, l) => s + (l.actual ?? 0), 0));
   const capCumul = (upTo: number) => round2(monthsOfYear.slice(0, upTo + 1).reduce((s, m) => s + capMonth(m), 0));
 
   const valueAt = (i: number): number => {

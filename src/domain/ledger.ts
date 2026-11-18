@@ -1,6 +1,6 @@
 import { balanceRangeEnd, isMonthInBalanceRange } from './balanceRange';
 import { flowOf, realMovements } from './bankMovements';
-import { envelopeAccountAt, isTransactionInBudget } from './bank';
+import { envelopeAccountAt, isTransactionInBudget, lineDisplayName } from './bank';
 import { addMonths, compareMonths, currentMonthKey, monthKey, parseMonth, round2 } from './format';
 import type { BudgetData, Line, MonthKey, Transaction } from './types';
 
@@ -72,8 +72,9 @@ export function monthAlloc(d: BudgetData, m: MonthKey): Record<string, number> {
 
 export function accounts(d: BudgetData): Account[] {
   const seen = new Map<string, Account>();
-  const add = (l: { key: string; name: string; block: string }) => {
-    if (l.block === 'epa' || l.block === 'inv') seen.set(l.key, { key: l.key, name: l.name, block: l.block });
+  const add = (l: Pick<Line, 'key' | 'name' | 'block' | 'accountId' | 'linkedAccountId'>) => {
+    // A transfer between accounts without label shows its route (spec 0050, RG26).
+    if (l.block === 'epa' || l.block === 'inv') seen.set(l.key, { key: l.key, name: lineDisplayName(d, l), block: l.block });
   };
   d.template.lines.forEach(add);
   Object.keys(d.months).sort().forEach(k => d.months[k].lines.forEach(add));

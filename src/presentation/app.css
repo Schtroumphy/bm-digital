@@ -428,7 +428,7 @@ input, button { font-family: inherit; }
 .split-card-label.is-ink { color: var(--t-ink); }
 .split-card-value { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; }
 .split-card-value.is-editable { cursor: text; display: inline-block; border-bottom: 1.5px dashed oklch(0.72 0.13 85); }
-.split-card-note { font-size: 10.5px; color: rgba(32, 30, 29, 0.55); }
+.split-card-note { font-size: 10.5px; color: var(--muted); }
 /* starting balances typed in place in the detail cards (spec 0026): visibly editable, plain when the starting month is locked */
 .split-card-note .is-editable { display: inline-block; cursor: text; font-size: 13px; font-weight: 700; color: var(--ink); border-bottom: 1.5px dashed oklch(0.72 0.13 85); }
 .split-card-note .is-editable[data-disabled] { cursor: default; border-bottom-color: transparent; }
@@ -1507,3 +1507,40 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .fab-back:hover { filter: brightness(1.15); }
+
+/* Encart « Transferts entre comptes » (spec 0050) : informatif, sans case à cocher */
+.tr-count { font-size: 12px; font-weight: 700; color: var(--t-ink); font-variant-numeric: tabular-nums; }
+.tr-progress { margin: 0 14px 4px; background: var(--t-soft); }
+.tr-progress > div { background: var(--t-base); }
+.tr-list { padding: 4px 14px; display: flex; flex-direction: column; }
+.tr-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; align-items: start; padding: 6px 0; border-bottom: 1px solid var(--hairline); }
+.tr-row:last-child { border-bottom: 0; }
+.tr-mark { width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; border: 1.5px solid var(--t-base); box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.tr-mark.is-half { background: linear-gradient(90deg, var(--t-base) 50%, transparent 50%); }
+.tr-mark.is-full { background: var(--t-base); color: #fff; }
+.tr-name { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-sub { font-size: 10.5px; color: var(--muted); }
+.tr-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tr-badge { padding: 0 7px; border-radius: 99px; font-size: 10px; font-weight: 700; white-space: nowrap; background: var(--t-soft); color: var(--t-ink); }
+.tr-badge.is-partial { background: oklch(0.95 0.07 90); color: oklch(0.4 0.08 75); }
+.tr-badge.is-done { background: oklch(0.94 0.06 150); color: oklch(0.38 0.09 150); }
+.tr-badge.is-late { background: var(--warn-bg); color: var(--warn-ink); }
+.tr-detail { grid-column: 2 / 4; margin-top: 2px; font-size: 10.5px; color: var(--muted); }
+.tr-foot { display: flex; justify-content: space-between; padding: 6px 14px 10px; border-top: 1px solid var(--hairline); font-size: 12.5px; }
+.tr-row { cursor: pointer; }
+.tr-row:hover { background: rgba(32, 30, 29, 0.025); }
+.tr-empty { padding: 8px 14px; font-size: 12.5px; color: var(--muted); }
+.tr-add { padding: 6px 14px 10px; border-top: 1px solid var(--hairline); }
+.tr-hint { font-size: 11px; color: var(--muted); }
+.tr-error { font-size: 12px; font-weight: 600; color: var(--warn-ink); background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
+
+/* Formulaire d'un transfert (spec 0050) : champs et listes au design des filtres d'Opérations (pilule grise de 36 px, texte à gauche) */
+.tr-form { gap: 12px; }
+.tr-form .field-label { margin-bottom: 6px; }
+.tr-field { width: 100%; box-sizing: border-box; height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: rgba(32, 30, 29, 0.05); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); text-align: left; outline: none; transition: background 0.15s, box-shadow 0.15s; }
+.tr-field::placeholder { color: rgba(32, 30, 29, 0.4); font-weight: 500; }
+.tr-field:hover, .tr-field:focus { background: rgba(32, 30, 29, 0.09); }
+.tr-field:focus, .tr-form .menu-pill:focus-visible { box-shadow: 0 0 0 3px oklch(0.93 0.05 300); }
+.tr-field:disabled { opacity: 0.5; cursor: not-allowed; }
+.tr-form .menu-pill { width: 100%; box-sizing: border-box; justify-content: space-between; outline: none; }
+.tr-form .acc-menu { top: 42px; width: 100%; max-height: 220px; overflow-y: auto; box-sizing: border-box; }
