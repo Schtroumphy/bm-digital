@@ -278,7 +278,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
             </span>
           )}
           <div style={{ flex: 1 }} />
-          {screen === 'budget' && <BudgetActions month={month} />}
+          {screen === 'budget' && <BudgetActions month={month} onOpenTemplate={() => go('template')} />}
           {screen === 'comptes' && <AccountsActions month={month} />}
           {screen === 'env' && <EnvelopesBalanceTotal month={month} />}
           {screen === 'setup' && <SetupActions setDraft={setDraft} />}

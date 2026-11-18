@@ -53,7 +53,7 @@ export const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: numb
 
 export const BLOCK_TITLES = Object.fromEntries(Object.entries(BLOCKS).map(([k, v]) => [k, v.title])) as Record<BlockKey, string>;
 
-export function BudgetActions({ month }: { month: MonthKey }) {
+export function BudgetActions({ month, onOpenTemplate }: { month: MonthKey; onOpenTemplate: () => void }) {
   const { data, update } = useStore();
   const [open, setOpen] = useState(false);
   const md = data.months[month];
@@ -103,6 +103,10 @@ export function BudgetActions({ month }: { month: MonthKey }) {
             </div>
           </>
         )}
+      </div>
+      <div className="btn-outline" onClick={onOpenTemplate}>
+        <Icon name="note" size={15} />
+        Modèle
       </div>
       <div className="btn-outline" onClick={exportCsv}>
         <Icon name="download" size={15} />
