@@ -1,6 +1,6 @@
 # 0052 — Indicateurs des catégories (comparaison à la moyenne annuelle)
 
-- Statut : validée
+- Statut : implémentée
 - Date : 2026-11-18
 - Branche prévue : feat/indicateurs_categories
 
@@ -24,9 +24,9 @@ Exclus (écartés pour l'instant) : part du budget vs part moyenne, cumul annuel
 - RG2. Moyenne mensuelle d'une catégorie = somme de ses dépenses sur les mois de référence ÷ nombre de mois de référence. Un mois de référence sans dépense dans la catégorie compte pour 0 (le diviseur est le nombre de mois de référence, pas le nombre de mois avec dépense).
 - RG3. Montants mensuels issus de `categoryBreakdown(d, mois)` : mêmes règles que « Répartition » (types catégorisables, dans le budget, mois budgétaire de l'écriture, `envin` exclu, catégorie supprimée = « Sans catégorie »).
 - RG4. S'il n'y a aucun mois de référence (ex. mois affiché en janvier, quelle que soit l'année, ou année entièrement future), aucune moyenne ni écart n'est calculé : l'écran affiche « pas de référence » à la place de la moyenne et de l'écart, partout où ils apparaîtraient (bandeau compris). La tendance et les montants du mois restent affichés.
-- RG5. Écart d'une catégorie = montant du mois affiché − moyenne, en € ; en % = écart ÷ moyenne × 100. Si la moyenne vaut 0 et que le montant est > 0, le % n'est pas calculable : afficher « nouveau » à la place du %. Si les deux valent 0, écart 0 € et pas de %.
-- RG6. Couleur de l'écart : vert si le montant est en dessous de la moyenne, rouge s'il est au-dessus, neutre si égal. Le signe est toujours affiché (+ / −), la couleur n'est jamais le seul signal.
-- RG7. Lignes par catégorie : toute catégorie ayant une dépense dans le mois affiché OU une moyenne > 0 (une catégorie habituelle à 0 ce mois-ci apparaît avec un écart négatif). Catégories à 0 partout : non affichées. La ligne « Sans catégorie » suit les mêmes règles, en dernier, en gris.
+- RG5. Écart d'une catégorie = montant du mois affiché − moyenne, en € ; en % = écart ÷ moyenne × 100. Si la moyenne vaut 0 et que le montant est > 0, le % n'est pas calculable : la ligne est dite « nouvelle » et l'écran affiche seulement « nouveau » (pastille violette `state-chip is-violet`), sans montant d'écart ; « nouveau » reste dans la partie visible et seul le montant « , +X € » est ajouté en `sr-only` : un lecteur d'écran dit « nouveau, +X € », « nouveau » une seule fois. Si les deux valent 0, écart 0 € et pas de %.
+- RG6. Couleur de l'écart : vert si le montant est en dessous de la moyenne, rouge s'il est au-dessus, neutre si égal ; violet pour une ligne « nouveau » (RG5). Le signe est toujours affiché (+ / −) sauf pour « nouveau » (dont le montant signé « , +X € » reste en `sr-only`), la couleur n'est jamais le seul signal.
+- RG7. Lignes par catégorie : toute catégorie ayant une dépense dans le mois affiché OU une moyenne > 0 (une catégorie habituelle à 0 ce mois-ci apparaît avec un écart négatif). Catégories à 0 partout : non affichées. La ligne « Sans catégorie » suit les mêmes règles, en dernier, avec son nom en gris (`var(--muted)`).
 - RG8. Tri : par écart en € décroissant (plus forte hausse en premier), puis ordre alphabétique. Sans référence (RG4) : par montant du mois décroissant.
 - RG9. Tendance : sparkline des montants mensuels de la catégorie sur les 6 derniers mois se terminant au mois affiché (mois affiché inclus, mois à 0 inclus, y compris à cheval sur l'année précédente). Le point du mois affiché est mis en surbrillance. Les mois futurs au-delà de la date du jour n'ont pas de point.
 - RG10. Bandeau de synthèse :
@@ -40,15 +40,19 @@ Exclus (écartés pour l'instant) : part du budget vs part moyenne, cumul annuel
 - RG13. Chaque ligne catégorie propose le même lien « Voir les dépenses » que « Répartition » (filtre sur la catégorie).
 - RG14. Montants arrondis au centime (`round2`), pourcentages au format `percent` existant.
 - RG15 (révision). Onglet par défaut : à chaque arrivée sur l'écran Analyse, l'onglet actif est « Indicateurs » (le dernier onglet n'est pas mémorisé, comme avant). Ordre des onglets : Indicateurs, Répartition, Gérer.
-- RG16 (révision). Dans le bandeau, la catégorie de « Plus forte hausse » et celle de « Plus forte baisse » sont cliquables : le clic ouvre les opérations filtrées sur cette catégorie, comme le lien « Voir les dépenses » du tableau (RG13). Quand le bandeau affiche « — » et son message (aucune catégorie concernée) ou « pas de référence », il n'y a rien à cliquer. L'élément cliquable est un bouton accessible au clavier (libellé « Voir les dépenses : <catégorie> »).
+- RG16 (révision). Dans le bandeau, la catégorie de « Plus forte hausse » et celle de « Plus forte baisse » sont cliquables : le clic ouvre les opérations filtrées sur cette catégorie, comme le lien « Voir les dépenses » du tableau (RG13). Quand le bandeau affiche « — » et son message (aucune catégorie concernée) ou « pas de référence », il n'y a rien à cliquer. L'élément cliquable est un `<button>` accessible au clavier (`aria-label` « Voir les dépenses : <catégorie> »), mais affiché comme du texte simple (aucun style de bouton visible) ; focus visible au clavier ; au survol, fond arrondi identique au « réel » du Budget (padding 2 px 5 px, rayon 6 px, fond `rgba(32,30,29,.06)`), sans soulignement.
 - RG17 (révision). Pas de mini-barre « mois vs moyenne » dans le tableau : la pastille d'écart et la sparkline suffisent.
+- RG18 (révision 2). Tableau « Par catégorie » en deux parties côte à côte : les lignes, triées selon RG8, sont coupées en deux moitiés (la première, plus longue si le nombre est impair, à gauche ; le reste à droite). « Sans catégorie », dernière ligne du tri, termine donc la partie de droite. S'il n'y a qu'une ligne, la partie de droite n'est pas rendue. Chaque partie a ses propres en-têtes et son propre `role="table"` (`aria-label` « Indicateurs par catégorie, partie 1 » / « partie 2 »). Les deux parties sont séparées par un filet vertical.
+- RG19 (révision 2). Repli : sous 1100 px de large, les deux parties passent l'une sous l'autre (une colonne), séparées par un filet horizontal, sans défilement horizontal à aucune largeur.
+- RG20 (révision 2). Hauteur : pour un cas courant (environ 8 lignes, soit 2 × 4) l'onglet entier (bandeau + tableau) est visible sans défilement vertical à 1440×900 puis à 1280×720. Avec beaucoup de catégories, le défilement vertical de la page est accepté (pas de zone à défilement interne, aucune ligne masquée).
+- RG21 (révision 2). Bandeau compacté : total du mois en `dash-hero` ramené à 25 px dans cet écran (remplace les décisions antérieures de 36 px puis 28 px), padding et marges réduits.
 
 ## Parcours utilisateur
 - Nominal : l'utilisateur ouvre Analyse, arrive directement sur « Indicateurs » ; novembre 2026 est affiché ; la moyenne est celle de janvier à octobre. Il voit le bandeau, puis les catégories triées de la plus en hausse à la plus en baisse. Un clic sur « Répartition » ouvre la répartition.
 - Mois passé : mars 2026 affiché → moyenne sur janvier et février seulement.
 - Mois futur : décembre 2026 affiché → moyenne janvier à octobre ; montant du mois à 0.
 - Janvier de l'année en cours : « pas de référence » partout, tendance sur les 6 derniers mois visible.
-- Catégorie apparue ce mois-ci : moyenne 0, écart « nouveau ».
+- Catégorie apparue ce mois-ci : moyenne 0, seul « nouveau » est affiché (pastille violette), sans montant d'écart.
 - Mois sans dépense : message vide.
 - Clavier : flèches gauche/droite entre les 3 onglets.
 
@@ -62,7 +66,7 @@ Constats sur le design actuel : (1) le bandeau est fait de 4 cartes encadrées i
 2. Bandeau : un chiffre principal (dépenses du mois, grand, violet comme « Reste à placer ») puis 3 indicateurs secondaires de même poids.
 3. Tableau par catégorie, trié par écart, lisible d'un coup d'œil : la pastille d'écart est l'élément le plus visible de chaque ligne.
 
-### Wireframe (1440 px, panneau pleine largeur comme Répartition)
+### Wireframe (1440 px ; deux panneaux `cat-panel is-ind`, tableau en deux parties)
 ```
 [ Indicateurs ] [ Répartition ] [ Gérer ]                 (onglet actif en noir, pilule)
 
@@ -70,45 +74,49 @@ Constats sur le design actuel : (1) le bandeau est fait de 4 cartes encadrées i
 | Indicateurs du mois (cat-title)                  (pilule violette) Moyenne janv.–oct. 2026 |
 |                                                                                      |
 |  Dépenses du mois      | Plus forte hausse    | Plus forte baisse   | Sans catégorie    |
-|  1 840,00 €  (28 px,   | 🛒 Alimentation      | 🎮 Loisirs          | 120,00 €          |
+|  1 840,00 €  (25 px,   | 🛒 Alimentation      | 🎮 Loisirs          | 120,00 €          |
 |  violet-ink)           | +85,00 € +21,3 %     | −60,00 € −60,0 %    | 4 écritures       |
-|  [+190,00 € +11,5 %]   | (rouge, 11 px)       | (vert, 11 px)       | (muted)           |
-|  moy. 1 650,00 €       |                      |                     |                   |
+|  moy. 1 650,00 €       | (rouge, 11 px)       | (vert, 11 px)       | (muted)           |
+|  [+190,00 € +11,5 %]   | (ou « nouveau » violet)                    |                   |
 +--------------------------------------------------------------------------------------+
 
 +--------------------------------------------------------------------------------------+
 | Par catégorie (cat-title)                                                            |
-|  CATÉGORIE            MOIS       MOYENNE     ÉCART                TENDANCE 6 MOIS        |
-|  ------------------------------------------------------------------------------------ |
-|  ● 🛒 Alimentation    485,00 €   400,00 €   [ +85,00 € · +21,3 % ] ▁▃▂▄▃█          (≡) |
-|  ● 🏠 Logement        700,00 €   700,00 €   [ 0,00 € ]             ▅▅▅▅▅▅          (≡) |
-|  ● 🎮 Loisirs          40,00 €   100,00 €   [ −60,00 € · −60,0 % ] ▃▅▆▂▃▁          (≡) |
-|  ● 📦 Sans catégorie  120,00 €    90,00 €   [ +30,00 € · +33,3 % ] ▂▃▃▄▃▅   (gris) (≡) |
+| (partie 1)                                      | (partie 2)                         |
+| ● Catégorie  Mois  Moyenne  Écart       Tend. ≡ | ● Catégorie  Mois  Moyenne  Écart  Tend. ≡ |
+| ● 🛒 Alimentation 485 €  400 €  [+85 € · +21,3 %] ▁▃▂▄▃█ (≡) | ● 🎮 Loisirs   40 €  100 €  [−60 € · −60,0 %] ▃▅▆▂▃▁ (≡) |
+| ● 🏠 Logement     700 €  700 €  [0,00 €]          ▅▅▅▅▅▅ (≡) | ● 🎲 Jeux      20 €    0 €  [nouveau]         ▁▁▁▁▃█ (≡) |
+| ...                                             | ● Sans catégorie 120 € ...         (≡) |
 +--------------------------------------------------------------------------------------+
+   Moitié des lignes triées dans chaque partie ; filet vertical entre les deux ; « Sans catégorie » en fin de partie 2.
+   Sous 1100 px : partie 2 sous la partie 1, filet horizontal.
 ```
-Les espacements verticaux entre les deux panneaux sont ceux de `cat-panel` (16 px).
+Les espacements verticaux entre les deux panneaux sont réduits (marge 10 px, padding 12 px 18 px).
 
 ### Bandeau (remplace les 4 cartes)
-- Un seul panneau `panel cat-panel` contenant une grille calquée sur `dash-kpis` : première colonne plus large (1,5fr, hero) puis 3 colonnes (1fr), séparées par un filet gauche `--hairline` (pas de cartes encadrées).
-- Chaque indicateur : étiquette `kpi-label` (11,5 px, muted), valeur `dash-val` (21 px) ou `dash-hero` (28 px, `--violet-ink`) pour les dépenses du mois, sous-ligne `dash-sub` (11 px, 600).
-- Dépenses du mois : valeur hero ; sous-ligne 1 = « moy. X € » (muted) ; sous-ligne 2 = écart (pastille, voir plus bas). Sans référence : « pas de référence » en muted italique.
-- Plus forte hausse / baisse : valeur = emoji + nom de la catégorie (21 px, tronqué avec ellipse) ; sous-ligne = écart en rouge / vert. Cliquable (RG16) : ouvre les dépenses de la catégorie, avec focus visible au clavier et survol discret (fond `rgba(32,30,29,0.04)`).
+- Un seul panneau `panel cat-panel is-ind` (padding 12 px 18 px, marge basse 10 px, titre à 6 px) contenant une grille calquée sur `dash-kpis` : première colonne plus large (1,5fr, hero) puis 3 colonnes (1fr), séparées par un filet gauche `--hairline` (pas de cartes encadrées). L'en-tête du panneau (titre + pastille de référence `state-chip is-violet`) est sur une ligne, centré verticalement.
+- Chaque indicateur : étiquette `kpi-label` (11,5 px, muted), valeur `dash-val` (21 px) ou `dash-hero` pour les dépenses du mois, ramenée à 25 px dans cet écran (`.cat-kpis .dash-hero`, `--violet-ink`), sous-ligne `dash-sub` (11 px, 600).
+- Dépenses du mois : valeur hero ; sous-ligne = « moy. X € » (muted) suivie de la pastille d'écart. Sans référence : « pas de référence » en muted italique.
+- Plus forte hausse / baisse : valeur = emoji + nom de la catégorie (21 px, tronqué avec ellipse) ; sous-ligne = écart en rouge / vert ; pour une ligne « nouveau » : seulement « nouveau » en violet (`--violet-ink`), sans montant visible (« , +X € » en `sr-only`). Cliquable (RG16) : le nom est un `<button>` affiché en texte simple (reset complet : pas de bordure, fond, ombre ni apparence native, police et couleur héritées), focus visible au clavier (contour 2 px), au survol fond arrondi `rgba(32,30,29,.06)` avec padding 2 px 5 px et rayon 6 px (comme le « réel » du Budget), sans soulignement.
 - Sans catégorie : valeur = montant ; sous-ligne = « N écritures » ; en gris (`--muted`) quand 0.
 - Messages vides (« Aucune catégorie au-dessus de sa moyenne ») en `dash-sub` muted, la valeur affichant « — ».
 
 ### Pastille d'écart (nouvelle, utilisée partout)
-- Basée sur `state-chip` : texte = « +85,00 € · +21,3 % » (signe typographique −, « · nouveau » à la place du %).
-- Hausse : fond rouge clair / texte `BAD` (nouvelle variante `state-chip is-red`) ; baisse : `state-chip is-green` existant ; nul : `is-neutral`. Le signe reste toujours affiché (RG6).
+- Basée sur `state-chip` : texte = « +85,00 € · +21,3 % » (signe typographique −). Ligne « nouveau » (RG5) : texte « nouveau » seul, pastille `state-chip is-violet`, avec « nouveau » visible et seul « , +X € » en `sr-only` (lecture « nouveau, +X € »).
+- Hausse : fond rouge clair / texte `BAD` (nouvelle variante `state-chip is-red`) ; baisse : `state-chip is-green` existant ; nul : `is-neutral` ; nouveau : `is-violet`. Le signe reste toujours affiché (RG6) hors « nouveau ».
+- Largeur adaptée au texte (`width: fit-content`, `white-space: nowrap`), centrée verticalement (`display: inline-flex`), alignée à gauche dans la cellule du tableau.
 - Sans référence : pas de pastille, texte « pas de référence » muted italique.
 
 ### Tableau
-- Même squelette que les lignes de Répartition (`cat-row` : pastille couleur `dot is-9`, nom en 600, montants alignés à droite), pas de défilement horizontal : grille fluide `14px 1fr 110px 110px 190px 130px 28px` à 1440 px (suppression du `min-width: 880px`).
-- En-têtes : 11,5 px, muted, majuscules non requises ; colonnes numériques alignées à droite ; Écart aligné à gauche (pastille) ; filet `--hairline` dessous.
-- Colonne Mois en gras (comme Répartition), Moyenne en muted ; ligne « Sans catégorie » à 55 % d'opacité (comme `cat-row.is-none`).
+- Deux parties côte à côte (RG18) dans un conteneur `cat-ind-parts` (grille de 2 colonnes égales `minmax(0,1fr)`) : la partie de droite a un filet gauche `--hairline` et 28 px de padding, la partie de gauche 28 px de padding droit (seulement s'il y a une partie de droite). Sous 1100 px : une colonne, filet horizontal entre les parties (RG19). Pas de `min-width` : aucun défilement horizontal.
+- Chaque ligne (`cat-ind-row`) est sa propre grille : `12px minmax(72px,1fr) 74px 74px minmax(148px,max-content) 86px 24px`, écart de 6 px, padding 4 px 6 px, rayon 8 px. Colonnes : point couleur 12 px, catégorie (ellipse + `title` avec le nom complet), mois, moyenne, écart, tendance (sparkline de 86 px), icône « Voir les dépenses » de 24 px.
+- Limite connue, hors périmètre : comme chaque ligne est sa propre grille, un alignement garanti de la colonne Tendance entre les lignes (quand la colonne Écart varie en largeur) demanderait un `subgrid`.
+- En-têtes de chaque partie : 11,5 px, muted ; colonnes numériques alignées à droite ; Écart aligné à gauche (pastille) ; filet `--hairline` dessous.
+- Colonne Mois en gras (comme Répartition), Moyenne en muted ; ligne « Sans catégorie » : seul le nom passe en `var(--muted)` (contraste d'environ 5:1), sans opacité sur la ligne.
 - Survol d'une ligne : fond `rgba(32,30,29,0.04)` + coins 8 px (comme `cat-share.is-active`).
-- Tendance : sparkline 110 × 28 px, couleur de la catégorie, point du mois affiché plein et plus gros, autres points atténués ; info-bulle par point « mois année : montant » (existante).
+- Tendance : sparkline 86 px de large dans le tableau, hauteur 28 px, couleur de la catégorie, point du mois affiché plein et plus gros, autres points atténués ; info-bulle par point « mois année : montant ». Ce sont des ajouts au composant `Sparkline` (il n'existait pas tel quel) : prop optionnelle `width` (86 px dans le tableau, 110 px par défaut), hauteur de 28 px, et un `<title>` SVG par point portant l'info-bulle.
 - Dernière colonne : icône « Voir les dépenses » (`icon-link`), inchangée.
-- Panneau intitulé « Par catégorie » (`cat-title`), séparé du bandeau.
+- Panneau intitulé « Par catégorie » (`cat-title`), séparé du bandeau, même style compact `cat-panel is-ind`.
 
 ### États
 - Vide : « Aucune dépense pour <mois> » (`empty`), bandeau et tableau masqués.
@@ -123,7 +131,7 @@ Les espacements verticaux entre les deux panneaux sont ceux de `cat-panel` (16 p
 - Domaine : aucun changement de calcul (RG1 à RG14). Seule éventuelle adaptation : exposer le signe de l'écart pour choisir la variante de pastille.
 - Application : aucune action, aucun port.
 - Infrastructure / schéma Supabase : aucun changement.
-- Présentation : `Categories.tsx` (onglet initial `indicateurs`, ordre des onglets, bandeau et tableau refaits, composant « pastille d'écart »), `Sparkline` (point du mois plus visible, taille), `app.css` : réutiliser `dash-kpis`/`dash-kpi`/`dash-hero`/`dash-val`/`dash-sub` (grille à 4 colonnes) ou classes `cat-*` équivalentes ; ajouter `state-chip.is-red` ; supprimer les styles `cat-kpis`/`cat-kpi*` devenus inutiles et le `min-width` de `cat-ind-row`.
+- Présentation : `Categories.tsx` (onglet initial `indicateurs`, ordre des onglets, bandeau et tableau refaits, composant « pastille d'écart »), `Sparkline` (composant ajouté : prop optionnelle `width`, 86 px dans le tableau et 110 px par défaut ; hauteur 28 px ; `<title>` « mois année : montant » par point ; point du mois plus visible), `app.css` : réutiliser `dash-kpis`/`dash-kpi`/`dash-hero`/`dash-val`/`dash-sub` (grille à 4 colonnes `cat-kpis`, hero à 25 px) ; ajouter `state-chip.is-red`, `cat-panel.is-ind`, `cat-ind-parts` (deux parties + repli sous 1100 px), `cat-ind-row` (grille de la ligne), `cat-kpi-btn` (bouton affiché en texte simple) ; réutiliser `sr-only` ; pas de style mort.
 - Doc : mettre à jour `docs/architecture.md` si l'écran y est décrit.
 
 ## Critères d'acceptation
@@ -134,7 +142,7 @@ Les espacements verticaux entre les deux panneaux sont ceux de `cat-panel` (16 p
 4. Given une catégorie à 300 € en janvier, 0 en février, 0 en mars et mois de référence = 3, Then sa moyenne = 100 €. (auto)
 5. Given mois affiché = janvier de l'année en cours, Then pas de moyenne, l'UI affiche « pas de référence » et aucun écart ni couleur. (auto domaine + reviewer UI)
 6. Given montant 485 et moyenne 400, Then écart +85 € et +21,3 %, pastille rouge ; Given montant 40 et moyenne 100, Then −60 € et −60,0 %, pastille verte. (auto pour valeurs, reviewer pour couleurs)
-7. Given moyenne 0 et montant > 0, Then « nouveau » à la place du %. (auto)
+7. Given moyenne 0 et montant > 0, Then la variation est marquée « nouvelle » (pas de %) ; l'UI affiche seulement « nouveau » en pastille violette (ligne du tableau) ou en texte violet (sous-ligne de « Plus forte hausse »), sans montant d'écart visible ; « nouveau » est dans la partie visible et seul « , +X € » est en `sr-only` (lecture « nouveau, +X € », « nouveau » une seule fois). (auto pour la variation, reviewer pour l'affichage)
 8. Given une catégorie à 0 ce mois-ci avec moyenne > 0, Then elle est listée avec un écart négatif ; Given une catégorie à 0 partout, Then elle n'est pas listée. (auto)
 9. Given plusieurs catégories, Then tri par écart € décroissant puis nom ; sans référence, tri par montant décroissant. (auto)
 10. Given des écritures hors budget, `envin`, ou d'un autre mois, Then elles n'entrent ni dans le mois ni dans la moyenne (mêmes chiffres que « Répartition »). (auto)
@@ -144,12 +152,15 @@ Les espacements verticaux entre les deux panneaux sont ceux de `cat-panel` (16 p
 14. Given un changement de mois dans le sélecteur, Then l'onglet se recalcule. (reviewer)
 15. Given le lien « Voir les dépenses » d'une ligne, Then il ouvre les opérations filtrées sur la catégorie. (reviewer)
 16. Given un mois sans dépense ni référence, Then « Aucune dépense pour <mois> ». (reviewer)
-17. Given le bandeau, Then il n'est plus composé de 4 cartes encadrées : un panneau unique, colonnes séparées par un filet, total du mois en valeur hero violette (même rendu que le bandeau du tableau de bord). (reviewer)
-18. Given le tableau à 1440 px, Then aucun défilement horizontal ; colonnes numériques alignées à droite ; écart affiché en pastille (rouge, verte ou neutre) ; survol de ligne visible ; ligne « Sans catégorie » atténuée. (reviewer)
-19. Given le bandeau avec une catégorie en « Plus forte hausse » (ou « Plus forte baisse »), When on clique sur son nom (ou Entrée/Espace au clavier), Then les opérations s'ouvrent filtrées sur cette catégorie, comme le lien du tableau. (reviewer)
+17. Given le bandeau, Then il n'est plus composé de 4 cartes encadrées : un panneau unique, colonnes séparées par un filet, total du mois en valeur hero violette (`dash-hero`, à 25 px dans cet écran), panneau compact (`cat-panel is-ind`). (reviewer)
+18. Given le tableau à 1440 px et à 1280 px, Then aucun défilement horizontal ; colonnes numériques alignées à droite ; écart affiché en pastille (rouge, verte, neutre ou violette « nouveau ») à largeur adaptée au texte, sur une seule ligne ; survol de ligne visible ; nom de la ligne « Sans catégorie » en `var(--muted)`, sans opacité sur la ligne ; nom de catégorie tronqué avec ellipse et `title` complet. (reviewer)
+19. Given le bandeau avec une catégorie en « Plus forte hausse » (ou « Plus forte baisse »), Then son nom s'affiche comme du texte simple (aucun style de bouton visible) ; When on clique dessus (ou Entrée/Espace au clavier), Then les opérations s'ouvrent filtrées sur cette catégorie, comme le lien du tableau ; l'`aria-label` est « Voir les dépenses : <catégorie> » ; le focus clavier est visible ; au survol, fond arrondi `rgba(32,30,29,.06)` (padding 2 px 5 px, rayon 6 px), sans soulignement. (reviewer)
 20. Given aucune catégorie en hausse (ou en baisse) ou « pas de référence », Then le bandeau affiche « — » et le message, sans élément cliquable. (reviewer)
 21. Given le tableau, Then il n'y a pas de mini-barre « mois vs moyenne ». (reviewer)
-22. Given les styles, Then les classes et tokens existants sont réutilisés ; seule nouveauté de style : la variante `state-chip is-red` ; aucun style mort (anciens `cat-kpi*`). (reviewer)
+22. Given les styles, Then les classes et tokens existants sont réutilisés ; nouveautés de style autorisées : `state-chip is-red`, `cat-panel is-ind`, `cat-ind-parts`/`cat-ind-row`, `cat-kpi-btn` ; aucun style mort (anciennes cartes `cat-kpi*`, ancienne grille du tableau à une partie). (reviewer)
+23. Given 8 lignes (2 × 4), When la fenêtre fait 1440×900 puis 1280×720, Then bandeau et tableau sont entièrement visibles sans défilement vertical. Given beaucoup de catégories (ex. 20), Then la page défile verticalement, sans zone à défilement interne ni ligne masquée. (reviewer)
+24. Given N lignes triées, Then les ⌈N/2⌉ premières sont dans la partie 1 (gauche) et le reste dans la partie 2 (droite), « Sans catégorie » en dernière ligne de la partie 2 ; Given N = 1, Then la partie 2 n'est pas rendue ; chaque partie a ses en-têtes et un `role="table"` avec `aria-label` « Indicateurs par catégorie, partie 1 » / « partie 2 » ; un filet sépare les deux parties. (reviewer ; test de rendu possible)
+25. Given une fenêtre de moins de 1100 px de large, Then les deux parties sont l'une sous l'autre, séparées par un filet horizontal, sans défilement horizontal. (reviewer)
 
 ## Questions ouvertes
-Aucune. Décisions de la révision : ordre Indicateurs, Répartition, Gérer ; total du mois en grand (violet) + 3 indicateurs secondaires ; écart en pastille rouge/vert/neutre (`state-chip is-red` créé) ; hausse et baisse du bandeau cliquables ; pas de mini-barre.
+Aucune. Décisions de la révision : ordre Indicateurs, Répartition, Gérer ; total du mois en grand (violet, 25 px) + 3 indicateurs secondaires ; écart en pastille rouge/vert/neutre/violet (`state-chip is-red` créé) ; hausse et baisse du bandeau cliquables (texte simple) ; pas de mini-barre ; tableau en deux parties.
