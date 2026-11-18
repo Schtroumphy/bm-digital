@@ -1,4 +1,4 @@
-import { round2 } from './format';
+import { dayLabel, round2 } from './format';
 import { isSavingsBlock, isTransactionOffBudget } from './bank';
 import { ENVELOPES_ID } from './internalTransfers';
 import { lineKeysOf, targetsOf } from './movementTargets';
@@ -60,16 +60,29 @@ export function lineEntryAmounts(d: BudgetData, m: MonthKey, l: Pick<Line, 'key'
 
 /**
  * « Détails » of a line (white bubble of the Budget screen): the detail field of each real entry of the line in the month, one block per entry
- * (day, label, amount, then the detail). An entry without detail is listed too (date, label, amount only); empty text when the line has no entry.
+ * (date and amount on the first line, then the label, then the detail; the « : » makes the bubble draw the first line as a row). An entry without detail is listed too (date, label, amount only); empty text when the line has no entry.
  */
-export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'>): string {
-  const entries: { day: number; label: string; amount: number; detail?: string }[] = isSavingsBlock(l.block)
-    ? (d.accountMovements ?? []).filter(mv => mv.month === m && lineKeysOf(mv).includes(l.key))
-    : d.transactions.filter(t => t.month === m && t.type === (l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix') && t.target === l.key && !isTransactionOffBudget(t));
+export function lineEntryDetails(d: BudgetData, m: MonthKey, l: Pick<Line, 'key' | 'block'> & { linkedAccountId?: string }): string {
+  // Same sources as `lineEntryAmounts`, so the list always holds as many entries as the count shown in the tooltip. `credit` is the direction for the line
+  // (money coming in: a revenue, a transfer received, an entry assigned to the account); a negative amount (refund) flips it. Shown as « + » or « − ».
+  type Entry = { day: number; label: string; amount: number; detail?: string; credit: boolean };
+  let entries: Entry[];
+  if (isSavingsBlock(l.block)) {
+    const e = savingsLineEntries(d, m, l);
+    entries = [
+      ...e.toLine.map(mv => ({ ...mv, credit: true })),
+      ...e.passedOn.map(mv => ({ ...mv, credit: false })),
+      ...e.assigned.map(t => ({ ...t, credit: t.type === 'rev' })),
+    ];
+  } else {
+    entries = d.transactions
+      .filter(t => t.month === m && t.type === (l.block === 'var' ? 'var' : l.block === 'rev' ? 'rev' : 'fix') && t.target === l.key && !isTransactionOffBudget(t))
+      .map(t => ({ ...t, credit: l.block === 'rev' }));
+  }
   const fmt = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return entries
     .sort((a, b) => a.day - b.day)
-    .map(e => `${String(e.day).padStart(2, '0')} · ${e.label} · ${fmt(e.amount)} €${e.detail ? `\n${e.detail}` : ''}`)
+    .map(e => `${dayLabel(m, e.day)} : ${e.credit !== e.amount < 0 ? '+' : '−'}${fmt(Math.abs(e.amount))} €\n${e.label}${e.detail ? `\n${e.detail}` : ''}`)
     .join('\n\n');
 }
 

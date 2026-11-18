@@ -276,6 +276,12 @@ function Kpi({ label, hue, value, sub }: { label: string; hue: number; value: st
   );
 }
 
+function historyText(d: BudgetData, m: MonthKey, key: string): string {
+  const h = lineHistory(d, m, key);
+  const year = parseMonth(m).year;
+  return [`Budget cumulé ${year} : ${money(h.cumulBudget)}`, `Réel cumulé ${year} : ${money(h.cumul)}`, `Solde mois préc. : ${h.prevGap === null ? '—' : money(h.prevGap, true)}`].join('\n');
+}
+
 /** Explanation of the « Disponible (réel) » figure: the terms of its formula with the month's values. */
 function availableRealText(d: BudgetData, m: MonthKey): string {
   const b = availableRealBreakdown(d, m);
@@ -291,8 +297,7 @@ function availableRealText(d: BudgetData, m: MonthKey): string {
 
 function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, onOpenOperations }: { block: BlockKey; hideActual: boolean; leftKeys?: Set<string>; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
-  const { editing, setEditing, openMenu } = useUi();
-  const [hover, setHover] = useState<string | null>(null);
+  const { setEditing, openMenu } = useUi();
   const [details, setDetails] = useState<{ key: string; rect: DOMRect } | null>(null);
   const [horizonOpen, setHorizonOpen] = useState(false);
   useEffect(() => {
@@ -363,20 +368,15 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
             // A variable line shows what is left to spend; an empty actual shows the whole budget in grey (spec 0008, RG9, RG11).
             const gap = block === 'var' ? lineRemaining(l) : lineGap(l);
             const est = isSavings ? estimatedBalance(data, ledger, month, l) : null;
-            const rowEditing = !!editing?.endsWith(':' + l.key);
-            const hist = hover === l.key && !rowEditing ? lineHistory(data, month, l.key) : null;
             return (
               <div
                 key={l.key}
                 className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}${leftKeys?.has(l.key) ? ' is-left' : ''}`}
-                onMouseEnter={() => setHover(l.key)}
-                onMouseLeave={() => setHover(null)}
                 onContextMenu={e => {
                   setDetails(null);
-                  setHover(null);
                   const rect = e.currentTarget.getBoundingClientRect();
                   openMenu(e, l.name, [
-                    ...(lineTooltip(data, month, l, today) ? [{ label: 'Détails', onSelect: () => setDetails({ key: l.key, rect }) }] : []),
+                    { label: 'Détails', onSelect: () => setDetails({ key: l.key, rect }) },
                     ...(locked ? [] : [{ label: 'Supprimer la ligne', danger: true, onSelect: () => update(d => deleteLine(d, month, l.key)) }]),
                   ]);
                 }}
@@ -433,24 +433,7 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                   </div>
                 )}
                 {details?.key === l.key && (
-                  <DetailsBubble title={l.name} text={[lineTooltip(data, month, l, today), lineEntryDetails(data, month, l)].filter(Boolean).join('\n\n')} rect={details.rect} onClose={() => setDetails(null)} />
-                )}
-                {hist && (
-                  <div className="popover">
-                    <div className="popover-title">{l.name}</div>
-                    <div className="popover-row">
-                      <span>Budget cumulé {parseMonth(month).year}</span>
-                      <b>{money(hist.cumulBudget)}</b>
-                    </div>
-                    <div className="popover-row">
-                      <span>Réel cumulé {parseMonth(month).year}</span>
-                      <b>{money(hist.cumul)}</b>
-                    </div>
-                    <div className="popover-row">
-                      <span>Solde mois préc.</span>
-                      <b>{hist.prevGap === null ? '—' : money(hist.prevGap, true)}</b>
-                    </div>
-                  </div>
+                  <DetailsBubble title={l.name} text={[historyText(data, month, l.key), lineTooltip(data, month, l, today), lineEntryDetails(data, month, l)].filter(Boolean).join('\n\n')} rect={details.rect} onClose={() => setDetails(null)} />
                 )}
               </div>
             );

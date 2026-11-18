@@ -251,13 +251,26 @@ input, button { font-family: inherit; }
   display: flex; flex-direction: column; gap: 4px; pointer-events: none;
 }
 .details-bubble {
-  position: fixed; z-index: 80; background: #fff; border: 1px solid rgba(32, 30, 29, 0.08); border-radius: 11px;
-  box-shadow: 0 12px 32px rgba(32, 30, 29, 0.18); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
+  position: fixed; z-index: 80; background: #fff; border: 1px solid var(--hairline); border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(32, 30, 29, 0.18), 0 2px 6px rgba(32, 30, 29, 0.06); padding: 12px 14px 14px;
+  display: flex; flex-direction: column; gap: 10px; animation: details-in 0.12s ease-out;
 }
-.details-bubble-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.details-bubble-head .icon-btn { cursor: pointer; display: flex; opacity: 0.6; }
-.details-bubble-head .icon-btn:hover { opacity: 1; }
-.details-bubble-text { white-space: pre-line; font-size: 12px; line-height: 1.4; }
+@keyframes details-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.details-bubble-head { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--hairline); }
+.details-bubble-head .popover-title { font-size: 14px; }
+.details-bubble-head .icon-btn { cursor: pointer; display: flex; padding: 4px; border-radius: 7px; opacity: 0.55; }
+.details-bubble-head .icon-btn:hover { opacity: 1; background: var(--hairline); }
+.details-bubble-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: none; }
+.details-bubble-body::-webkit-scrollbar { display: none; }
+.details-section { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; line-height: 1.45; }
+.details-section + .details-section { padding-top: 10px; border-top: 1px solid var(--hairline); }
+.details-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.details-row span { color: var(--muted); }
+.details-row b { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.details-row b.is-credit { color: oklch(0.48 0.13 150); }
+.details-row b.is-debit { color: oklch(0.52 0.18 25); }
+.details-line { color: var(--ink); }
+.details-section .details-row + .details-line { font-weight: 600; }
 .popover-title { font-weight: 700; font-size: 12px; }
 .popover-row { display: flex; justify-content: space-between; }
 .popover-row span { color: rgba(32, 30, 29, 0.6); }

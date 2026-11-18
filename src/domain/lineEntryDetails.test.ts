@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyData } from './empty';
 import { lineEntryDetails } from './lineActuals';
+import { dayLabel } from './format';
 import type { BudgetData, Transaction } from './types';
 
 const M = '2027-03';
@@ -22,7 +23,7 @@ describe('Détails d’une ligne : champs détails des écritures du réel', () 
   it('une écriture sans détail est listée quand même', () => {
     const d = base();
     d.transactions = [tx('c', 5, 'rb')];
-    expect(lineEntryDetails(d, M, line)).toBe('05 · Op c · 45,00 €');
+    expect(lineEntryDetails(d, M, line)).toBe(dayLabel(M, 5) + ' : −45,00 €\nOp c');
   });
 
   it('vide quand la ligne n’a aucune écriture', () => {
