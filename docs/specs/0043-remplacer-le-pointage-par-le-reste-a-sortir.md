@@ -131,6 +131,7 @@ Réutiliser `organic.css` (`panel block`, `pt-line`, `pt-row`), même emplacemen
 - 2026-11-05 : RG20 et CA19 ajoutés (décision du développeur) : ligne « Solde de départ » avec la date de début de période, pour expliquer le calcul de la marge. Statut inchangé.
 - 2026-11-05 : RG21 et CA20 ajoutés (décision du développeur) : lignes « Mouvements déjà passés » et « = Solde réel » entre le solde de départ et les restes. Statut inchangé.
 - 2026-11-05 : RG22 et CA21 ajoutés (décision du développeur) : détail en bulle des mouvements déjà passés. Statut inchangé.
+- 2026-11-18 : amendement par la spec 0050 : les lignes `epa`/`inv` payées par un compte autre que le principal (« transferts entre comptes ») ne figurent plus dans « À venir » (RG7 « À virer », RG10 comptes affichés, marge, retard) ; elles ont leur propre encart. Statut inchangé.
 
 ## Questions ouvertes
 
