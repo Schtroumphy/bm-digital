@@ -14,7 +14,9 @@ export function LineQuickEntry({ month, line, locked }: { month: MonthKey; line:
   const { update } = useStore();
   const [open, setOpen] = useState(false);
   const savings = line.block === 'epa' || line.block === 'inv';
-  if (locked || (savings && !line.linkedAccountId)) return null;
+  // Variable expenses paid by card are imported from the bank: only the cash lines take a hand-typed entry.
+  const importedVariable = line.block === 'var' && line.payMode !== 'especes';
+  if (locked || importedVariable || (savings && !line.linkedAccountId)) return null;
   return (
     <>
       <button type="button" className="line-add" title="Ajouter une écriture" aria-label={`Ajouter une écriture sur ${line.name}`} onClick={e => { e.stopPropagation(); setOpen(o => !o); }}>
