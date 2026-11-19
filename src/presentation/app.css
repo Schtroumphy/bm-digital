@@ -728,7 +728,6 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .import-remember .text-input { width: 240px; height: 26px; }
 .import-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .mv-grid { display: grid; grid-template-columns: 54px 20px minmax(100px, 0.7fr) minmax(220px, 1fr) minmax(190px, 1fr) 96px 120px; column-gap: 10px; padding: 0 22px; align-items: center; }
-.import-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .links-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 220px 90px; column-gap: 10px; align-items: center; }
 .import-pairs { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 10px; background: oklch(0.96 0.04 90); }
 .import-pair { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 90px 220px; column-gap: 10px; align-items: center; font-size: 12.5px; }

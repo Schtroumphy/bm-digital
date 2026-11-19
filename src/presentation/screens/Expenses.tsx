@@ -69,17 +69,7 @@ export function ExpensesScreen({ month, statementSource, focus }: { month: Month
   const [importing, setImporting] = useState(false);
   if (importing) return <ImportWizard source={statementSource} onClose={() => setImporting(false)} />;
   return (
-    <>
-      <div className="import-bar">
-        <div className="tabs">
-          <div className="tab is-active">Saisie des dépenses</div>
-        </div>
-        <button type="button" className="btn-outline" onClick={() => setImporting(true)}>
-          Importer
-        </button>
-      </div>
-      <EntryTab month={month} focus={focus} />
-    </>
+    <EntryTab month={month} focus={focus} onImport={() => setImporting(true)} />
   );
 }
 
@@ -144,7 +134,7 @@ const ACCOUNT_GROUPS = ['Courant', 'Épargne', 'Enveloppes'] as const;
 /** Theme of an account in the filter list: current accounts, savings (and investments), envelopes. */
 const accountGroupOf = (a?: { kind?: AccountKind }): (typeof ACCOUNT_GROUPS)[number] => (a?.kind === 'enveloppe' ? 'Enveloppes' : a?.kind === 'epargne' || a?.kind === 'invest' ? 'Épargne' : 'Courant');
 
-function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | null }) {
+function EntryTab({ month, focus, onImport }: { month: MonthKey; focus: OperationsFocus | null; onImport: () => void }) {
   const { data, ledger, update } = useStore();
   const lines = monthLines(data, month);
   const locked = isMonthLocked(data, month);
@@ -519,10 +509,16 @@ function EntryTab({ month, focus }: { month: MonthKey; focus: OperationsFocus | 
                 {view === 'ops' ? `${txs.length} opération${txs.length > 1 ? 's' : ''} · total ${money(spentOf(txs))}` : `${allMovements.length} transfert${allMovements.length > 1 ? 's' : ''} · total ${money(allMovements.reduce((a, m) => a + m.amount, 0))}`}
               </div>
             </div>
-            <button type="button" className="btn-dark" onClick={() => setFormOpen(true)}>
-              <Icon name="plus" size={15} stroke={3} />
-              Nouvelle opération
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" className="btn-outline" onClick={onImport}>
+                <Icon name="download" size={15} />
+                Importer
+              </button>
+              <button type="button" className="btn-dark" onClick={() => setFormOpen(true)}>
+                <Icon name="plus" size={15} stroke={3} />
+                Nouvelle opération
+              </button>
+            </div>
           </div>
           <div style={{ margin: '0 22px 10px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="tabs" style={{ margin: 0 }}>
