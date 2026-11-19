@@ -3,6 +3,7 @@ import { budgetStartNeedsConfirmation, isBudgetStartEditable, isPeriodEndEditabl
 import { addMonths, monthLabel } from '../../domain/format';
 import { budgetStartBounds, fullDate, isRealDate, periodEndBounds, periodOf, validateBudgetStart, validatePeriodEnd } from '../../domain/periods';
 import type { MonthKey } from '../../domain/types';
+import { Icon } from './Icon';
 import { useStore } from '../state/store';
 
 /**
@@ -47,13 +48,14 @@ export function PeriodBar({ month }: { month: MonthKey }) {
   };
 
   return (
-    <div className="panel kpi cpt-period" aria-label={`Période de ${monthLabel(month)}`}>
+    <div className="panel cpt-period" aria-label={`Période de ${monthLabel(month)}`}>
       <div className="kpi-label cpt-label-tip">
+        <Icon name="calendar" size={16} stroke={2} />
         Période de {monthLabel(month).toLowerCase()}
         <span className="cpt-tip" title="Le mois du budget court de la date de début à la date de fin. Les soldes et les mouvements de l’onglet Comptes sont calculés sur cette période. Le début d’un mois est le lendemain de la fin du précédent." aria-label="Voir l’explication">i</span>
       </div>
       <div className="cpt-period-row">
-        <span>du</span>
+        <span className="cpt-sep">du</span>
         {isFirst ? (
           <>
             <input
@@ -70,9 +72,9 @@ export function PeriodBar({ month }: { month: MonthKey }) {
             {data.settings.startDate && startEditable && <span className="btn-quiet" onClick={resetStart}>1er du mois</span>}
           </>
         ) : (
-          <b title={`Lendemain de la fin de ${monthLabel(addMonths(month, -1)).toLowerCase()}`}>{fullDate(period.start)}</b>
+          <b className="cpt-date" title={`Lendemain de la fin de ${monthLabel(addMonths(month, -1)).toLowerCase()}`}>{fullDate(period.start)}</b>
         )}
-        <span>au</span>
+        <span className="cpt-sep">au</span>
         <input
           className="text-input"
           type="date"

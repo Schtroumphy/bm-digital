@@ -25,41 +25,41 @@ import { newSimulation, type SimulationDraft } from '../domain/simulation';
 
 export type Screen = 'dashboard' | 'budget' | 'dep' | 'env' | 'comptes' | 'releve' | 'prevAnn' | 'yearView' | 'template' | 'setup' | 'close' | 'goals' | 'simulation' | 'categories';
 
-type NavItem = { id: Screen | 'invest'; label: string; icon: IconName; soon?: boolean };
+type NavItem = { id: Screen | 'invest'; label: string; icon: IconName; hue: number; soon?: boolean };
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Suivi',
     items: [
-      { id: 'dashboard', label: 'Accueil', icon: 'house' },
-      { id: 'budget', label: 'Budget', icon: 'budget' },
-      { id: 'dep', label: 'Opérations', icon: 'list' },
-      { id: 'comptes', label: 'Soldes', icon: 'bank' },
-      { id: 'env', label: 'Enveloppes', icon: 'mail' },
-      { id: 'releve', label: 'Relevé', icon: 'note' },
+      { id: 'dashboard', label: 'Accueil', icon: 'house', hue: 260 },
+      { id: 'budget', label: 'Budget', icon: 'budget', hue: 150 },
+      { id: 'dep', label: 'Opérations', icon: 'list', hue: 35 },
+      { id: 'comptes', label: 'Soldes', icon: 'bank', hue: 220 },
+      { id: 'env', label: 'Enveloppes', icon: 'mail', hue: 80 },
+      { id: 'releve', label: 'Relevé', icon: 'note', hue: 330 },
     ],
   },
   {
     title: 'Analyse',
     items: [
-      { id: 'yearView', label: 'Annuel', icon: 'barChart' },
-      { id: 'categories', label: 'Analyse', icon: 'lineChart' },
-      { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar' },
-      { id: 'simulation', label: 'Simulation', icon: 'flask' },
+      { id: 'yearView', label: 'Annuel', icon: 'barChart', hue: 190 },
+      { id: 'categories', label: 'Analyse', icon: 'lineChart', hue: 300 },
+      { id: 'prevAnn', label: 'Prévisionnel', icon: 'calendar', hue: 20 },
+      { id: 'simulation', label: 'Simulation', icon: 'flask', hue: 170 },
     ],
   },
   {
     title: 'Patrimoine',
     items: [
-      { id: 'goals', label: 'Objectifs', icon: 'target' },
-      { id: 'invest', label: 'Placements', icon: 'trend', soon: true },
+      { id: 'goals', label: 'Objectifs', icon: 'target', hue: 10 },
+      { id: 'invest', label: 'Placements', icon: 'trend', hue: 120, soon: true },
     ],
   },
   {
     title: 'Période',
     items: [
-      { id: 'setup', label: 'Démarrage', icon: 'flag' },
-      { id: 'close', label: 'Clôture', icon: 'calendarCheck' },
+      { id: 'setup', label: 'Démarrage', icon: 'flag', hue: 140 },
+      { id: 'close', label: 'Clôture', icon: 'calendarCheck', hue: 250 },
     ],
   },
 ];
@@ -158,7 +158,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
   return (
     <div className="app">
       <nav className="sidebar">
-        <div className="brand">b</div>
+        <div className="brand" aria-label="Budget Perso">B<span>M</span></div>
         {NAV_GROUPS.map(g => {
           const items = g.items.filter(n => !(n.id === 'setup' && started));
           return (
@@ -168,6 +168,7 @@ export function App({ statementSource }: { statementSource: StatementSource }) {
                 <div
                   key={n.id}
                   className={`nav-item${screen === n.id ? ' is-active' : ''}${n.soon ? ' is-soon' : ''}`}
+                  style={{ '--nav-hue': n.hue } as React.CSSProperties}
                   title={n.soon ? `${n.label} · bientôt disponible` : n.label}
                   onClick={n.soon ? undefined : () => go(n.id as Screen)}
                 >
