@@ -201,10 +201,7 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
           </div>
         )}
         {em && em.alloc > 0 && (
-          <div>
-            <div className="split-bar"><div style={{ width: `${Math.max(0, Math.min(100, Math.round((em.spent / em.alloc) * 100)))}%`, background: 'var(--t-base)' }} /></div>
-            <div className="muted is-small">{money(em.spent)} sur {money(em.alloc)} alloués</div>
-          </div>
+          <div className="muted is-small">{money(em.spent)} sur {money(em.alloc)} alloués</div>
         )}
         {envTotal && (
           <div className="cpt-flow" title="Solde virtuel du compte + espèces. Chiffre d’affichage : il n’entre dans aucun total de cet écran.">
