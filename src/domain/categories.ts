@@ -201,3 +201,36 @@ export function categoryEntries(d: BudgetData, month: MonthKey, categoryId: stri
     .map(t => ({ id: t.id, date: t.bankDate ?? `${t.month}-${String(t.day).padStart(2, '0')}`, label: t.label, amount: t.amount }))
     .sort((a, b) => b.date.localeCompare(a.date) || a.label.localeCompare(b.label, 'fr'));
 }
+
+export interface CategoryYearRow {
+  /** Null = the « Sans catégorie » row. */
+  category: Category | null;
+  /** Amount of each of the 12 months; null when the month is not initialised (no figure to show). */
+  values: (number | null)[];
+  total: number;
+  /** Mean over the months that have a figure; null when none. */
+  average: number | null;
+}
+
+/**
+ * Expenses of a year by category: one row per category in the order of the categories list, « Sans catégorie » last, the rows with nothing
+ * all year left out. Each month is the `categoryBreakdown` of that month, so the figures match the monthly screen.
+ */
+export function categoryYear(d: BudgetData, year: number): { rows: CategoryYearRow[]; totals: (number | null)[]; total: number; average: number | null } {
+  const keys = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}` as MonthKey);
+  const live = keys.map(k => !!d.months[k]?.initialized);
+  const breakdowns = keys.map((k, i) => (live[i] ? categoryBreakdown(d, k) : null));
+  const build = (category: Category | null): CategoryYearRow => {
+    const values = breakdowns.map(b => (b === null ? null : (category === null ? b.none?.amount : b.rows.find(r => r.category!.id === category.id)?.amount) ?? 0));
+    return summarise(category, values);
+  };
+  const summarise = (category: Category | null, values: (number | null)[]): CategoryYearRow => {
+    const vs = values.filter((v): v is number => v !== null);
+    const total = round2(vs.reduce((a, b) => a + b, 0));
+    return { category, values, total, average: vs.length ? round2(total / vs.length) : null };
+  };
+  const rows = [...(d.categories ?? []).map(build), build(null)].filter(r => r.total !== 0);
+  const totals = breakdowns.map(b => (b === null ? null : b.total));
+  const all = summarise(null, totals);
+  return { rows, totals, total: all.total, average: all.average };
+}

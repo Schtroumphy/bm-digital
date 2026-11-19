@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { categoryEmoji, categoryYear } from '../../domain/categories';
 import { DetailsBubble } from '../components/DetailsBubble';
 import { Icon } from '../components/Icon';
-import { tone } from '../components/tone';
+import { tone, toneVars } from '../components/tone';
 import { YearLineChart } from '../components/YearLineChart';
 import { YearPie } from '../components/YearPie';
 import { currentMonthKey, money, MONTH_SHORT, monthLabel, percent } from '../../domain/format';
@@ -29,6 +30,22 @@ const color = (id: YearBlockId | YearSliceId) => tone(HUES[id]).base;
 
 /** Vue annuelle (spec 0044): read-only table of the 12 months of a year, by block and line. */
 export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpenOperations: (month: string, focus: OperationsFocus) => void }) {
+  const [tab, setTab] = useState<'blocs' | 'categories'>('blocs');
+  return (
+    <>
+      <div className="tabs" role="tablist" aria-label="Vue annuelle">
+        {([['blocs', 'Par bloc'], ['categories', 'Dépenses par catégorie']] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'blocs' ? <YearBlocks year={year} onOpenOperations={onOpenOperations} /> : <YearCategories year={year} />}
+    </>
+  );
+}
+
+function YearBlocks({ year, onOpenOperations }: { year: number; onOpenOperations: (month: string, focus: OperationsFocus) => void }) {
   const { data, ledger } = useStore();
   const { openMenu } = useUi();
   const [details, setDetails] = useState<{ title: string; text: string; rect: DOMRect } | null>(null);
@@ -43,11 +60,11 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
   const k = view.kpis;
   const kind = mode === 'budget' ? 'budgétés' : 'réels';
   const cur = view.months.findIndex(m => m.month === today);
-  const kpiCards: { label: string; value: number | null; sub: string }[] = [
-    { label: 'Revenus', value: k.income, sub: k.incomeMean === null ? dash : `soit ${money(k.incomeMean)} par mois` },
-    { label: 'Dépenses', value: k.expenses, sub: k.planned === null ? dash : `dont ${money(k.planned)} prévues` },
-    { label: 'Épargne et placements', value: k.savings, sub: k.savingsPct === null ? dash : `${percent(k.savingsPct)} des revenus` },
-    { label: 'Reste à vivre', value: k.left, sub: k.left === null ? dash : 'après épargne' },
+  const kpiCards: { label: string; value: number | null; sub: string; hue: number; icon: 'trend' | 'list' | 'target' | 'bank' }[] = [
+    { label: 'Revenus', value: k.income, sub: k.incomeMean === null ? dash : `soit ${money(k.incomeMean)} par mois`, hue: HUES.rev, icon: 'trend' },
+    { label: 'Dépenses', value: k.expenses, sub: k.planned === null ? dash : `dont ${money(k.planned)} prévues`, hue: HUES.cre, icon: 'list' },
+    { label: 'Épargne et placements', value: k.savings, sub: k.savingsPct === null ? dash : `${percent(k.savingsPct)} des revenus`, hue: HUES.epa, icon: 'target' },
+    { label: 'Reste à vivre', value: k.left, sub: k.left === null ? dash : 'après épargne', hue: HUES.left, icon: 'bank' },
   ];
 
   const toggle = (id: YearBlockId) =>
@@ -56,6 +73,10 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
       if (!next.delete(id)) next.add(id);
       return next;
     });
+
+  const allIds = view.blocks.filter(b => b.id !== 'pln').map(b => b.id);
+  const allOpen = allIds.every(id => open.has(id));
+  const toggleAll = () => setOpen(allOpen ? new Set() : new Set(allIds));
 
   // Display of one value: « — » for an unknown month, and for a zero where the row asks for it (RG7).
   const fmt = (r: YearRow, v: number | null, f: (n: number) => string = n => money(n)) => (v === null || (r.dashZero && v === 0) ? dash : f(v));
@@ -67,7 +88,7 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
         const open = entries ? () => onOpenOperations(view.months[i].month, { type: entries.type, target: entries.target, label: `${line!.name} · ${monthLabel(view.months[i].month)}` }) : undefined;
         const recap = entries ? [`${entries.count} opération${entries.count > 1 ? 's' : ''} · ${money(entries.total)}`, ...entries.top.map(t => `${t.date.slice(8, 10)}/${t.date.slice(5, 7)} · ${t.label} · ${money(t.amount)}`), ...(entries.count > entries.top.length ? [`… et ${entries.count - entries.top.length} autre${entries.count - entries.top.length > 1 ? 's' : ''}`] : []), 'Cliquer pour voir le détail'].join('\n') : undefined;
         return (
-          <div key={i} className={`ya-cell${v === null ? ' is-empty' : ''}${open ? ' is-link' : ''}`} onClick={open ? e => { e.stopPropagation(); open(); } : undefined} title={recap} role={open ? 'link' : undefined} tabIndex={open ? 0 : undefined} onKeyDown={open ? e => e.key === 'Enter' && open() : undefined}>
+          <div key={i} className={`ya-cell${v === null ? ' is-empty' : ''}${open ? ' is-link' : ''}${i === cur ? ' is-now' : ''}`} onClick={open ? e => { e.stopPropagation(); open(); } : undefined} title={recap} role={open ? 'link' : undefined} tabIndex={open ? 0 : undefined} onKeyDown={open ? e => e.key === 'Enter' && open() : undefined}>
             {delta !== null ? (
               <span className="ya-with-delta">
                 <span className={`ya-delta${good ? ((delta > 0) === (good === 'up') ? ' is-good' : ' is-bad') : ''}`} title="Évolution par rapport au mois précédent">{delta > 0 ? '+' : '−'}{percent(Math.abs(delta)).replace(' %', '')} %</span>
@@ -99,24 +120,38 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
   return (
     <>
       <div className="ya-bar">
-        <div className="ya-seg" role="group" aria-label="Valeurs affichées">
-          {(['budget', 'real'] as const).map(m => (
-            <button key={m} type="button" className={`ya-seg-btn${mode === m ? ' is-on' : ''}`} aria-pressed={mode === m} onClick={() => setMode(m)}>
-              {m === 'budget' ? 'Budgété' : 'Réel'}
-            </button>
-          ))}
+        <div className="ya-bar-tools">
+          <div className="ya-seg" role="group" aria-label="Valeurs affichées">
+            {(['budget', 'real'] as const).map(m => (
+              <button key={m} type="button" className={`ya-seg-btn${mode === m ? ' is-on' : ''}`} aria-pressed={mode === m} onClick={() => setMode(m)}>
+                {m === 'budget' ? 'Budgété' : 'Réel'}
+              </button>
+            ))}
+          </div>
+          <div className="ya-seg" role="group" aria-label="Colonne de synthèse">
+            {([false, true] as const).map(a => (
+              <button key={String(a)} type="button" className={`ya-seg-btn${average === a ? ' is-on' : ''}`} aria-pressed={average === a} onClick={() => setAverage(a)}>
+                {a ? 'Moyenne' : 'Total'}
+              </button>
+            ))}
+          </div>
+          <button type="button" className={`switch${showEvolution ? ' is-on' : ''}`} role="switch" aria-checked={showEvolution} onClick={() => setShowEvolution(e => !e)} title="Afficher l’évolution en % par rapport au mois précédent">
+            <span className="switch-track">
+              <span className="switch-thumb" />
+            </span>
+            Évolution mensuelle
+          </button>
         </div>
-        <button type="button" className={`switch${showEvolution ? ' is-on' : ''}`} role="switch" aria-checked={showEvolution} onClick={() => setShowEvolution(e => !e)} title="Afficher l’évolution en % par rapport au mois précédent">
-          <span className="switch-track">
-            <span className="switch-thumb" />
-          </span>
-          Évolution mensuelle
-        </button>
       </div>
       <div className="ya-kpis">
         {kpiCards.map(c => (
-          <div key={c.label} className="panel-lg ya-kpi">
-            <div className="ya-kpi-label">{c.label}</div>
+          <div key={c.label} className="panel-lg ya-kpi" style={toneVars(c.hue)}>
+            <div className="ya-kpi-head">
+              <span className="ya-kpi-icon">
+                <Icon name={c.icon} size={16} stroke={2} />
+              </span>
+              <span className="ya-kpi-label">{c.label}</span>
+            </div>
             <div className="ya-kpi-value">{c.value === null ? dash : money(c.value)}</div>
             <div className="ya-kpi-sub">{c.sub}</div>
           </div>
@@ -150,6 +185,12 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
           )}
         </div>
       </div>
+      <div className="ya-table-head">
+        <h3>Détail par bloc</h3>
+        <button type="button" className="btn-quiet" onClick={toggleAll}>
+          {allOpen ? 'Tout replier' : 'Tout déplier'}
+        </button>
+      </div>
       <div className="panel-lg ya-scroll">
         <div className="ya-table">
           <div className="ya-row ya-head">
@@ -172,7 +213,7 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
             const isOpen = open.has(b.id);
             return (
               <div key={b.id}>
-                <button type="button" className="ya-row ya-block" aria-expanded={isOpen} onClick={() => toggle(b.id)}>
+                <button type="button" className="ya-row ya-block" style={toneVars(HUES[b.id])} aria-expanded={isOpen} onClick={() => toggle(b.id)}>
                   <div className="ya-label">
                     <span className={`ya-chev${isOpen ? ' is-open' : ''}`}>
                       <Icon name="chevronRight" size={14} />
@@ -263,6 +304,68 @@ export function YearViewScreen({ year, onOpenOperations }: { year: number; onOpe
         </div>
       </div>
       {details && <DetailsBubble title={details.title} text={details.text} rect={details.rect} onClose={() => setDetails(null)} />}
+    </>
+  );
+}
+
+/** Tab « Dépenses par catégorie »: the expenses of the 12 months, one line per category (same figures as the monthly « Répartition »). */
+function YearCategories({ year }: { year: number }) {
+  const { data } = useStore();
+  const [average, setAverage] = useState(false);
+  const today = currentMonthKey();
+  const y = categoryYear(data, year);
+  const cur = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`).indexOf(today);
+  const cell = (v: number | null) => (v === null || v === 0 ? dash : money(v));
+  const grid = { gridTemplateColumns: '232px repeat(12, minmax(82px, 1fr)) minmax(108px, 1.3fr)' };
+  return (
+    <>
+      <div className="ya-bar">
+        <div className="ya-bar-tools">
+          <div className="ya-seg" role="group" aria-label="Colonne de synthèse">
+            {([false, true] as const).map(a => (
+              <button key={String(a)} type="button" className={`ya-seg-btn${average === a ? ' is-on' : ''}`} aria-pressed={average === a} onClick={() => setAverage(a)}>
+                {a ? 'Moyenne' : 'Total'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="panel-lg ya-scroll">
+        <div className="ya-table" style={{ minWidth: 1320 }}>
+          <div className="ya-row ya-head" style={{ ...grid, minWidth: 1320 }}>
+            <div className="ya-label" />
+            {MONTH_SHORT.map((m, i) => (
+              <div key={m} className={`ya-cell ya-head-cell${i === cur ? ' is-current' : ''}`}>
+                <span>{m}</span>
+              </div>
+            ))}
+            <div className="ya-cell ya-head-cell is-total">{average ? 'Moyenne' : 'Total'}</div>
+          </div>
+          {y.rows.length === 0 && <div className="ya-empty">Aucune dépense pour {year}</div>}
+          {y.rows.map(r => (
+            <div key={r.category?.id ?? 'none'} className="ya-row ya-line" style={{ ...grid, minWidth: 1320 }}>
+              <div className="ya-label">
+                <span className="dot" style={{ background: r.category ? tone(r.category.hue).base : 'var(--neutral-fill)' }} />
+                {r.category && categoryEmoji(r.category) ? `${categoryEmoji(r.category)} ` : ''}
+                {r.category?.name ?? 'Sans catégorie'}
+              </div>
+              {r.values.map((v, i) => (
+                <div key={i} className={`ya-cell${v === null || v === 0 ? ' is-empty' : ''}${i === cur ? ' is-now' : ''}`}>{cell(v)}</div>
+              ))}
+              <div className="ya-cell is-total">{cell(average ? r.average : r.total)}</div>
+            </div>
+          ))}
+          {y.rows.length > 0 && (
+            <div className="ya-row ya-syn ya-total-row" style={{ ...grid, minWidth: 1320 }}>
+              <div className="ya-label">Dépenses totales</div>
+              {y.totals.map((v, i) => (
+                <div key={i} className={`ya-cell${v === null || v === 0 ? ' is-empty' : ''}`}>{cell(v)}</div>
+              ))}
+              <div className="ya-cell is-total">{cell(average ? y.average : y.total)}</div>
+            </div>
+          )}
+        </div>
+      </div>
     </>
   );
 }
