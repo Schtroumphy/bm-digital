@@ -1546,3 +1546,11 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .tr-field:disabled { opacity: 0.5; cursor: not-allowed; }
 .tr-form .menu-pill { width: 100%; box-sizing: border-box; justify-content: space-between; outline: none; }
 .tr-form .acc-menu { top: 42px; width: 100%; max-height: 220px; overflow-y: auto; box-sizing: border-box; }
+
+/* Sortable headers of the « Par catégorie » table */
+.sort-head { display: inline-flex; align-items: center; gap: 3px; }
+.sort-head.num { justify-content: flex-end; }
+.sort-arrows { display: inline-flex; flex-direction: column; line-height: 0; }
+.sort-btn { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 10px; padding: 0; border: 0; background: none; color: var(--muted); opacity: 0.55; cursor: pointer; }
+.sort-btn:hover { opacity: 1; }
+.sort-btn.is-on { opacity: 1; color: var(--ink, currentColor); }

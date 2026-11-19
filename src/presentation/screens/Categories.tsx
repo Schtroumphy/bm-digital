@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { addCategory, deleteCategory, renameCategory, setCategoryEmoji, usedMessage } from '../../application/categories';
 import { categoryBreakdown, categoryEmoji, categoryEntries, categoryUsage, EMOJI_CHOICES, parseCategoryName, pieSlices, type CategoryShare } from '../../domain/categories';
 import { categoryIndicators, type IndicatorRow, type Variation } from '../../domain/categoryIndicators';
@@ -41,15 +41,15 @@ export function CategoriesScreen({ month, onOpenOperations }: { month: MonthKey;
         ))}
       </div>
       <div id={`cat-panel-${tab}`} role="tabpanel" aria-labelledby={`cat-tab-${tab}`}>
-        {tab === 'indicateurs' && <IndicatorsSection month={month} onOpenOperations={onOpenOperations} />}
-        {tab === 'repartition' && <BreakdownSection key={month} month={month} onOpenOperations={onOpenOperations} />}
+        {tab === 'indicateurs' && <IndicatorsSection key={month} month={month} />}
+        {tab === 'repartition' && <BreakdownSection key={month} month={month} />}
         {tab === 'gerer' && <ManageSection onOpenOperations={onOpenOperations} />}
       </div>
     </>
   );
 }
 
-function BreakdownSection({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
+function BreakdownSection({ month }: { month: MonthKey }) {
   const { data } = useStore();
   // Slice or row under the pointer (shared by the pie and the list, RG28) and the one row unfolded; both are forgotten when the month changes.
   const [hover, setHover] = useState<string | null>(null);
@@ -77,7 +77,7 @@ function BreakdownSection({ month, onOpenOperations }: { month: MonthKey; onOpen
             <CategoryPie slices={pieSlices(breakdown)} total={breakdown.total} active={hover} onActive={setHover} onSelect={toggle} />
             <div className="cat-legend">
               {rows.map(r => (
-                <ShareRow key={r.category?.id ?? 'none'} row={r} max={maxAmount} month={month} active={hover === (r.category?.id ?? 'none')} dimmed={hover !== null && hover !== (r.category?.id ?? 'none')} open={open === (r.category?.id ?? 'none')} onHover={setHover} onToggle={toggle} onOpenOperations={onOpenOperations} />
+                <ShareRow key={r.category?.id ?? 'none'} row={r} max={maxAmount} month={month} active={hover === (r.category?.id ?? 'none')} dimmed={hover !== null && hover !== (r.category?.id ?? 'none')} open={open === (r.category?.id ?? 'none')} onHover={setHover} onToggle={toggle} />
               ))}
             </div>
           </div>
@@ -87,8 +87,7 @@ function BreakdownSection({ month, onOpenOperations }: { month: MonthKey; onOpen
   );
 }
 
-function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle, onOpenOperations }: { row: CategoryShare; max: number; month: MonthKey; active: boolean; dimmed: boolean; open: boolean; onHover: (id: string | null) => void; onToggle: (id: string) => void; onOpenOperations: (f: OperationsFocus) => void }) {
-  const { data } = useStore();
+function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle }: { row: CategoryShare; max: number; month: MonthKey; active: boolean; dimmed: boolean; open: boolean; onHover: (id: string | null) => void; onToggle: (id: string) => void }) {
   const id = row.category?.id ?? 'none';
   const name = row.category?.name ?? 'Sans catégorie';
   return (
@@ -104,22 +103,29 @@ function ShareRow({ row, max, month, active, dimmed, open, onHover, onToggle, on
             <span style={{ display: 'block', height: '100%', borderRadius: 99, width: `${max > 0 ? (row.amount / max) * 100 : 0}%`, background: row.category ? tone(row.category.hue).base : 'var(--neutral-fill)' }} />
           </span>
         </button>
-        <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${name}`} title="Voir les dépenses" onClick={() => onOpenOperations(row.category ? { categoryId: row.category.id, label: name } : { uncategorized: true, label: name })}>
-          <Icon name="list" size={15} />
-        </button>
       </div>
       {open && (
-        <ul id={`cat-detail-${id}`} className="cat-detail" aria-label={`Écritures : ${name}`}>
-          {categoryEntries(data, month, row.category?.id ?? null).map(e => (
-            <li key={e.id}>
-              <span className="cat-detail-date">{e.date.slice(8, 10)}/{e.date.slice(5, 7)}</span>
-              <span className="cat-detail-label">{e.label}</span>
-              <b className="num">{money(e.amount)}</b>
-            </li>
-          ))}
-        </ul>
+        <EntryList id={`cat-detail-${id}`} name={name} month={month} categoryId={row.category?.id ?? null} />
       )}
     </div>
+  );
+}
+
+/** Operations of a category for the month, listed in place. */
+function EntryList({ id, name, month, categoryId }: { id: string; name: string; month: MonthKey; categoryId: string | null }) {
+  const { data } = useStore();
+  const entries = categoryEntries(data, month, categoryId);
+  return (
+    <ul id={id} className="cat-detail" aria-label={`Écritures : ${name}`}>
+      {entries.length === 0 && <li className="muted">Aucune écriture</li>}
+      {entries.map(e => (
+        <li key={e.id}>
+          <span className="cat-detail-date">{e.date.slice(8, 10)}/{e.date.slice(5, 7)}</span>
+          <span className="cat-detail-label">{e.label}</span>
+          <b className="num">{money(e.amount)}</b>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -149,6 +155,30 @@ const NO_REFERENCE_CELL = (
     pas de référence
   </span>
 );
+type SortKey = 'name' | 'amount' | 'average' | 'gap';
+interface Sort { key: SortKey; dir: 'asc' | 'desc' }
+const SORT_VALUE: Record<Exclude<SortKey, 'name'>, (r: IndicatorRow) => number | null> = {
+  amount: r => r.amount,
+  average: r => r.average,
+  gap: r => r.variation?.delta ?? null,
+};
+
+/** Header with its two arrows: a click on the active arrow brings the default order (the one of the categories list) back. */
+function SortHead({ label, k, sort, onSort, num = false }: { label: string; k: SortKey; sort: Sort | null; onSort: (s: Sort | null) => void; num?: boolean }) {
+  const on = (dir: 'asc' | 'desc') => sort?.key === k && sort.dir === dir;
+  const arrow = (dir: 'asc' | 'desc') => (
+    <button type="button" className={`sort-btn${on(dir) ? ' is-on' : ''}`} aria-pressed={on(dir)} aria-label={`Trier par ${label.toLowerCase()} ${dir === 'asc' ? 'croissant' : 'décroissant'}`} onClick={() => onSort(on(dir) ? null : { key: k, dir })}>
+      <Icon name={dir === 'asc' ? 'chevronUp' : 'chevronDown'} size={11} />
+    </button>
+  );
+  return (
+    <span role="columnheader" className={`sort-head${num ? ' num' : ''}`} aria-sort={sort?.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+      {label}
+      <span className="sort-arrows">{arrow('asc')}{arrow('desc')}</span>
+    </span>
+  );
+}
+
 const rowName = (r: IndicatorRow) => `${r.category && categoryEmoji(r.category) ? `${categoryEmoji(r.category)} ` : ''}${r.category?.name ?? 'Sans catégorie'}`;
 
 /** « janv.–oct. 2026 », or « janv. 2026 » for a single month. */
@@ -159,18 +189,38 @@ function referenceLabel(months: MonthKey[]): string {
 }
 
 /** Tab « Indicateurs » (spec 0052): the month shown against the monthly average of its year, over the past months only. Read only. */
-function IndicatorsSection({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
+function IndicatorsSection({ month }: { month: MonthKey }) {
   const { data } = useStore();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [sort, setSort] = useState<Sort | null>(null);
   const r = categoryIndicators(data, month, currentMonthKey());
   const s = r.summary;
   const hasReference = r.reference.length > 0;
   const labels = r.trendMonths.map(m => `${MONTH_SHORT[parseMonth(m).month]} ${m.slice(0, 4)}`);
   // Two parts side by side, in the order of the sort: the first half on the left, the rest (« Sans catégorie » last) on the right.
-  const half = Math.ceil(r.rows.length / 2);
-  const parts = [r.rows.slice(0, half), r.rows.slice(half)].filter(p => p.length > 0);
+  const order = new Map((data.categories ?? []).map((c, i) => [c.id, i]));
+  const byOrder = (a: IndicatorRow, b: IndicatorRow) => (order.get(a.category!.id) ?? 0) - (order.get(b.category!.id) ?? 0);
+  const real = r.rows.filter(x => x.category !== null);
+  const none = r.rows.filter(x => x.category === null);
+  const dir = sort?.dir === 'desc' ? -1 : 1;
+  const sortedReal = !sort
+    ? [...real].sort(byOrder)
+    : [...real].sort((a, b) => {
+        if (sort.key === 'name') return dir * a.category!.name.localeCompare(b.category!.name, 'fr');
+        const va = SORT_VALUE[sort.key](a);
+        const vb = SORT_VALUE[sort.key](b);
+        if (va === null || vb === null) return va === vb ? byOrder(a, b) : va === null ? 1 : -1; // no value: last, both ways
+        return dir * (va - vb) || byOrder(a, b);
+      });
+  const rows = [...sortedReal, ...none];
+  const half = Math.ceil(rows.length / 2);
+  const parts = [rows.slice(0, half), rows.slice(half)].filter(p => p.length > 0);
+  const toggle = (row: IndicatorRow) => setOpenId(o => (o === (row.category?.id ?? 'none') ? null : row.category?.id ?? 'none'));
+  /** From the strip: unfold the category in the table below and bring it into view. */
   const open = (row: IndicatorRow) => {
-    const name = row.category?.name ?? 'Sans catégorie';
-    onOpenOperations(row.category ? { categoryId: row.category.id, label: name } : { uncategorized: true, label: name });
+    const id = row.category?.id ?? 'none';
+    setOpenId(id);
+    window.setTimeout(() => document.getElementById(`cat-ind-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
   };
   /** Rise / fall column of the strip: the category is a button (RG16); « — » and a message when there is nothing to click. */
   const pick = (label: string, row: IndicatorRow | null, empty: string) => {
@@ -180,7 +230,7 @@ function IndicatorsSection({ month, onOpenOperations }: { month: MonthKey; onOpe
         <div className="kpi-label">{label}</div>
         <div className="dash-val cat-kpi-name">
           {clickable ? (
-            <button type="button" className="cat-kpi-btn" aria-label={`Voir les dépenses : ${row.category?.name}`} title="Voir les dépenses" onClick={() => open(row)}>
+            <button type="button" className="cat-kpi-btn" aria-label={`Voir les opérations : ${row.category?.name}`} title="Voir les opérations" onClick={() => open(row)}>
               {rowName(row)}
             </button>
           ) : (
@@ -238,10 +288,10 @@ function IndicatorsSection({ month, onOpenOperations }: { month: MonthKey; onOpe
                 <div role="rowgroup">
                   <div className="cat-ind-row is-head" role="row">
                     <span role="presentation" aria-hidden="true" />
-                    <span role="columnheader">Catégorie</span>
-                    <span role="columnheader" className="num">Mois</span>
-                    <span role="columnheader" className="num">Moyenne</span>
-                    <span role="columnheader">Écart</span>
+                    <SortHead label="Catégorie" k="name" sort={sort} onSort={setSort} />
+                    <SortHead label="Mois" k="amount" sort={sort} onSort={setSort} num />
+                    <SortHead label="Moyenne" k="average" sort={sort} onSort={setSort} num />
+                    <SortHead label="Écart" k="gap" sort={sort} onSort={setSort} />
                     <span role="columnheader">Tendance</span>
                     <span role="presentation" aria-hidden="true" />
                   </div>
@@ -250,8 +300,11 @@ function IndicatorsSection({ month, onOpenOperations }: { month: MonthKey; onOpe
                   {part.map(row => {
                     const name = row.category?.name ?? 'Sans catégorie';
                     const color = row.category ? tone(row.category.hue).base : 'var(--neutral-fill)';
+                    const id = row.category?.id ?? 'none';
+                    const isOpen = openId === id;
                     return (
-                      <div key={row.category?.id ?? 'none'} className={`cat-ind-row${row.category ? '' : ' is-none'}`} role="row">
+                      <Fragment key={id}>
+                      <div id={`cat-ind-${id}`} className={`cat-ind-row${row.category ? '' : ' is-none'}`} role="row">
                         <span className="dot is-9" role="presentation" aria-hidden="true" style={{ background: color }} />
                         <span role="cell" className="cat-name" title={rowName(row)}>{rowName(row)}</span>
                         <b role="cell" className="num">{money(row.amount)}</b>
@@ -270,11 +323,13 @@ function IndicatorsSection({ month, onOpenOperations }: { month: MonthKey; onOpe
                           <Sparkline values={row.trend} labels={labels} color={color} width={86} />
                         </span>
                         <span role="cell">
-                          <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${name}`} title="Voir les dépenses" onClick={() => open(row)}>
-                            <Icon name="list" size={15} />
+                          <button type="button" className="icon-link" aria-expanded={isOpen} aria-controls={`cat-detail-${id}`} aria-label={`${isOpen ? 'Masquer' : 'Voir'} les opérations : ${name}`} title="Voir les opérations" onClick={() => toggle(row)}>
+                            <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={15} />
                           </button>
                         </span>
                       </div>
+                      {isOpen && <EntryList id={`cat-detail-${id}`} name={name} month={month} categoryId={row.category?.id ?? null} />}
+                      </Fragment>
                     );
                   })}
                 </div>
