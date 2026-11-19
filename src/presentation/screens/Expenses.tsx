@@ -4,6 +4,7 @@ import { AssignPicker, OFF_BUDGET_CHOICE } from '../components/AssignPicker';
 import { CategorySelect, LOCKED_HINT } from '../components/CategorySelect';
 import { AnnotationInput } from '../components/AnnotationInput';
 import { EntryDate } from '../components/EntryDate';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { Icon } from '../components/Icon';
 import { Menu } from '../components/Menu';
 import { MovementGap, MovementLines } from '../components/MovementLines';
@@ -155,6 +156,8 @@ function EntryTab({ month, focus, onImport }: { month: MonthKey; focus: Operatio
   const [bulkMessage, setBulkMessage] = useState('');
   // Layout: the creation form lives in a right-hand panel opened by « Nouvelle opération »; the less used filters fold behind « Plus de filtres ».
   const [formOpen, setFormOpen] = useState(false);
+  // Operation waiting for the confirmation of its deletion.
+  const [deleting, setDeleting] = useState<{ id: string; label: string } | null>(null);
 
   const revenueTargets: [string, string][] = lines.filter(l => l.block === 'rev').map(l => [l.key, `${l.name} (${bankAccount(data, l.accountId)?.name ?? ''})`]);
   // Envelopes without an active account cannot take an entry (spec 0036, RG3).
@@ -717,7 +720,7 @@ function EntryTab({ month, focus, onImport }: { month: MonthKey; focus: Operatio
                     {t.type !== 'envin' && t.type !== 'accin' && <span className="icon-btn" title="Modifier" onClick={() => (editingTx?.id === t.id ? setEditingTx(null) : startEdit(t))}>
                       <Icon name="pencil" size={13} stroke={2} />
                     </span>}
-                    <span className="icon-btn" title="Supprimer" onClick={() => update(d => deleteTransaction(d, t.id))}>
+                    <span className="icon-btn" title="Supprimer" onClick={() => setDeleting({ id: t.id, label: t.label })}>
                       <Icon name="close" size={14} />
                     </span>
                   </>)}
@@ -788,6 +791,7 @@ function EntryTab({ month, focus, onImport }: { month: MonthKey; focus: Operatio
           <div style={{ height: 8 }} />
           </>}
           {annotation.modal}
+          {deleting && <ConfirmModal title="Supprimer l’opération" message={`Supprimer « ${deleting.label} » ? Cette action est définitive.`} onConfirm={() => update(d => deleteTransaction(d, deleting.id))} onClose={() => setDeleting(null)} />}
           {view === 'transferts' && <MovementsBlock month={month} locked={locked} movements={shownMovements} total={allMovements.length} />}
         </div>
       </div>
@@ -800,6 +804,7 @@ function MovementsBlock({ month, locked, movements, total }: { month: MonthKey; 
   const { data, update } = useStore();
   const { openMenu } = useUi();
   // `keys`: the variable lines checked (spec 0045); `initial`: the ones the transfer had when the edit began (RG5: only an added line recomputes the amount).
+  const [deleting, setDeleting] = useState<{ id: string; label: string } | null>(null);
   const [editing, setEditing] = useState<{ id: string; label: string; amount: string; annotation: string; date: string; from: string; to: string; keys: string[]; initial: string[]; item: string; passThrough: boolean } | null>(null);
   const annotation = useOperationAnnotation();
   if (movements.length === 0) return <div className="empty">{total === 0 ? 'Aucun transfert ce mois-ci.' : 'Aucun transfert ne correspond aux filtres.'}</div>;
@@ -969,7 +974,7 @@ function MovementsBlock({ month, locked, movements, total }: { month: MonthKey; 
                     <span className="icon-btn" title="Modifier" onClick={() => setEditing({ id: m.id, label: m.label, amount: String(m.amount).replace('.', ','), annotation: m.annotation ?? '', date: bankDateOf(m, data), from: m.fromAccountId, to: m.toAccountId, keys: linkedKeys(m), initial: linkedKeys(m), item: targetValue(targetsOf(m).find(t => !(t.kind === 'line' && isVarKey(m, t.key)))), passThrough: m.passThrough === true })}>
                       <Icon name="pencil" size={13} stroke={2} />
                     </span>
-                    <span className="icon-btn" title="Supprimer" onClick={() => update(d => void deleteAccountMovement(d, m.id))}>
+                    <span className="icon-btn" title="Supprimer" onClick={() => setDeleting({ id: m.id, label: m.label })}>
                       <Icon name="close" size={14} />
                     </span>
                   </span>
@@ -991,6 +996,7 @@ function MovementsBlock({ month, locked, movements, total }: { month: MonthKey; 
         })}
       <div style={{ height: 8 }} />
       {annotation.modal}
+      {deleting && <ConfirmModal title="Supprimer le transfert" message={`Supprimer « ${deleting.label} » ? Cette action est définitive.`} onConfirm={() => update(d => void deleteAccountMovement(d, deleting.id))} onClose={() => setDeleting(null)} />}
     </>
   );
 }
