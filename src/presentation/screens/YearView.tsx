@@ -285,6 +285,7 @@ function YearBlocks({ year, onOpenOperations }: { year: number; onOpenOperations
               ['Épargne brute', view.summary.grossSavings],
               ['Épargne réelle', view.summary.realSavings],
               ['Total investi', view.summary.investTotal],
+              ['Déblocages de prêt', view.summary.loanReleases],
               ['Dépenses totales', view.summary.expenses],
             ] as const
           ).map(([label, r]) => (

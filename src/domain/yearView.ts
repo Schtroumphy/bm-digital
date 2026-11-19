@@ -61,6 +61,8 @@ export interface YearSummary {
   grossSavings: YearRow;
   realSavings: YearRow;
   investTotal: YearRow;
+  /** Loan releases (label starting with « REALISATION »): real entries, the same in both modes. */
+  loanReleases: YearRow;
   income: YearRow;
   expenses: YearRow;
 }
@@ -126,6 +128,9 @@ const BLOCKS: { id: YearBlockId; label: string }[] = [
   { id: 'inv', label: 'Investissements' },
 ];
 
+/** A loan release is recognised by its bank label (« REALISATION DE PRET … DEBLOCAGE »). */
+const isLoanRelease = (label: string) => label.trim().toUpperCase().startsWith('REALISATION');
+
 const sum = (xs: number[]) => round2(xs.reduce((a, b) => a + b, 0));
 
 /**
@@ -173,6 +178,11 @@ export function yearView(d: BudgetData, ledger: Ledger, year: number, mode: Year
   });
 
   const row = (values: (number | null)[], total: YearTotalKind, dashZero = false): YearRow => ({ values, total, dashZero });
+  const loanReleases = row(
+    keys.map((k, i) => (shown[i] ? sum(d.transactions.filter(t => t.month === k && isLoanRelease(t.label)).map(t => t.amount)) : null)),
+    'sum',
+    true,
+  );
   const summary: YearSummary =
     mode === 'budget'
       ? {
@@ -182,6 +192,7 @@ export function yearView(d: BudgetData, ledger: Ledger, year: number, mode: Year
           // The real savings are not known for a budget (RG12).
           realSavings: row(keys.map(() => null), 'sum'),
           investTotal: row(fromSummary(s => s.investTotal), 'last'),
+          loanReleases,
           income: row(fromSummary(s => s.income), 'sum'),
           expenses: row(fromSummary(s => s.expenses), 'sum'),
         }
@@ -191,6 +202,7 @@ export function yearView(d: BudgetData, ledger: Ledger, year: number, mode: Year
           grossSavings: row(fromSummary(s => s.grossSavings), 'sum'),
           realSavings: row(fromSummary(s => s.realSavings), 'sum'),
           investTotal: row(fromSummary(s => s.investTotal), 'last'),
+          loanReleases,
           income: row(lines.map(ls => (ls ? blockTotals(ls, 'rev').actual : null)), 'sum'),
           expenses: row(fromSummary(s => s.expensesReal), 'sum'),
         };
