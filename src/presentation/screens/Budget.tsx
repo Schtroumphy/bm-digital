@@ -30,7 +30,6 @@ import { accountIdOf, isAccountTransfer, isLineInBudget, isOnMainAccount } from 
 import { isoDate } from '../../domain/checkoff';
 import { budgetLockReason } from '../../domain/movementLines';
 import { leftLineKeys, lineTooltip, partiallyFundedLines, unfundedSpentLines } from '../../domain/comingUp';
-import { envelopeCash } from '../../domain/envelopeCash';
 import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber, round2 } from '../../domain/format';
 import { isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
@@ -815,10 +814,6 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                 const f = envelopeAllocationFigures(data, ledger, e.id, month);
                 const cash = f?.cashAllocation ?? 0;
                 const virtualAlloc = f?.virtualAllocation ?? 0;
-                const bank = ledger.envMonth(e.id, month)?.balance ?? 0;
-                const tip = f
-                  ? `Virtuel : dépensé ${money(f.virtualSpent)} sur ${money(f.virtualAllocation)}${f.cashAllocation > 0 || f.cashSpent !== 0 ? ` · Espèces : dépensé ${money(f.cashSpent)} sur ${money(f.cashAllocation)}` : ''} · Solde virtuel ${money(bank)}${cash > 0 || f.cashSpent !== 0 || envelopeCash(data, e.id, month) > 0 ? ` · Solde espèces ${money(envelopeCash(data, e.id, month))}` : ''}`
-                  : '';
                 return (
                   <>
                     <div className="env-tile-modes">
@@ -833,14 +828,6 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                         </div>
                       )}
                     </div>
-                    {f?.showBar && (
-                      <div className="has-tip" data-tip={tip}>
-                        <div className={`progress dash-bar is-split${f.overrun > 0 ? ' is-over' : ''}`} style={{ background: vio.soft }}>
-                          <div style={{ width: `${f.virtualPct}%`, background: f.overrun > 0 ? 'oklch(0.62 0.18 25)' : vio.base }} />
-                          <div className="is-cash-spent" style={{ width: `${f.cashPct}%` }} />
-                        </div>
-                      </div>
-                    )}
                   </>
                 );
               })()}
@@ -862,7 +849,6 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
                   const f = envelopeAllocationFigures(data, ledger, e.id, month);
                   return (
                     <>
-                      {f?.showBar && f.overrun > 0 && <div className="env-tile-over">dépassé de {money(f.overrun)}</div>}
                       <div className="env-tile-line">
                         {f?.showBar ? <div className="env-tile-alloc">dépensé <b>{money(f.spent)}</b></div> : <span />}
                         <div className="env-tile-alloc">
