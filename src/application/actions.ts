@@ -423,11 +423,18 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   if ((old.type === 'epd') !== (patch.type === 'epd')) return false;
   const before = d.transactions;
   const index = before.indexOf(old);
-  const { bankDate: _b, accountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, transferLineKey: _t, ...kept } = old;
+  const { bankDate: _b, accountId: oldAccountId, assignedAccountId: _a, offBudget: _o, categoryId: _c, transferLineKey: _t, ...kept } = old;
   const category = patch.categoryId === undefined ? old.categoryId : (patch.categoryId ?? undefined);
   const assigned = patch.assignedAccountId === undefined ? old.assignedAccountId : (patch.assignedAccountId ?? undefined);
   const marked = assigned === undefined && (patch.offBudget ?? old.offBudget === true);
   const same = patch.type === old.type && patch.target === old.target;
+  // An imported variable expense was a real debit of a bank account: moving it to another line (e.g. one managed in cash) must not turn it into a cash expense,
+  // so it keeps that account (and no cash mode) unless the new line freezes another account.
+  const frozen = patch.type === 'var' ? fixedTransactionAccountId(d, { type: 'var', month: old.month, target: patch.target }) : undefined;
+  const bank = old.type === 'var' && patch.type === 'var' && old.importAccountId !== undefined ? (oldAccountId ?? old.importAccountId) : undefined;
+  const keepBank = !same && bank !== undefined && d.accounts.some(a => a.id === bank) && (frozen === undefined || frozen === bank);
+  const accountId = keepBank ? bank : oldAccountId;
+  if (keepBank) delete kept.payMode;
   // The link to a transfer line (spec 0050, RG44). The month of an operation never changes here, so a change of month (CA54) cannot happen: the rule holds by
   // construction. A NEW key (given and different from the current one) must hold now (RG36), else the edit is refused. The link already carried, sent back
   // unchanged by the form or not mentioned, is not checked again: it stays, even inert when its line is gone (D15), unless the operation no longer fits it
@@ -439,7 +446,7 @@ export function updateTransaction(d: BudgetData, id: string, patch: TransactionP
   const carried = wanted === undefined || wanted === old.transferLineKey ? old.transferLineKey : undefined;
   const link = isNew ? wanted : carried !== undefined && transferLinkHolds(d, { type: patch.type, month, assignedAccountId: assigned, ...(marked ? { offBudget: true as const } : {}) }, carried, assigned === old.assignedAccountId) ? carried : undefined;
   d.transactions = before.filter(x => x !== old);
-  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), ...(patch.annotation !== undefined ? { annotation: patch.annotation } : {}), ...(category !== undefined && isCategorizableType(patch.type) ? { categoryId: category } : {}), ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
+  const next: Transaction = { ...kept, label, amount: round2(patch.amount), type: patch.type, target: patch.target, day: Number(patch.date.slice(8, 10)), ...(patch.annotation !== undefined ? { annotation: patch.annotation } : {}), ...(category !== undefined && isCategorizableType(patch.type) ? { categoryId: category } : {}), ...(assigned !== undefined ? { assignedAccountId: assigned } : {}), ...(marked ? { offBudget: true as const } : {}), ...((same || keepBank || old.type === 'epd') && accountId !== undefined ? { accountId } : {}), ...(patch.date === deducedDate(d, old.month, Number(patch.date.slice(8, 10))) ? {} : { bankDate: patch.date }) };
   if (!addTransaction(d, next, old.assignedAccountId)) {
     d.transactions = before;
     return false;

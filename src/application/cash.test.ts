@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addTransfer, deleteAccountMovement } from './accountMovements';
-import { addTransaction, setEnvelopeAllocation } from './actions';
+import { addTransaction, setEnvelopeAllocation, updateTransaction } from './actions';
 import { cashPartRefusal, closeBlockersAfterReconcile, closeMonthReconciling, envelopeSplitRefusal, reconcileCashLines, RECONCILE_LABEL, setEnvelopeCashPart, setEnvelopeSplit } from './cash';
 import { loadBudget } from './loadBudget';
 import { addEnvelope } from './envelopes';
@@ -427,5 +427,19 @@ describe('allocation et part en espèces réglées ensemble (spec 0040, RG15 à 
     setEnvelopeSplit(d, M, 'shop', 100, 40);
     expect(envelopeCash(d, 'shop', M)).toBe(40);
     expect(ledger(d).envMonth('shop', M)!.balance).toBe(60);
+  });
+});
+
+describe('une dépense importée déplacée sur une ligne en espèces', () => {
+  it('garde son compte bancaire, même après un aller-retour entre deux lignes', () => {
+    const d = october();
+    setLinePayment(d, M, 'sport', { payMode: 'virtuel' });
+    expect(addTransaction(d, { id: 'i1', month: M, day: 11, label: 'Carte', amount: 36.9, type: 'var', target: 'sport', accountId: MAIN_ACCOUNT_ID, importAccountId: MAIN_ACCOUNT_ID, fingerprint: 'f' })).toBe(true);
+    const patch = (target: string) => ({ label: 'Carte', amount: 36.9, date: `${M}-11`, type: 'var' as const, target });
+    expect(updateTransaction(d, 'i1', patch('snack'))).toBe(true);
+    expect(d.transactions.find(t => t.id === 'i1')).toMatchObject({ target: 'snack', accountId: MAIN_ACCOUNT_ID });
+    expect(d.transactions.find(t => t.id === 'i1')!.payMode).toBeUndefined();
+    expect(updateTransaction(d, 'i1', patch('sport'))).toBe(true);
+    expect(d.transactions.find(t => t.id === 'i1')).toMatchObject({ target: 'sport', accountId: MAIN_ACCOUNT_ID });
   });
 });
