@@ -7,6 +7,8 @@ import type { BudgetData, Transaction } from './types';
 /* Spec 0052 : indicateurs des catégories. */
 
 const TODAY = '2026-11';
+/** Date du jour postérieure au mois affiché (2026-11) : un mois terminé, donc avec écart à la moyenne (RG20 : le mois en cours n'en a pas). */
+const AFTER = '2026-12';
 const ALI = 'cat-alimentation';
 const LOG = 'cat-logement';
 const LOI = 'cat-loisirs';
@@ -81,7 +83,7 @@ describe('lignes et tri (RG7, RG8, CA8, CA9)', () => {
     { month: '2026-11', amount: 120 }, // sans catégorie
     { month: '2026-11', amount: 700, categoryId: LOG },
   );
-  const r = categoryIndicators(d, '2026-11', TODAY);
+  const r = categoryIndicators(d, '2026-11', AFTER);
 
   it('une catégorie habituelle à 0 ce mois-ci est listée avec un écart négatif ; une catégorie à 0 partout est absente', () => {
     const loisirs = r.rows.find(x => x.category?.id === LOI)!;
@@ -96,7 +98,7 @@ describe('lignes et tri (RG7, RG8, CA8, CA9)', () => {
   });
   it('à écart égal, ordre alphabétique', () => {
     const e = data({ month: '2026-11', amount: 50, categoryId: LOG }, { month: '2026-11', amount: 50, categoryId: ALI });
-    expect(categoryIndicators(e, '2026-11', '2026-11').rows.map(x => x.category!.name)).toEqual(['Alimentation', 'Logement']);
+    expect(categoryIndicators(e, '2026-11', AFTER).rows.map(x => x.category!.name)).toEqual(['Alimentation', 'Logement']);
   });
 });
 
@@ -124,7 +126,7 @@ describe('bandeau (RG10, CA11)', () => {
     { month: '2026-11', amount: 120 },
     { month: '2026-11', amount: 30 },
   );
-  const r = categoryIndicators(d, '2026-11', TODAY);
+  const r = categoryIndicators(d, '2026-11', AFTER);
 
   it('total contre moyenne, plus forte hausse, plus forte baisse, sans catégorie', () => {
     expect(r.summary.total).toBe(455);
@@ -137,7 +139,7 @@ describe('bandeau (RG10, CA11)', () => {
   });
   it('« Sans catégorie » ne participe ni à la hausse ni à la baisse', () => {
     const e = data({ month: '2026-11', amount: 900 });
-    const s = categoryIndicators(e, '2026-11', TODAY).summary;
+    const s = categoryIndicators(e, '2026-11', AFTER).summary;
     expect(s.topRise).toBeNull();
     expect(s.topFall).toBeNull();
   });
@@ -146,9 +148,9 @@ describe('bandeau (RG10, CA11)', () => {
 describe('égalité d’écart et mois vide avec référence (RG10, RG12)', () => {
   it('à écart égal, plus forte hausse et plus forte baisse suivent l’ordre alphabétique', () => {
     const up = data({ month: '2026-11', amount: 50, categoryId: LOG }, { month: '2026-11', amount: 50, categoryId: ALI });
-    expect(categoryIndicators(up, '2026-11', TODAY).summary.topRise!.category!.name).toBe('Alimentation');
+    expect(categoryIndicators(up, '2026-11', AFTER).summary.topRise!.category!.name).toBe('Alimentation');
     const down = data({ month: '2026-10', amount: 100, categoryId: LOG }, { month: '2026-10', amount: 100, categoryId: ALI });
-    expect(categoryIndicators(down, '2026-11', TODAY).summary.topFall!.category!.name).toBe('Alimentation');
+    expect(categoryIndicators(down, '2026-11', AFTER).summary.topFall!.category!.name).toBe('Alimentation');
   });
   it('une référence existe mais tout vaut 0 : vide', () => {
     const r = categoryIndicators(data(), '2026-11', TODAY);
@@ -175,5 +177,88 @@ describe('tendance (RG9, CA12)', () => {
 describe('mois vide (RG12)', () => {
   it('aucune dépense et aucune référence → vide', () => {
     expect(categoryIndicators(data(), '2027-03', TODAY).empty).toBe(true);
+  });
+});
+
+describe('budgets (spec 0054)', () => {
+  const withBudget = (...txs: Partial<Transaction>[]) => {
+    const d = data(...txs);
+    d.categoryBudgets = [{ categoryId: ALI, month: '2026-10', amount: 400 }];
+    return d;
+  };
+  const rowOf = (r: ReturnType<typeof categoryIndicators>, id: string | null) => r.rows.find(x => (x.category?.id ?? null) === id)!;
+
+  it('CA1 : sans budget pour le mois, budget et écart sont absents (pas 0)', () => {
+    const r = categoryIndicators(data({ amount: 50, categoryId: ALI }), '2026-10', TODAY, true);
+    expect(rowOf(r, ALI).budget).toBeNull();
+    expect(rowOf(r, ALI).budgetGap).toBeNull();
+  });
+  it('CA2 : budget 400, réel 420 → +20', () => {
+    const r = categoryIndicators(withBudget({ amount: 420, categoryId: ALI }), '2026-10', TODAY, true);
+    expect(rowOf(r, ALI).budget).toBe(400);
+    expect(rowOf(r, ALI).budgetGap?.delta).toBe(20);
+  });
+  it('CA3 : budget 0, réel 50 → +50 sans pourcentage', () => {
+    const d = data({ amount: 50, categoryId: ALI });
+    d.categoryBudgets = [{ categoryId: ALI, month: '2026-10', amount: 0 }];
+    expect(rowOf(categoryIndicators(d, '2026-10', TODAY, true), ALI).budgetGap).toEqual({ delta: 50, percent: null });
+  });
+  it('CA9 : catégorie avec budget sans dépense : listée avec réel 0 si demandé, absente sinon', () => {
+    const d = withBudget({ amount: 50, categoryId: LOG });
+    const on = categoryIndicators(d, '2026-10', TODAY, true);
+    expect(rowOf(on, ALI).amount).toBe(0);
+    expect(rowOf(on, ALI).budgetGap?.delta).toBe(-400);
+    const off = categoryIndicators(d, '2026-10', TODAY);
+    expect(off.rows.some(x => x.category?.id === ALI)).toBe(false);
+    expect(off.rows.every(x => x.budget === null && x.budgetGap === null)).toBe(true);
+  });
+  it('« Sans catégorie » n’a jamais de budget (RG2)', () => {
+    expect(rowOf(categoryIndicators(withBudget({ amount: 50 }), '2026-10', TODAY, true), null).budget).toBeNull();
+  });
+  it('mois sans dépense : vide sans budget demandé, tableau avec budget demandé (RG11)', () => {
+    expect(categoryIndicators(withBudget(), '2026-10', TODAY).empty).toBe(true);
+    expect(categoryIndicators(withBudget(), '2026-10', TODAY, true).empty).toBe(false);
+  });
+});
+
+describe('mois en cours (spec 0054, RG20 à RG22)', () => {
+  const d = data(
+    { month: '2026-10', amount: 100, categoryId: ALI },
+    { month: '2026-10', amount: 200, categoryId: LOI },
+    { month: '2026-11', amount: 300, categoryId: ALI },
+    { month: '2026-11', amount: 5, categoryId: LOI },
+  );
+  d.categoryBudgets = [{ categoryId: ALI, month: '2026-11', amount: 250 }];
+
+  it('CA27 : today = mois affiché → aucun écart à la moyenne (lignes et total), montant et moyenne fournis', () => {
+    const r = categoryIndicators(d, '2026-11', '2026-11');
+    expect(r.isCurrent).toBe(true);
+    for (const row of r.rows) {
+      expect(row.variation).toBeNull();
+      expect(row.average).not.toBeNull();
+    }
+    expect(r.rows.find(x => x.category?.id === ALI)!.amount).toBe(300);
+    expect(r.summary.variation).toBeNull();
+    expect(r.summary.average).toBe(30);
+    expect(r.summary.total).toBe(305);
+  });
+  it('CA28 : plus forte hausse et plus forte baisse vides', () => {
+    const s = categoryIndicators(d, '2026-11', '2026-11').summary;
+    expect(s.topRise).toBeNull();
+    expect(s.topFall).toBeNull();
+  });
+  it('CA29 : mois passé ou futur inchangés (écarts, hausse, baisse)', () => {
+    const past = categoryIndicators(d, '2026-11', AFTER);
+    expect(past.isCurrent).toBe(false);
+    expect(past.summary.variation).not.toBeNull();
+    expect(past.summary.topRise!.category!.id).toBe(ALI);
+    expect(past.summary.topFall!.category!.id).toBe(LOI);
+    const future = categoryIndicators(d, '2026-11', '2026-10');
+    expect(future.isCurrent).toBe(false);
+    expect(future.rows.every(x => x.variation !== null || x.average === null)).toBe(true);
+  });
+  it('CA30 : l’écart budget reste fourni pour le mois en cours', () => {
+    const r = categoryIndicators(d, '2026-11', '2026-11', true);
+    expect(r.rows.find(x => x.category?.id === ALI)!.budgetGap?.delta).toBe(50);
   });
 });

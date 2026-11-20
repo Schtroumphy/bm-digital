@@ -269,6 +269,13 @@ export interface ImportRule {
   categoryId?: string;
 }
 
+/** Indicative budget of a category for one month (spec 0054, RG1): amount in euros, >= 0. At most one per (category, month). */
+export interface CategoryBudget {
+  categoryId: string;
+  month: MonthKey;
+  amount: number;
+}
+
 /** A category of expenses (spec 0046, RG1, RG3): stable id, unique name, hue given at creation and never edited. */
 export interface Category {
   id: string;
@@ -468,6 +475,8 @@ export interface BudgetData {
    * an empty list is a list the user emptied, which is not created again.
    */
   categories?: Category[];
+  /** Indicative budgets of the categories, by month (spec 0054). Absent or no entry for a (category, month) = no budget (RG3, RG11). */
+  categoryBudgets?: CategoryBudget[];
   /** Annual goals (spec 0032). Absent = none (or data saved before the goals existed, see `Settings.goalsMigrated`). */
   goals?: Goal[];
   /** Saved simulations, most recent first (spec 0034). Absent = none. */

@@ -258,3 +258,36 @@ describe('catégories de dépenses (spec 0046)', () => {
     expect(loaded?.categories).toEqual([data.categories![0]]);
   });
 });
+
+describe('budgets par catégorie (spec 0054)', () => {
+  it('se convertissent dans les deux sens ; un budget de 0 est conservé', () => {
+    const data = completeData();
+    const rows = toRows(data);
+    expect(rows.category_budgets).toEqual([
+      { category_id: 'cat-ali', month: '2026-12', amount: 400 },
+      { category_id: 'cat-log', month: '2026-12', amount: 0 },
+    ]);
+    expect(fromRows(withUser(rows))!.categoryBudgets).toEqual(data.categoryBudgets);
+  });
+
+  it('CA8 : des données sans le champ se chargent, sans budget', () => {
+    const data = completeData();
+    delete data.categoryBudgets;
+    expect(toRows(data).category_budgets).toEqual([]);
+    expect(fromRows(withUser(toRows(data)))).not.toHaveProperty('categoryBudgets');
+  });
+
+  it('le dépôt enregistre, modifie et supprime un budget (diff)', async () => {
+    const remote = createMemoryRemote();
+    const repo = createSupabaseRepository(remote);
+    const data = completeData();
+    await repo.save(data);
+    const changed = structuredClone(data);
+    changed.categoryBudgets = [{ categoryId: 'cat-ali', month: '2026-12', amount: 450 }];
+    await repo.save(changed);
+    expect((await createSupabaseRepository(remote).load())?.categoryBudgets).toEqual(changed.categoryBudgets);
+    delete changed.categoryBudgets;
+    await repo.save(changed);
+    expect(await createSupabaseRepository(remote).load()).not.toHaveProperty('categoryBudgets');
+  });
+});

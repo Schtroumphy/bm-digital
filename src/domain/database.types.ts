@@ -420,6 +420,27 @@ export type Database = {
         }
         Relationships: []
       }
+      category_budgets: {
+        Row: {
+          amount: number
+          category_id: string
+          month: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category_id: string
+          month: string
+          user_id?: string
+        }
+        Update: {
+          amount?: number
+          category_id?: string
+          month?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       goals: {
         Row: {
           due: string | null

@@ -1,4 +1,5 @@
 import { categoryBreakdown } from './categories';
+import { budgetGap, budgetOf, type BudgetGap } from './categoryBudgets';
 import { addMonths, compareMonths, round2 } from './format';
 import type { BudgetData, Category, MonthKey } from './types';
 
@@ -47,6 +48,10 @@ export interface IndicatorRow {
   average: number | null;
   /** Gap to the average; null without reference. */
   variation: Variation | null;
+  /** Budget of the month (spec 0054); null = no budget, or budgets not asked for (RG3). Always null for « Sans catégorie » (RG2). */
+  budget: number | null;
+  /** Real − budget; null without budget. */
+  budgetGap: BudgetGap | null;
   /** Amounts of the last `TREND_MONTHS` months, the month shown last; null = future month, no point (RG9). */
   trend: (number | null)[];
 }
@@ -65,6 +70,8 @@ export interface IndicatorSummary {
 }
 
 export interface CategoryIndicators {
+  /** The month shown is the current one (spec 0054, RG20): no gap to the average is computed, the amount and the average stay. */
+  isCurrent: boolean;
   /** Months the average is computed on; empty = « pas de référence ». */
   reference: MonthKey[];
   /** The `TREND_MONTHS` months of the trend, the month shown last. */
@@ -80,9 +87,12 @@ const byName = (a: IndicatorRow, b: IndicatorRow) => nameOf(a).localeCompare(nam
 
 /**
  * Indicators of `month` (RG1 to RG10). `today` = the month key of the current date, injected so the result does not depend on the clock.
+ * `withBudgets` (spec 0054, switch « Montants budgétés ») fills the budget and its gap, and keeps a category that has a budget but no expense (RG11).
  */
-export function categoryIndicators(d: BudgetData, month: MonthKey, today: MonthKey): CategoryIndicators {
+export function categoryIndicators(d: BudgetData, month: MonthKey, today: MonthKey, withBudgets = false): CategoryIndicators {
   const reference = referenceMonths(month, today);
+  // RG20: a part month compared with an average of full months gives a false gap, so there is none for the current month.
+  const isCurrent = month === today;
   const trendMonths = Array.from({ length: TREND_MONTHS }, (_, i) => addMonths(month, i - (TREND_MONTHS - 1)));
 
   const cache = new Map<MonthKey, ReturnType<typeof categoryBreakdown>>();
@@ -103,11 +113,14 @@ export function categoryIndicators(d: BudgetData, month: MonthKey, today: MonthK
     const id = category?.id ?? null;
     const amount = amountIn(month, id);
     const average = averageOf(m => amountIn(m, id));
+    const budget = withBudgets && id !== null ? budgetOf(d, id, month) : null;
     return {
       category,
       amount,
+      budget,
+      budgetGap: budget === null ? null : budgetGap(amount, budget),
       average,
-      variation: average === null ? null : variation(amount, average),
+      variation: average === null || isCurrent ? null : variation(amount, average),
       trend: trendMonths.map(m => (compareMonths(m, today) > 0 ? null : amountIn(m, id))),
     };
   };
@@ -115,7 +128,8 @@ export function categoryIndicators(d: BudgetData, month: MonthKey, today: MonthK
   const categories = d.categories ?? [];
   const all = [...categories.map(build), build(null)];
   // RG7: an expense this month or a non-zero average; the « Sans catégorie » row comes last whatever the order.
-  const kept = all.filter(r => r.amount > 0 || (r.average ?? 0) > 0);
+  const spending = (r: IndicatorRow) => r.amount > 0 || (r.average ?? 0) > 0;
+  const kept = all.filter(r => spending(r) || r.budget !== null);
   const real = kept.filter(r => r.category !== null);
   const none = kept.filter(r => r.category === null);
   const sorted = [...real].sort((a, b) =>
@@ -131,18 +145,20 @@ export function categoryIndicators(d: BudgetData, month: MonthKey, today: MonthK
   const b = breakdownOf(month);
   const average = averageOf(m => breakdownOf(m).total);
   return {
+    isCurrent,
     reference,
     trendMonths,
     rows,
     summary: {
       total: b.total,
       average,
-      variation: average === null ? null : variation(b.total, average),
+      variation: average === null || isCurrent ? null : variation(b.total, average),
       topRise,
       topFall,
       uncategorizedAmount: b.none?.amount ?? 0,
       uncategorizedCount: b.uncategorizedCount,
     },
+    // With the budgets asked for, a category that has one is a row, so the month is not empty (spec 0054, RG11).
     empty: b.total === 0 && rows.length === 0,
   };
 }

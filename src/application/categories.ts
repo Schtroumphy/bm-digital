@@ -1,6 +1,7 @@
 import { categoryUsage, isCategorizableType, nextCategoryHue, parseCategoryName } from '../domain/categories';
 import { isMonthLocked } from '../domain/ledger';
-import type { BudgetData } from '../domain/types';
+import { parseBudgetInput } from '../domain/categoryBudgets';
+import type { BudgetData, MonthKey } from '../domain/types';
 
 /*
  * Categories of expenses (spec 0046): manage the list and give a category to entries. Every function works on a copy of the data (the store
@@ -51,6 +52,11 @@ export function deleteCategory(d: BudgetData, id: string): string | null {
   const used = categoryUsage(d, id);
   if (used > 0) return usedMessage(used);
   d.categories = list.filter(c => c.id !== id);
+  // Its budgets go with it (spec 0054, RG10).
+  if (d.categoryBudgets) {
+    d.categoryBudgets = d.categoryBudgets.filter(b => b.categoryId !== id);
+    if (d.categoryBudgets.length === 0) delete d.categoryBudgets;
+  }
   if (d.importRules) d.importRules = d.importRules.map(r => {
     if (r.categoryId !== id) return r;
     const { categoryId: _removed, ...rest } = r;
@@ -94,4 +100,20 @@ export function setCategoryOnSelection(d: BudgetData, ids: string[], categoryId:
 export function groupedMessage(r: GroupedCategoryResult): string {
   const done = `${r.changed} écriture${r.changed > 1 ? 's' : ''} classée${r.changed > 1 ? 's' : ''}`;
   return r.ignored > 0 ? `${done}, ${r.ignored} ignorée${r.ignored > 1 ? 's' : ''} (type non catégorisable ou mois clôturé)` : done;
+}
+
+/**
+ * Sets the budget of a category for a month from what the user typed (spec 0054, RG4 to RG6): empty removes it, a number >= 0 (comma or point)
+ * is rounded to the cent, anything else is refused and nothing changes. Only that (category, month) is touched. The budget is indicative, so a
+ * closed month does not refuse it. Returns an error message in French, or null when applied.
+ */
+export function setCategoryBudget(d: BudgetData, categoryId: string, month: MonthKey, text: string): string | null {
+  if (!(d.categories ?? []).some(c => c.id === categoryId)) return 'Catégorie introuvable';
+  const parsed = parseBudgetInput(text);
+  if ('error' in parsed) return parsed.error;
+  const others = (d.categoryBudgets ?? []).filter(b => !(b.categoryId === categoryId && b.month === month));
+  const next = parsed.value === null ? others : [...others, { categoryId, month, amount: parsed.value }];
+  if (next.length > 0) d.categoryBudgets = next;
+  else delete d.categoryBudgets;
+  return null;
 }

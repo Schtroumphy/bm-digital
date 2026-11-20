@@ -83,6 +83,8 @@ export function completeData(): BudgetData {
   ];
   // Spec 0046 : catégories (liste initialisée), une dépense catégorisée et une règle qui retient la catégorie.
   d.categories = [{ id: 'cat-ali', name: 'Alimentation', hue: 28 }, { id: 'cat-log', name: 'Logement', hue: 165 }];
+  // Spec 0054 : budgets par catégorie (un mois, dont un budget de 0).
+  d.categoryBudgets = [{ categoryId: 'cat-ali', month: '2026-12', amount: 400 }, { categoryId: 'cat-log', month: '2026-12', amount: 0 }];
   d.transactions.push({ id: 't-cat', month: '2026-12', day: 4, label: 'Courses', amount: 30, type: 'var', target: 'inconnu', accountId: 'acc-main', categoryId: 'cat-ali' });
   d.importRules[0] = { ...d.importRules[0], categoryId: 'cat-ali' };
   // Spec 0034 : deux simulations, la plus récente en tête, avec notes et lignes dans l'ordre (dont une ligne sans nom ni montant).

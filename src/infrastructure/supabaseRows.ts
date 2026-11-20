@@ -1,5 +1,5 @@
 import type {
-  AccountBalanceEntry, AccountMovement, Adjustment, CashAdjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, Category, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
+  AccountBalanceEntry, AccountMovement, Adjustment, CashAdjustment, ImportAccountLink, ImportNature, ImportRule, ImportTarget, BankAccount, BlockKey, Category, CategoryBudget, BudgetData, SimBlockKey, Simulation, Envelope, EnvHistory, ExecMode, Line, LineCheck,
   MonthData, MovementTarget, Goal, GoalKind, GoalScope, PayMode, PlannedItem, TemplateLine, Transaction, Transfer, TxType, YearClose, AccountKind,
 } from '../domain/types';
 import { emptyRows, type ReadRows, type SelectRow, type TableRows } from './supabaseSchema';
@@ -51,6 +51,8 @@ export function toRows(d: BudgetData): TableRows {
   });
 
   (d.categories ?? []).forEach((c, position) => rows.categories.push({ id: c.id, name: c.name, hue: c.hue, emoji: c.emoji ?? null, position }));
+
+  (d.categoryBudgets ?? []).forEach(b => rows.category_budgets.push({ category_id: b.categoryId, month: b.month, amount: b.amount }));
 
   (d.goals ?? []).forEach(g =>
     rows.goals.push({
@@ -463,6 +465,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
   }));
 
   const categories: Category[] = byPosition(rows.categories).map(r => ({ id: r.id, name: r.name, hue: r.hue, ...(r.emoji ? { emoji: r.emoji } : {}) }));
+  const categoryBudgets: CategoryBudget[] = rows.category_budgets.map(r => ({ categoryId: r.category_id, month: r.month, amount: r.amount }));
   const goals: Goal[] = byPosition(rows.goals).map(r => {
     const params = (r.params ?? {}) as { accounts?: unknown; scope?: unknown };
     return compact({
@@ -505,6 +508,7 @@ export function fromRows(rows: ReadRows): BudgetData | null {
     ...(cashAdjustments.length ? { cashAdjustments } : {}),
     // Liste présente (même vide) seulement si elle a été initialisée (spec 0046, RG2).
     ...(s.categories_initialized ? { categories } : {}),
+    ...(categoryBudgets.length ? { categoryBudgets } : {}),
     ...(goals.length ? { goals } : {}),
     ...(simulations.length ? { simulations } : {}),
     planned,
