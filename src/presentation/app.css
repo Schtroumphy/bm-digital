@@ -1517,6 +1517,25 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cat-pill:hover:not(.is-disabled) { filter: brightness(0.97); }
 .cat-pill:focus-within { outline: 2px solid var(--ink); outline-offset: 1px; }
 .cat-tabs { margin-bottom: 14px; }
+/* « Gérer »: one card per category in a fluid grid (spec 0054, RG14, RG16). */
+.cat-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 10px; }
+.cat-card { display: flex; flex-direction: column; min-width: 0; transition: box-shadow 0.15s; }
+.cat-card:hover, .cat-card:focus-within { box-shadow: 0 8px 24px rgba(32, 30, 29, 0.1); }
+/* Tinted band like the goal cards (`goal-card-head`): the hue of the category comes from `toneVars`. */
+.cat-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 11px 16px; border-radius: 13px 13px 0 0; background: var(--t-bg); border-bottom: 1px solid var(--t-line); }
+.cat-card-head .emoji-btn { background: #fff; }
+.cat-card-head .cat-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 700; }
+.cat-card-head .text-input { min-width: 0; flex: 1; }
+.cat-card-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; }
+.cat-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cat-budget { display: flex; flex-direction: column; gap: 2px; }
+.cat-budget-line { display: flex; align-items: center; gap: 8px; }
+.cat-budget-input { width: 110px; text-align: right; }
+/* Read state: the `.cell` look of the Budget amounts (hover, radius) on a light background, a real button for keyboard use. */
+.cat-budget-read { appearance: none; border: 0; font: inherit; color: inherit; background: rgba(32, 30, 29, 0.05); font-weight: 600; padding: 4px 10px; }
+.cat-budget-read:hover { background: rgba(32, 30, 29, 0.09); }
+.cat-budget-read:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.cat-budget-read.is-empty { color: var(--muted); font-weight: 500; }
 .cat-tabs .tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cat-tabs .tab.is-active { background: var(--ink); color: #fff; }
 .cat-share.is-dimmed { opacity: 0.45; }
@@ -1642,7 +1661,15 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .cat-panel.is-ind { padding: 12px 18px; margin-bottom: 10px; }
 .cat-panel.is-ind .cat-title { margin-bottom: 6px; }
 .cat-head .state-chip, .cat-kpis .state-chip, .cat-ind-row .state-chip { display: inline-flex; align-items: center; line-height: 1.4; padding-top: 2px; padding-bottom: 2px; width: fit-content; white-space: nowrap; }
-.cat-ind-row .state-chip { justify-self: start; }
+.cat-ind-row .state-chip { justify-self: end; }
+.cat-ind-row .num, .cat-ind-row .state-chip, .cat-ind-row .cat-noref { font-variant-numeric: tabular-nums; }
+.cat-ind-row .cat-noref { justify-self: end; text-align: right; }
+/* Switch « Montants budgétés » on (spec 0054, RG12): two columns come in and the two halves stay side by side; the room comes from narrower columns, a smaller trend and chips. */
+.cat-ind-row.has-budget { grid-template-columns: 10px minmax(40px, 1fr) 54px 54px 124px 68px 120px 52px 20px; gap: 4px; padding: 4px 3px; font-size: 12.5px; }
+.cat-ind-row.has-budget .state-chip { font-size: 11px; padding-left: 6px; padding-right: 6px; }
+.cat-ind-parts.has-budget > :nth-child(2) { padding-left: 14px; }
+.cat-ind-parts.has-budget > :nth-child(1):not(:last-child) { padding-right: 14px; }
+.cat-ind-row.has-budget.is-head { font-size: 11px; }
 .cat-kpis { grid-template-columns: 1.5fr repeat(3, 1fr); }
 .cat-kpis .dash-hero { font-size: 25px; }
 .cat-kpi-name { min-width: 0; }
@@ -1659,9 +1686,11 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
   .cat-ind-parts > :nth-child(1):not(:last-child) { padding-right: 0; }
   .cat-ind-parts > :nth-child(2) { padding-left: 0; border-left: 0; border-top: 1px solid var(--hairline); margin-top: 10px; padding-top: 6px; }
 }
-.cat-ind-row { display: grid; grid-template-columns: 12px minmax(72px, 1fr) 74px 74px minmax(148px, max-content) 86px 24px; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; border-radius: 8px; }
+.cat-ind-row { display: grid; grid-template-columns: 12px minmax(72px, 1fr) 74px 86px 148px 86px 24px; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; border-radius: 8px; }
 .cat-ind-row .cat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-ind-row:not(.is-head):hover { background: rgba(32, 30, 29, 0.04); }
+.cat-ind-row.is-head > [role=columnheader] { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cat-ind-row.is-head > .num, .cat-ind-row.is-head > .sort-head.num { text-align: center; justify-content: center; }
 .cat-ind-row.is-head { font-size: 11.5px; font-weight: 600; color: var(--muted); border-radius: 0; border-bottom: 1px solid var(--hairline); }
 .cat-ind-row.is-none .cat-name { color: var(--muted); }
 .cat-avg { color: var(--muted); }

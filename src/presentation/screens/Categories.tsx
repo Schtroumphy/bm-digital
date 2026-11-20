@@ -1,16 +1,18 @@
-import { Fragment, useState } from 'react';
-import { addCategory, deleteCategory, renameCategory, setCategoryEmoji, usedMessage } from '../../application/categories';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { addCategory, deleteCategory, renameCategory, setCategoryBudget, setCategoryEmoji, usedMessage } from '../../application/categories';
+import { budgetOf, parseBudgetInput, type BudgetGap } from '../../domain/categoryBudgets';
 import { categoryBreakdown, categoryEmoji, categoryEntries, categoryUsage, EMOJI_CHOICES, parseCategoryName, pieSlices, type CategoryShare } from '../../domain/categories';
-import { categoryIndicators, type IndicatorRow, type Variation } from '../../domain/categoryIndicators';
-import { currentMonthKey, MONTH_SHORT, money, monthLabel, parseMonth, percent } from '../../domain/format';
+import { categoryIndicators, type IndicatorRow } from '../../domain/categoryIndicators';
+import { currentMonthKey, MONTH_SHORT, money, monthLabel, parseMonth, percent, rawNumber } from '../../domain/format';
 import type { Category, MonthKey } from '../../domain/types';
 import { CategoryPie } from '../components/CategoryPie';
 import { Icon } from '../components/Icon';
 import { Sparkline } from '../components/Sparkline';
 import type { OperationsFocus } from './Expenses';
-import { BAD, GOOD, tone } from '../components/tone';
+import { BAD, GOOD, tone, toneVars } from '../components/tone';
 import { newId, useStore } from '../state/store';
 
+const BUDGETS_KEY = 'categories.showBudgets';
 type CategoriesTab = 'repartition' | 'indicateurs' | 'gerer';
 const TABS: { id: CategoriesTab; label: string }[] = [
   { id: 'indicateurs', label: 'Indicateurs' },
@@ -24,6 +26,13 @@ const TABS: { id: CategoriesTab; label: string }[] = [
  */
 export function CategoriesScreen({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
   const [tab, setTab] = useState<CategoriesTab>('indicateurs');
+  // Switch « Montants budgétés » (spec 0054, RG7): display only, off by default, remembered on this device, not in Supabase. Kept when the tab or the month changes.
+  const [showBudgets, setShowBudgets] = useState(() => localStorage.getItem(BUDGETS_KEY) === '1');
+  const toggleBudgets = () =>
+    setShowBudgets(v => {
+      localStorage.setItem(BUDGETS_KEY, v ? '0' : '1');
+      return !v;
+    });
   const move = (e: React.KeyboardEvent, from: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
@@ -41,9 +50,9 @@ export function CategoriesScreen({ month, onOpenOperations }: { month: MonthKey;
         ))}
       </div>
       <div id={`cat-panel-${tab}`} role="tabpanel" aria-labelledby={`cat-tab-${tab}`}>
-        {tab === 'indicateurs' && <IndicatorsSection key={month} month={month} />}
+        {tab === 'indicateurs' && <IndicatorsSection key={month} month={month} showBudgets={showBudgets} onToggleBudgets={toggleBudgets} />}
         {tab === 'repartition' && <BreakdownSection key={month} month={month} />}
-        {tab === 'gerer' && <ManageSection onOpenOperations={onOpenOperations} />}
+        {tab === 'gerer' && <ManageSection month={month} onOpenOperations={onOpenOperations} />}
       </div>
     </>
   );
@@ -129,18 +138,20 @@ function EntryList({ id, name, month, categoryId }: { id: string; name: string; 
   );
 }
 
+/** A gap to the average (`Variation`) or to the budget (`BudgetGap`, never « nouveau »). */
+type Gap = BudgetGap & { isNew?: boolean };
 const signed = (n: number, text: string) => (n > 0 ? `+${text}` : text);
 const spendGapColor = (delta: number) => (delta > 0 ? BAD : delta < 0 ? GOOD : undefined);
 
 /** « +85,00 € · +21,3 % » or « 0,00 € »: the sign is always written, never colour alone (RG5, RG6). */
-const fullGapText = (v: Variation) => `${money(v.delta, true)}${v.isNew ? ' · nouveau' : v.percent !== null ? ` · ${signed(v.percent, percent(v.percent).replace('-', '−'))}` : ''}`;
+const fullGapText = (v: Gap) => `${money(v.delta, true)}${v.isNew ? ' · nouveau' : v.percent !== null ? ` · ${signed(v.percent, percent(v.percent).replace('-', '−'))}` : ''}`;
 /** What is shown: a new line (average 0) only says « nouveau »; the amount stays in the hidden text (`SrGap`). */
-const gapText = (v: Variation) => (v.isNew ? 'nouveau' : fullGapText(v));
+const gapText = (v: Gap) => (v.isNew ? 'nouveau' : fullGapText(v));
 /** Hidden complement for screen readers: the visible « nouveau » plus this gives « nouveau, +X € », once. */
-const SrGap = ({ v }: { v: Variation }) => (v.isNew ? <span className="sr-only">, {money(v.delta, true)}</span> : null);
+const SrGap = ({ v }: { v: Gap }) => (v.isNew ? <span className="sr-only">, {money(v.delta, true)}</span> : null);
 
 /** Chip of a gap: red above the average, green below, neutral when equal (RG6). */
-function GapChip({ v, cell = false }: { v: Variation; cell?: boolean }) {
+function GapChip({ v, cell = false }: { v: Gap; cell?: boolean }) {
   return (
     <span role={cell ? 'cell' : undefined} className={`state-chip ${v.isNew ? 'is-violet' : v.delta > 0 ? 'is-red' : v.delta < 0 ? 'is-green' : 'is-neutral'}`}>
       {gapText(v)}
@@ -149,6 +160,13 @@ function GapChip({ v, cell = false }: { v: Variation; cell?: boolean }) {
   );
 }
 
+/** Current month (spec 0054, RG20): no gap to the average, « — » with a tooltip. */
+const CURRENT_MONTH = 'mois en cours';
+const NO_GAP = (
+  <span className="cat-avg" title={CURRENT_MONTH}>
+    —
+  </span>
+);
 const NO_REFERENCE = <span className="cat-noref">pas de référence</span>;
 const NO_REFERENCE_CELL = (
   <span role="cell" className="cat-noref">
@@ -172,7 +190,7 @@ function SortHead({ label, k, sort, onSort, num = false }: { label: string; k: S
     </button>
   );
   return (
-    <span role="columnheader" className={`sort-head${num ? ' num' : ''}`} aria-sort={sort?.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+    <span title={label} role="columnheader" className={`sort-head${num ? ' num' : ''}`} aria-sort={sort?.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
       {label}
       <span className="sort-arrows">{arrow('asc')}{arrow('desc')}</span>
     </span>
@@ -189,11 +207,11 @@ function referenceLabel(months: MonthKey[]): string {
 }
 
 /** Tab « Indicateurs » (spec 0052): the month shown against the monthly average of its year, over the past months only. Read only. */
-function IndicatorsSection({ month }: { month: MonthKey }) {
+function IndicatorsSection({ month, showBudgets, onToggleBudgets }: { month: MonthKey; showBudgets: boolean; onToggleBudgets: () => void }) {
   const { data } = useStore();
   const [openId, setOpenId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort | null>(null);
-  const r = categoryIndicators(data, month, currentMonthKey());
+  const r = categoryIndicators(data, month, currentMonthKey(), showBudgets);
   const s = r.summary;
   const hasReference = r.reference.length > 0;
   const labels = r.trendMonths.map(m => `${MONTH_SHORT[parseMonth(m).month]} ${m.slice(0, 4)}`);
@@ -238,7 +256,7 @@ function IndicatorsSection({ month }: { month: MonthKey }) {
           )}
         </div>
         <div className="dash-sub" style={{ color: clickable ? (row.variation!.isNew ? 'var(--violet-ink)' : spendGapColor(row.variation!.delta)) : undefined }}>
-          {clickable ? <>{gapText(row.variation!)}<SrGap v={row.variation!} /></> : hasReference ? empty : 'pas de référence'}
+          {clickable ? <>{gapText(row.variation!)}<SrGap v={row.variation!} /></> : r.isCurrent && hasReference ? CURRENT_MONTH : hasReference ? empty : 'pas de référence'}
         </div>
       </div>
     );
@@ -262,6 +280,10 @@ function IndicatorsSection({ month }: { month: MonthKey }) {
                   <>
                     moy. {money(s.average)} <GapChip v={s.variation} />
                   </>
+                ) : s.average !== null && r.isCurrent ? (
+                  <>
+                    moy. {money(s.average)} {NO_GAP}
+                  </>
                 ) : (
                   NO_REFERENCE
                 )}
@@ -281,17 +303,27 @@ function IndicatorsSection({ month }: { month: MonthKey }) {
       </section>
       {!r.empty && (
         <section className="panel cat-panel is-ind" aria-label="Par catégorie">
-          <div className="cat-title">Par catégorie</div>
-          <div className="cat-ind-parts">
+          <div className="cat-head is-ind">
+            <div className="cat-title">Par catégorie</div>
+            <button type="button" role="switch" aria-checked={showBudgets} className={`switch${showBudgets ? ' is-on' : ''}`} onClick={onToggleBudgets}>
+              <span className="switch-track">
+                <span className="switch-thumb" />
+              </span>
+              Montants budgétés
+            </button>
+          </div>
+          <div className={`cat-ind-parts${showBudgets ? ' has-budget' : ''}`}>
             {parts.map((part, i) => (
               <div key={i} role="table" aria-label={`Indicateurs par catégorie, partie ${i + 1}`}>
                 <div role="rowgroup">
-                  <div className="cat-ind-row is-head" role="row">
+                  <div className={`cat-ind-row is-head${showBudgets ? ' has-budget' : ''}`} role="row">
                     <span role="presentation" aria-hidden="true" />
                     <SortHead label="Catégorie" k="name" sort={sort} onSort={setSort} />
                     <SortHead label="Mois" k="amount" sort={sort} onSort={setSort} num />
+                    {showBudgets && <span role="columnheader" className="num" title="Budget">Budget</span>}
+                    {showBudgets && <span role="columnheader" className="num" title="Écart budget">Écart budget</span>}
                     <SortHead label="Moyenne" k="average" sort={sort} onSort={setSort} num />
-                    <SortHead label="Écart" k="gap" sort={sort} onSort={setSort} />
+                    <SortHead label={showBudgets ? 'Écart moy.' : 'Écart'} k="gap" sort={sort} onSort={setSort} num />
                     <span role="columnheader">Tendance</span>
                     <span role="presentation" aria-hidden="true" />
                   </div>
@@ -304,14 +336,21 @@ function IndicatorsSection({ month }: { month: MonthKey }) {
                     const isOpen = openId === id;
                     return (
                       <Fragment key={id}>
-                      <div id={`cat-ind-${id}`} className={`cat-ind-row${row.category ? '' : ' is-none'}`} role="row">
+                      <div id={`cat-ind-${id}`} className={`cat-ind-row${row.category ? '' : ' is-none'}${showBudgets ? ' has-budget' : ''}`} role="row">
                         <span className="dot is-9" role="presentation" aria-hidden="true" style={{ background: color }} />
                         <span role="cell" className="cat-name" title={rowName(row)}>{rowName(row)}</span>
                         <b role="cell" className="num">{money(row.amount)}</b>
+                        {showBudgets && <span role="cell" className="num cat-avg">{row.budget !== null ? money(row.budget) : '—'}</span>}
+                        {showBudgets && (row.budgetGap ? <GapChip v={row.budgetGap} cell /> : <span role="cell" className="num cat-avg">—</span>)}
                         {row.average !== null && row.variation ? (
                           <>
                             <span role="cell" className="num cat-avg">{money(row.average)}</span>
                             <GapChip v={row.variation} cell />
+                          </>
+                        ) : row.average !== null && r.isCurrent ? (
+                          <>
+                            <span role="cell" className="num cat-avg">{money(row.average)}</span>
+                            <span role="cell" className="num cat-avg" title={CURRENT_MONTH}>—</span>
                           </>
                         ) : (
                           <>
@@ -320,7 +359,7 @@ function IndicatorsSection({ month }: { month: MonthKey }) {
                           </>
                         )}
                         <span role="cell">
-                          <Sparkline values={row.trend} labels={labels} color={color} width={86} />
+                          <Sparkline values={row.trend} labels={labels} color={color} width={showBudgets ? 52 : 86} />
                         </span>
                         <span role="cell">
                           <button type="button" className="icon-link" aria-expanded={isOpen} aria-controls={`cat-detail-${id}`} aria-label={`${isOpen ? 'Masquer' : 'Voir'} les opérations : ${name}`} title="Voir les opérations" onClick={() => toggle(row)}>
@@ -342,7 +381,7 @@ function IndicatorsSection({ month }: { month: MonthKey }) {
   );
 }
 
-function ManageSection({ onOpenOperations }: { onOpenOperations: (f: OperationsFocus) => void }) {
+function ManageSection({ month, onOpenOperations }: { month: MonthKey; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, update } = useStore();
   const categories = data.categories ?? [];
   const [name, setName] = useState('');
@@ -371,14 +410,17 @@ function ManageSection({ onOpenOperations }: { onOpenOperations: (f: OperationsF
       {error && <div className="alert-box" role="alert">{error}</div>}
       {message && <div className="alert-box" role="alert">{message}</div>}
       {categories.length === 0 && <div className="empty">Aucune catégorie, ajoutes-en une</div>}
-      {categories.map(c => (
-        <ManageRow key={c.id} category={c} categories={categories} onMessage={setMessage} onOpenOperations={onOpenOperations} />
-      ))}
+      <div className="cat-cards">
+        {categories.map(c => (
+          <ManageCard key={c.id} category={c} categories={categories} month={month} onMessage={setMessage} onOpenOperations={onOpenOperations} />
+        ))}
+      </div>
     </section>
   );
 }
 
-function ManageRow({ category: c, categories, onMessage, onOpenOperations }: { category: Category; categories: Category[]; onMessage: (m: string) => void; onOpenOperations: (f: OperationsFocus) => void }) {
+/** One card per category (spec 0054, RG14): dot, emoji, name, usage, monthly budget and the actions. */
+function ManageCard({ category: c, categories, month, onMessage, onOpenOperations }: { category: Category; categories: Category[]; month: MonthKey; onMessage: (m: string) => void; onOpenOperations: (f: OperationsFocus) => void }) {
   const { data, update } = useStore();
   const [editing, setEditing] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -400,55 +442,142 @@ function ManageRow({ category: c, categories, onMessage, onOpenOperations }: { c
     onMessage('');
     update(d => void deleteCategory(d, c.id));
   };
-  return (
-    <div className="cat-row is-manage">
-      <span className="dot is-9" style={{ background: tone(c.hue).base }} />
-      <span className="acc-picker">
-        <button type="button" className="btn-outline emoji-btn" aria-label={`Choisir l’emoji de ${c.name}`} title="Choisir un emoji" onClick={() => setPicking(p => !p)}>
-          {categoryEmoji(c) || '＋'}
-        </button>
-        {picking && (
-          <>
-            <div className="backdrop" onClick={() => setPicking(false)} />
-            <div className="popmenu emoji-menu">
-              {EMOJI_CHOICES.map(e => (
-                <button key={e} type="button" className={`emoji-choice${categoryEmoji(c) === e ? ' is-on' : ''}`} onClick={() => { update(d => void setCategoryEmoji(d, c.id, e)); setPicking(false); }}>
-                  {e}
-                </button>
-              ))}
-              <button type="button" className="emoji-reset" onClick={() => { update(d => void setCategoryEmoji(d, c.id, '')); setPicking(false); }}>
-                Emoji par défaut
+  const emojiPicker = (
+    <span className="acc-picker">
+      <button type="button" className="btn-outline emoji-btn" aria-label={`Choisir l’emoji de ${c.name}`} title="Choisir un emoji" onClick={() => setPicking(p => !p)}>
+        {categoryEmoji(c) || '＋'}
+      </button>
+      {picking && (
+        <>
+          <div className="backdrop" onClick={() => setPicking(false)} />
+          <div className="popmenu emoji-menu">
+            {EMOJI_CHOICES.map(e => (
+              <button key={e} type="button" className={`emoji-choice${categoryEmoji(c) === e ? ' is-on' : ''}`} onClick={() => { update(d => void setCategoryEmoji(d, c.id, e)); setPicking(false); }}>
+                {e}
               </button>
-            </div>
-          </>
-        )}
-      </span>
-      {editing === null ? (
-        <>
-          <span className="cat-name">{c.name}</span>
-          <span className="cat-count">{used} dépense{used > 1 ? 's' : ''}</span>
-          <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${c.name}`} title="Voir les dépenses" onClick={() => onOpenOperations({ categoryId: c.id, label: c.name })}>
-            <Icon name="list" size={15} />
-          </button>
-          <button type="button" className="btn-outline" aria-label={`Renommer ${c.name}`} onClick={() => setEditing(c.name)}>
-            Renommer
-          </button>
-          <button type="button" className="btn-outline is-danger" aria-label={`Supprimer ${c.name}`} disabled={used > 0} title={used > 0 ? usedMessage(used) : undefined} onClick={remove}>
-            Supprimer
-          </button>
-        </>
-      ) : (
-        <>
-          <input className="text-input" autoFocus value={editing} aria-label={`Nouveau nom de ${c.name}`} onChange={e => { setEditing(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(null); setError(''); } }} />
-          <button type="button" className="btn-dark" onClick={save}>
-            Enregistrer
-          </button>
-          <button type="button" className="btn-outline" onClick={() => { setEditing(null); setError(''); }}>
-            Annuler
-          </button>
-          {error && <span className="cat-error" role="alert">{error}</span>}
+            ))}
+            <button type="button" className="emoji-reset" onClick={() => { update(d => void setCategoryEmoji(d, c.id, '')); setPicking(false); }}>
+              Emoji par défaut
+            </button>
+          </div>
         </>
       )}
+    </span>
+  );
+  return (
+    <div className="panel cat-card" style={toneVars(c.hue)}>
+      <div className="cat-card-head">
+        <span className="dot is-9" style={{ background: tone(c.hue).base }} />
+        {emojiPicker}
+        {editing === null ? (
+          <span className="cat-name" title={c.name}>{c.name}</span>
+        ) : (
+          <input className="text-input" autoFocus value={editing} aria-label={`Nouveau nom de ${c.name}`} onChange={e => { setEditing(e.target.value); setError(''); }} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(null); setError(''); } }} />
+        )}
+      </div>
+      <div className="cat-card-body">
+        {error && <span className="cat-error" role="alert">{error}</span>}
+        <div className="cat-count">{used} dépense{used > 1 ? 's' : ''}</div>
+        <BudgetField key={`${c.id}-${month}`} category={c} month={month} />
+        <div className="cat-card-actions">
+          {editing === null ? (
+            <>
+              <button type="button" className="icon-link" aria-label={`Voir les dépenses : ${c.name}`} title="Voir les dépenses" onClick={() => onOpenOperations({ categoryId: c.id, label: c.name })}>
+                <Icon name="list" size={15} />
+              </button>
+              <button type="button" className="btn-outline" aria-label={`Renommer ${c.name}`} onClick={() => setEditing(c.name)}>
+                Renommer
+              </button>
+              <button type="button" className="btn-outline is-danger" aria-label={`Supprimer ${c.name}`} disabled={used > 0} title={used > 0 ? usedMessage(used) : undefined} onClick={remove}>
+                Supprimer
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn-dark" onClick={save}>
+                Enregistrer
+              </button>
+              <button type="button" className="btn-outline" onClick={() => { setEditing(null); setError(''); }}>
+                Annuler
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * « Budget mensuel » of a category for the month shown (spec 0054, RG4 to RG6). Read as an amount on a light background (« Ajouter un budget » when
+ * there is none); a click, Entrée or Espace turns it into a field. Entrée saves, Échap puts the saved value back, an empty field removes the budget.
+ * Leaving the field (blur) saves a valid text; an invalid one keeps the field open with its message and saves nothing. After Entrée or Échap the
+ * focus goes back to the amount, so the keyboard flow is not lost. Remounted (see `key`) when the month changes.
+ */
+function BudgetField({ category: c, month }: { category: Category; month: MonthKey }) {
+  const { data, update } = useStore();
+  const saved = budgetOf(data, c.id, month);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
+  const readRef = useRef<HTMLButtonElement>(null);
+  // Set by Entrée / Échap: the field closes by itself, so the blur that follows must not save again, and the focus goes back to the amount.
+  const closedByKey = useRef(false);
+  useEffect(() => {
+    if (!editing && closedByKey.current) {
+      closedByKey.current = false;
+      readRef.current?.focus();
+    }
+  }, [editing]);
+  const open = () => {
+    setDraft(rawNumber(saved));
+    setError('');
+    setEditing(true);
+  };
+  /** Saves the draft; false (message shown) when it is invalid. */
+  const save = (): boolean => {
+    const parsed = parseBudgetInput(draft);
+    if ('error' in parsed) {
+      setError(parsed.error);
+      return false;
+    }
+    update(d => void setCategoryBudget(d, c.id, month, draft));
+    setEditing(false);
+    return true;
+  };
+  const cancel = () => {
+    setEditing(false);
+    setError('');
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      closedByKey.current = true;
+      if (!save()) closedByKey.current = false;
+    } else if (e.key === 'Escape') {
+      closedByKey.current = true;
+      cancel();
+    }
+  };
+  const onBlur = () => {
+    if (closedByKey.current) return;
+    save();
+  };
+  return (
+    <div className="cat-budget">
+      <div className="cat-budget-line">
+        <span className="cat-count">Budget mensuel</span>
+        {editing ? (
+          <>
+            <input className="cell-input cat-budget-input" autoFocus inputMode="decimal" value={draft} placeholder="—" aria-label={`Budget mensuel : ${c.name}`} aria-invalid={error ? true : undefined} onChange={e => { setDraft(e.target.value); setError(''); }} onKeyDown={onKey} onBlur={onBlur} />
+            <span className="cat-count">€</span>
+          </>
+        ) : (
+          <button ref={readRef} type="button" className={`cell cat-budget-read${saved === null ? ' is-empty' : ''}`} aria-label={saved === null ? `Ajouter un budget mensuel : ${c.name}` : `Modifier le budget mensuel de ${c.name} : ${money(saved)}`} title="Modifier le budget" onClick={open}>
+            {saved === null ? 'Ajouter un budget' : money(saved)}
+          </button>
+        )}
+      </div>
+      {error && <span className="cat-error" role="alert">{error}</span>}
     </div>
   );
 }
