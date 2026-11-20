@@ -64,7 +64,6 @@ function Kpis({ v, month }: { v: DashboardView; month: MonthKey }) {
       <div className="dash-kpi is-hero">
         <div className="kpi-label">Reste à placer en {MONTH_NAMES[parseMonth(month).month]}</div>
         <div className="dash-hero" style={{ color: k && k.remaining < 0 ? BAD : undefined }}>{cell(x => money(x.remaining))}</div>
-        <div className="dash-sub" style={{ color: k?.availableReal != null && k.availableReal < 0 ? BAD : MUTED }}>{k?.availableReal != null ? `Disponible (réel) ${money(k.availableReal)}` : ''}</div>
       </div>
       <div className="dash-kpi">
         <div className="kpi-label">Revenus</div>

@@ -30,7 +30,7 @@ import { accountIdOf, isAccountTransfer, isLineInBudget, isOnMainAccount } from 
 import { isoDate } from '../../domain/checkoff';
 import { budgetLockReason } from '../../domain/movementLines';
 import { leftLineKeys, lineTooltip, partiallyFundedLines, unfundedSpentLines } from '../../domain/comingUp';
-import { availableRealBreakdown, blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
+import { blockTotals, budgetLines, envelopeAlerts, estimatedBalance, estimatedBalanceTotal, lineGap, lineRemaining, lineHistory, monthSummary } from '../../domain/budget';
 import { addMonths, money, monthLabel, parseAmount, parseMonth, percent, rawNumber, round2 } from '../../domain/format';
 import { isMonthLocked, isYearClosed, monthAlloc, monthLines } from '../../domain/ledger';
 import type { BlockKey, BudgetData, Line, MonthKey } from '../../domain/types';
@@ -121,7 +121,6 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
   const locked = isMonthLocked(data, month);
   const today = isoDate();
   const s = monthSummary(data, ledger, month);
-  const [availableInfo, setAvailableInfo] = useState<DOMRect | null>(null);
   // « Masquer le réel »: focus on the budget while planning; display only, remembered on this device.
   const [hideActual, setHideActual] = useState(() => localStorage.getItem('budget.hideActual') === '1');
   const toggleHideActual = () =>
@@ -182,19 +181,6 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
           <div className="panel kpi kpi-hero">
             <div className="kpi-label">Reste à placer</div>
             <div className="kpi-hero-value">{money(s.remaining)}</div>
-            {s.availableReal !== null && (
-              <div
-                className="kpi-sub"
-                style={{ color: s.availableReal < 0 ? BAD : undefined, cursor: 'pointer' }}
-                title="Cliquer pour voir le détail du calcul"
-                onClick={e => setAvailableInfo(e.currentTarget.getBoundingClientRect())}
-              >
-                Disponible (réel) {money(s.availableReal)}
-              </div>
-            )}
-            {availableInfo && (
-              <DetailsBubble title="Disponible (réel)" text={availableRealText(data, month)} rect={availableInfo} onClose={() => setAvailableInfo(null)} />
-            )}
           </div>
           <GapKpi
             label="Écart dépenses"
@@ -291,20 +277,6 @@ function historyText(d: BudgetData, m: MonthKey, key: string): string {
   const h = lineHistory(d, m, key);
   const year = parseMonth(m).year;
   return [`Budget cumulé ${year} : ${money(h.cumulBudget)}`, `Réel cumulé ${year} : ${money(h.cumul)}`, `Solde mois préc. : ${h.prevGap === null ? '—' : money(h.prevGap, true)}`].join('\n');
-}
-
-function availableRealText(d: BudgetData, m: MonthKey): string {
-  const b = availableRealBreakdown(d, m);
-  if (!b) return '';
-  const lines = [`Reste à placer prévu : ${money(b.remaining)}`];
-  if (b.elsewhere !== 0) lines.push(`− revenus budgétés hors compte principal : ${money(b.elsewhere)}`);
-  lines.push(`+ écarts des revenus du compte principal (réel − budget) : ${money(b.mainGaps, true)}`);
-  lines.push(`− écart épargne (viré − budget) : ${money(b.paidInSavings, true)}`);
-  lines.push(`− écart placements (viré − budget) : ${money(b.paidInInvest, true)}`);
-  lines.push('(seuls les virements reçus comptent ; une ligne sans virement compte pour 0 − son budget)');
-  lines.push(`= Disponible (réel) : ${money(b.total)}`);
-  lines.push('', b.total < 0 ? 'Négatif : vous avez placé plus que ce que le mois permet, ou perçu moins que prévu.' : 'C’est ce que vous pouvez encore placer maintenant.');
-  return lines.join('\n');
 }
 
 function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, onOpenOperations }: { block: BlockKey; hideActual: boolean; leftKeys?: Set<string>; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
