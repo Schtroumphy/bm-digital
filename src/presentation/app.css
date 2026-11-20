@@ -1772,3 +1772,23 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 700; }
 .sort-btn { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 10px; padding: 0; border: 0; background: none; color: var(--muted); opacity: 0.55; cursor: pointer; }
 .sort-btn:hover { opacity: 1; }
 .sort-btn.is-on { opacity: 1; color: var(--ink, currentColor); }
+
+/* Reordering of the lines (spec 0055) */
+.switch:disabled { opacity: 0.45; cursor: not-allowed; }
+.reorder-item { position: relative; }
+.reorder-item.is-dragging { opacity: 0.4; }
+.reorder-item.is-drop-before::before, .reorder-item.is-drop-after::after {
+  content: ''; position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 2px; background: var(--t-base); z-index: 2; pointer-events: none;
+}
+.reorder-item.is-drop-before::before { top: -1px; }
+.reorder-item.is-drop-after::after { bottom: -1px; }
+.reorder-handle { display: flex; align-items: center; justify-content: center; width: 14px; color: var(--t-ink); cursor: grab; border-radius: 4px; }
+.reorder-handle.is-disabled { opacity: 0.3; cursor: not-allowed; }
+/* Budget: the handle sits in the left padding of the row, so the columns do not move. */
+.reorder-item > .reorder-handle { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; }
+/* Simulation: the handle takes its own column in front of the row. */
+.reorder-item.is-flow { display: flex; align-items: center; gap: 2px; }
+.reorder-item.is-flow > .reorder-handle { position: static; height: 25px; }
+.reorder-item.is-flow > .sim-row { flex: 1; min-width: 0; }
+.sim-row[inert] .sim-input { cursor: grab; }
+.sim-add:disabled { opacity: 0.45; cursor: not-allowed; }

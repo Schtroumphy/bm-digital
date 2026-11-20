@@ -21,6 +21,8 @@ import { BAD, gapColor, GOOD, HUE, MUTED, tone, toneVars } from '../components/t
 import { setLineAccount, setLineLinkedAccount } from '../../application/bankAccounts';
 import { renameEnvelope } from '../../application/envelopes';
 import { setLinePayment } from '../../application/payment';
+import { moveLine } from '../../application/lineOrder';
+import { useRowReorder } from '../components/useRowReorder';
 import { addLine, applyTemplate, deleteLine, duplicatePrevious, monthCsv, saveAsTemplate, SAVINGS_SECTIONS, updateLine } from '../../application/actions';
 import { envelopeSplitRefusal, setEnvelopeSplit, type EnvelopeSplitRefusal } from '../../application/cash';
 import { envelopeCashPart } from '../../domain/cash';
@@ -135,6 +137,16 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
       localStorage.setItem('budget.highlightLeft', v ? '0' : '1');
       return !v;
     });
+  // « Réordonner les lignes »: display only, not remembered. Off again when the month changes,
+  // and off as soon as the month cannot be edited (spec 0055, RG1, RG9).
+  const [reorderOn, setReorderOn] = useState(false);
+  const [reorderSeenMonth, setReorderSeenMonth] = useState(month);
+  if (reorderSeenMonth !== month) {
+    // Another month: the mode goes off, and stays off when coming back to a month already visited.
+    setReorderSeenMonth(month);
+    setReorderOn(false);
+  }
+  const reorder = reorderOn && !locked && !uninit;
   const leftKeys = highlightLeft && !uninit ? leftLineKeys(data, month, today) : undefined;
   // « Fond de secours »: the first `amount` goal of the current year (spec 0032, Q2); nothing to show without one.
   const emergencyGoal = firstGoalOfKind(data, 'amount');
@@ -176,6 +188,20 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
             </span>
             Surligner le reste à sortir
           </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={reorder}
+            className={`switch${reorder ? ' is-on' : ''}`}
+            disabled={locked || uninit}
+            title={uninit ? 'Le mois n’est pas initialisé : rien à réordonner' : locked ? 'Le mois est clôturé : il est en lecture seule' : 'Déplacer les lignes des blocs pour les ordonner'}
+            onClick={() => setReorderOn(!reorder)}
+          >
+            <span className="switch-track">
+              <span className="switch-thumb" />
+            </span>
+            Réordonner les lignes
+          </button>
         </CashMonthBlock>
         <div className="summary">
           <div className="panel kpi kpi-hero">
@@ -184,14 +210,14 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
           </div>
           <GapKpi
             label="Écart dépenses"
-            text={`Budget − réel, sur les crédits, les dépenses fixes et les dépenses variables.\n\nUne ligne sans réel compte à son budget (écart nul), comme à la validation du mois. Les revenus ne sont pas concernés.\n\nPositif : vous dépensez moins que prévu. Négatif : vous dépensez plus que prévu.`}
+            text={gapText(data, month, ['cre', 'fix', 'var'], 'expense')}
             value={s.expenseGap}
             positive="Moins dépensé que prévu"
             negative="Plus dépensé que prévu"
           />
           <GapKpi
             label="Écart épargne"
-            text={`Réel − budget, sur les épargnes et les placements.\n\nUne ligne sans réel compte à son budget (écart nul). Les allocations d’enveloppes comptent à leur budget : elles n’ajoutent aucun écart.\n\nPositif : vous épargnez plus que prévu. Négatif : vous épargnez moins que prévu.`}
+            text={gapText(data, month, ['epa', 'inv'], 'savings')}
             value={s.savingsGap}
             positive="Plus épargné que prévu"
             negative="Moins épargné que prévu"
@@ -222,17 +248,17 @@ export function BudgetScreen({ month, onOpenGoals, onOpenOperations }: { month: 
 
         <div className="budget-grid">
           <div className="budget-col">
-            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
-            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="rev" month={month} locked={locked || uninit} today={today} hideActual={hideActual} reorder={reorder} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="cre" month={month} locked={locked || uninit} today={today} hideActual={hideActual} reorder={reorder} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
             <GoalsCard onOpenGoals={onOpenGoals} />
           </div>
           <div className="budget-col">
-            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
-            <BlockCard block="var" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="fix" month={month} locked={locked || uninit} today={today} hideActual={hideActual} reorder={reorder} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="var" month={month} locked={locked || uninit} today={today} hideActual={hideActual} reorder={reorder} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
           </div>
           <div className="budget-col">
-            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
-            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} hideActual={hideActual} leftKeys={leftKeys} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
+            <BlockCard block="epa" month={month} locked={locked || uninit} today={today} hideActual={hideActual} reorder={reorder} leftKeys={leftKeys} onOpenOperations={onOpenOperations} />
+            <BlockCard block="inv" month={month} locked={locked || uninit} today={today} hideActual={hideActual} reorder={reorder} leftKeys={leftKeys} onOpenOperations={onOpenOperations} strip={{ label: 'Total global', value: money(s.investTotal), color: 'oklch(0.4 0.1 250)' }} />
             <AccountTransfersCard month={month} today={today} />
           </div>
           <div className="budget-col">
@@ -250,8 +276,8 @@ function GapKpi({ label, text, value, positive, negative }: { label: string; tex
   const color = value > 0 ? GOOD : value < 0 ? BAD : undefined;
   const [info, setInfo] = useState<DOMRect | null>(null);
   return (
-    <div className="panel kpi">
-      <div className="kpi-label" style={{ cursor: 'pointer' }} title="Cliquer pour voir l’explication" onClick={e => setInfo(e.currentTarget.getBoundingClientRect())}>{label}</div>
+    <div className="panel kpi" style={{ cursor: 'pointer' }} title="Cliquer pour voir le détail du calcul" onClick={e => setInfo(e.currentTarget.getBoundingClientRect())}>
+      <div className="kpi-label">{label}</div>
       {info && <DetailsBubble title={label} text={text} rect={info} onClose={() => setInfo(null)} />}
       <div className="kpi-value" style={{ color }}>{money(value, true)}</div>
       {value !== 0 && <div className="kpi-sub" style={{ color }}>{value > 0 ? positive : negative}</div>}
@@ -279,7 +305,29 @@ function historyText(d: BudgetData, m: MonthKey, key: string): string {
   return [`Budget cumulé ${year} : ${money(h.cumulBudget)}`, `Réel cumulé ${year} : ${money(h.cumul)}`, `Solde mois préc. : ${h.prevGap === null ? '—' : money(h.prevGap, true)}`].join('\n');
 }
 
-function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, onOpenOperations }: { block: BlockKey; hideActual: boolean; leftKeys?: Set<string>; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
+/** Explanation of an « Écart » figure: the sign convention, then the gap of each block and of each line that deviates from its budget. */
+function gapText(d: BudgetData, m: MonthKey, blocks: BlockKey[], kind: 'expense' | 'savings'): string {
+  const gapOf = (l: { budget: number; actual: number | null }) => (kind === 'expense' ? l.budget - (l.actual ?? l.budget) : (l.actual ?? l.budget) - l.budget);
+  const lines = budgetLines(d, m);
+  const out = [kind === 'expense' ? 'Budget − réel, sur les crédits, les dépenses fixes et les dépenses variables.' : 'Réel − budget, sur les épargnes et les placements.', ''];
+  let total = 0;
+  for (const b of blocks) {
+    const inBlock = lines.filter(l => l.block === b);
+    const gap = round2(inBlock.reduce((a, l) => a + gapOf(l), 0));
+    total += gap;
+    out.push(`Bloc ${BLOCK_TITLES[b]} : ${money(gap, true)}`);
+    for (const l of inBlock) {
+      const g = round2(gapOf(l));
+      if (g !== 0) out.push(`↳ ${l.name} (${money(l.budget)} → ${money(l.actual ?? l.budget)}) : ${money(g, true)}`);
+    }
+  }
+  out.push(`= Écart ${kind === 'expense' ? 'dépenses' : 'épargne'} : ${money(round2(total), true)}`, '');
+  out.push('Une ligne sans réel compte à son budget (écart nul).' + (kind === 'expense' ? ' Les revenus ne sont pas concernés.' : ' Les allocations d’enveloppes comptent à leur budget : elles n’ajoutent aucun écart.'));
+  out.push(kind === 'expense' ? 'Positif = vous dépensez moins que prévu. Négatif = vous dépensez plus que prévu.' : 'Positif = vous épargnez plus que prévu. Négatif = vous épargnez moins que prévu.');
+  return out.join('\n');
+}
+
+function BlockCard({ block, month, locked, today, strip, hideActual, reorder, leftKeys, onOpenOperations }: { block: BlockKey; hideActual: boolean; reorder: boolean; leftKeys?: Set<string>; month: MonthKey; locked: boolean; today: string; onOpenOperations: (f: OperationsFocus) => void; strip?: { label: string; value: string; color: string } }) {
   const { data, ledger, update } = useStore();
   const { setEditing, openMenu } = useUi();
   const [details, setDetails] = useState<{ key: string; rect: DOMRect } | null>(null);
@@ -288,6 +336,8 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
   const [annotating, setAnnotating] = useState<string | null>(null);
   const [annotList, setAnnotList] = useState<string | null>(null);
   const operationAnnotation = useOperationAnnotation();
+  // Drag and drop / keyboard reordering of the lines, in the month (and the model, spec 0055).
+  const reorderer = useRowReorder((key, toIndex) => update(d => void moveLine(d, month, key, toIndex)));
   useEffect(() => {
     if (!horizonOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setHorizonOpen(false);
@@ -372,7 +422,9 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
           </>
         )}
       </div>
-      {sections.map(sec => (
+      {sections.map(sec => {
+        const zone = sec.lines.map(x => x.key);
+        return (
         <div key={sec.label}>
           {sec.label && <div className="block-section">{sec.label}</div>}
           {sec.lines.map(l => {
@@ -383,9 +435,10 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
             const spent = isSplit ? lineSpentNet(data, month, l) : null;
             // Operations of the month attached to the line that carry an annotation (spec 0047, RG10).
             const annotated = annotatedOperations(data, month, l);
-            return (
+            const row = (
               <div
                 key={l.key}
+                inert={reorder}
                 className={`${gridClass} line-row${block === 'var' ? ' is-roomy' : ''}${isLineInBudget(data, l) ? '' : ' is-off-budget'}${leftKeys?.has(l.key) ? ' is-left' : ''}${unfunded.has(l.key) ? ' is-unfunded' : ''}${partial.has(l.key) ? ' is-partial' : ''}`}
                 onContextMenu={e => {
                   setDetails(null);
@@ -527,23 +580,34 @@ function BlockCard({ block, month, locked, today, strip, hideActual, leftKeys, o
                 )}
               </div>
             );
+            // While reordering, the row is inert (no edit, no menu) and wrapped with its handle and its drop target.
+            return reorder ? (
+              <div key={l.key} {...reorderer.item(l.key, zone)}>
+                {reorderer.handle(l.key, zone, l.name)}
+                {row}
+              </div>
+            ) : (
+              row
+            );
           })}
         </div>
-      ))}
+        );
+      })}
+      {reorder && reorderer.live}
       <div style={{ flex: 1 }} />
       <div className={`${gridClass} block-foot`}>
         <div className="rel">
           <div
-            className={`add-btn${locked ? ' is-disabled' : ''}`}
+            className={`add-btn${locked || reorder ? ' is-disabled' : ''}`}
             title="Ajouter une ligne"
-            onClick={locked ? undefined : block === 'epa' ? () => setHorizonOpen(o => !o) : () => add()}
+            onClick={locked || reorder ? undefined : block === 'epa' ? () => setHorizonOpen(o => !o) : () => add()}
           >
             <span className="add-icon">
               <Icon name="plus" size={13} stroke={3} />
             </span>
             <span>Ajouter</span>
           </div>
-          {horizonOpen && !locked && (
+          {horizonOpen && !locked && !reorder && (
             <>
               <div className="backdrop" onClick={() => setHorizonOpen(false)} />
               <div className="popmenu horizon-menu">

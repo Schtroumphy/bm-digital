@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { defaultBankAccounts } from '../domain/bank';
 import { emptyData } from '../domain/empty';
 import { seedData } from '../domain/seed';
+import { moveLine } from './lineOrder';
 import type { BudgetData } from '../domain/types';
 import type { BudgetRepository } from './ports';
 
@@ -142,6 +143,20 @@ export function describeBudgetRepositoryContract(name: string, makeStorage: () =
       await repo.save(changed);
       expect(await repo.load()).toEqual(changed);
       expect(await open().load()).toEqual(changed);
+    });
+
+    it('spec 0055 : un simple changement d’ordre (mois, modèle, lignes de simulation) est enregistré puis restitué', async () => {
+      const repo = open();
+      const data = completeData();
+      await repo.save(data);
+      const swapped = structuredClone(data);
+      const fix = swapped.months['2026-12'].lines.filter(l => l.block === 'fix');
+      moveLine(swapped, '2026-12', fix[fix.length - 1].key, 0);
+      swapped.template.lines.reverse();
+      swapped.simulations![0].rows.reverse();
+      expect(swapped.months['2026-12'].lines.map(l => l.key)).not.toEqual(data.months['2026-12'].lines.map(l => l.key));
+      await repo.save(swapped);
+      expect(await open().load()).toEqual(swapped);
     });
 
     it('spec 0047 : l’annotation d’une transaction et d’un mouvement est conservée à l’identique (retours à la ligne compris), puis retirée', async () => {

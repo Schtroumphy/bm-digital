@@ -1,5 +1,6 @@
 import { Icon, type IconName } from './Icon';
 import { toneVars } from './tone';
+import { useRowReorder } from './useRowReorder';
 import { money } from '../../domain/format';
 import { rowAnnual, sanitizeSimulationAmount } from '../../domain/simulation';
 import type { SimBlockKey, SimulationRow } from '../../domain/types';
@@ -26,11 +27,17 @@ interface Props {
   onAmount: (id: string, amount: string) => void;
   onRemove: (id: string) => void;
   onAdd: (block: SimBlockKey) => void;
+  /** « Réordonner les lignes » is on: handles instead of the fields, no « Retirer », no « Ajouter » (spec 0055). */
+  reorder: boolean;
+  /** A row was moved to `toIndex` among the rows of the block. */
+  onMove: (id: string, toIndex: number) => void;
 }
 
 /** One block of a simulation: header with its totals, free lines (name, monthly amount, yearly amount), « Ajouter » foot. */
-export function SimulationBlock({ block, rows, total, totalYear, onName, onAmount, onRemove, onAdd }: Props) {
+export function SimulationBlock({ block, rows, total, totalYear, onName, onAmount, onRemove, onAdd, reorder, onMove }: Props) {
   const meta = SIM_BLOCK_META[block];
+  const reorderer = useRowReorder(onMove);
+  const zone = rows.map(r => r.id);
   return (
     <section className={`panel sim-block${block === 'env' ? ' is-wide' : ''}`} style={toneVars(meta.hue)}>
       <div className="block-head">
@@ -49,8 +56,8 @@ export function SimulationBlock({ block, rows, total, totalYear, onName, onAmoun
         {rows.length === 0 && <div className="sim-empty">Aucune ligne</div>}
         {rows.map(r => {
           const annual = rowAnnual(r.amount);
-          return (
-            <div key={r.id} className="sim-row">
+          const row = (
+            <div key={r.id} className="sim-row" inert={reorder}>
               <input className="sim-input" value={r.name} onChange={e => onName(r.id, e.target.value)} placeholder="Nom" aria-label="Nom de la ligne" />
               <div className="sim-amount">
                 <input
@@ -69,9 +76,19 @@ export function SimulationBlock({ block, rows, total, totalYear, onName, onAmoun
               </button>
             </div>
           );
+          const slot = reorderer.item(r.id, zone);
+          return reorder ? (
+            <div key={r.id} {...slot} className={`${slot.className} is-flow`}>
+              {reorderer.handle(r.id, zone, r.name)}
+              {row}
+            </div>
+          ) : (
+            row
+          );
         })}
+        {reorder && reorderer.live}
       </div>
-      <button type="button" className="sim-add" onClick={() => onAdd(block)}>
+      <button type="button" className="sim-add" disabled={reorder} onClick={() => onAdd(block)}>
         <span className="sim-add-icon">
           <Icon name="plus" size={13} stroke={3} />
         </span>

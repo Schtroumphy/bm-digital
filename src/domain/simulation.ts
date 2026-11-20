@@ -1,6 +1,7 @@
 import { isLineInBudget } from './bank';
 import { templateSummary } from './budget';
 import { parseAmount, rawNumber, round2 } from './format';
+import { moveInZone } from './ordering';
 import type { BudgetData, SimBlockKey, Simulation, SimulationRow } from './types';
 
 /*
@@ -145,3 +146,12 @@ export function duplicateSimulation(draft: SimulationDraft, newId: () => string)
 
 /** Name used to compare two simulations: case and surrounding spaces ignored, accents kept (RG22). */
 export const simulationNameKey = (name: string): string => name.trim().toLowerCase();
+
+/**
+ * Moves a row to `toIndex` (0 = first) among the rows of its block (spec 0055, RG4, RG10). The rows of the other blocks keep their place.
+ * Returns the new list, or null for an unknown row, a position outside the block, or when nothing moves.
+ */
+export function moveSimulationRow(rows: readonly SimulationRow[], id: string, toIndex: number): SimulationRow[] | null {
+  const block = rows.find(r => r.id === id)?.block;
+  return block === undefined ? null : moveInZone(rows, r => r.block === block, r => r.id === id, toIndex);
+}

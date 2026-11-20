@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { templateSummary } from './budget';
 import { seedData } from './seed';
 import {
-  blockShare, simulationSavings, duplicateSimulation, gapWithModel, newSimulation, openSimulation, rowAnnual, revenueSplit, sanitizeSimulationAmount, simulationAmount, simulationTotals,
+  blockShare, simulationSavings, duplicateSimulation, gapWithModel, moveSimulationRow, newSimulation, openSimulation, rowAnnual, revenueSplit, sanitizeSimulationAmount, simulationAmount, simulationTotals,
 } from './simulation';
 import type { SimBlockKey, SimulationRow } from './types';
 
@@ -190,5 +190,24 @@ describe('simulation : répartition des revenus (camembert)', () => {
 
   it('les lignes à 0 et les blocs vides ne donnent pas de part', () => {
     expect(revenueSplit(simulationTotals(rows(['rev', '100'], ['fix', '0']))).map(x => x.id)).toEqual(['remaining']);
+  });
+});
+
+describe('simulation : réordonner (spec 0055)', () => {
+  const list = () => rows(['rev', '3000'], ['fix', '100'], ['fix', '200'], ['var', '50'], ['fix', '300']);
+
+  it('CA9 : déplace une ligne dans son bloc, les autres blocs et les totaux sont inchangés', () => {
+    const before = list();
+    const out = moveSimulationRow(before, 'r4', 0)!;
+    expect(out.filter(r => r.block === 'fix').map(r => r.id)).toEqual(['r4', 'r1', 'r2']);
+    expect(out.filter(r => r.block !== 'fix').map(r => r.id)).toEqual(['r0', 'r3']);
+    expect(simulationTotals(out)).toEqual(simulationTotals(before));
+  });
+
+  it('refuse une ligne inconnue, une position hors du bloc ou sans changement', () => {
+    expect(moveSimulationRow(list(), 'zz', 0)).toBeNull();
+    expect(moveSimulationRow(list(), 'r1', 3)).toBeNull();
+    expect(moveSimulationRow(list(), 'r3', 0)).toBeNull();
+    expect(moveSimulationRow(list(), 'r1', 0)).toBeNull();
   });
 });

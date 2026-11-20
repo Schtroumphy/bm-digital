@@ -6,7 +6,7 @@ Fichier : `docs/adr/NNNN-<slug-kebab-case>.md` (numéro à 4 chiffres, croissant
 
 La décision de départ (clean architecture, contexte React, etc.) est dans la section 6 de [`../architecture.md`](../architecture.md).
 
-Dernière ADR : [0043 — Budgets de catégorie : table dédiée `category_budgets`](0043-budgets-de-categorie-dans-une-table-dediee.md).
+Dernière ADR : [0044 — Réordonner les lignes : glisser-déposer natif, hook partagé, ordre reporté dans le modèle](0044-reordonner-les-lignes-sans-dependance.md).
 
 ## Gabarit
 

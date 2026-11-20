@@ -20,7 +20,7 @@ Le projet suit la **clean architecture**, les principes **SOLID** et **KISS**.
 ```
 src/
   main.tsx          racine de composition : choisit le repository et l'injecte
-  domain/           entités (types) et règles pures : ledger, budget, comingUp, periods, goals, dashboard, yearView, bank, bankMovements, cash, releve, transfers, accountTransfers, lineActuals, migrate, format, empty, seed (tests)
+  domain/           entités (types) et règles pures : ledger, ordering (réordonner une liste dans une zone), budget, comingUp, periods, goals, dashboard, yearView, bank, bankMovements, cash, releve, transfers, accountTransfers, lineActuals, migrate, format, empty, seed (tests)
   application/      cas d'usage (actions, setup de l'assistant) et ports (BudgetRepository)
   infrastructure/   implémentations des ports : supabaseRepository (+ rows, remote, auth, client), localRepository (conservé, plus utilisé)
   presentation/     App, screens, components, state (store, ui), ds, app.css

@@ -6,7 +6,7 @@ import { SimulationPie, type SliceId } from '../components/SimulationPie';
 import { BAD, GOOD, MUTED, tone, toneVars } from '../components/tone';
 import { money, percent } from '../../domain/format';
 import {
-  blockShare, simulationSavings, duplicateSimulation, gapWithModel, newSimulation, openSimulation, SIM_BLOCKS, SIM_OUTGOING_BLOCKS, simulationTotals,
+  blockShare, simulationSavings, duplicateSimulation, gapWithModel, moveSimulationRow, newSimulation, openSimulation, SIM_BLOCKS, SIM_OUTGOING_BLOCKS, simulationTotals,
   type SimulationDraft, type SimulationSource,
 } from '../../domain/simulation';
 import { templateSummary } from '../../domain/budget';
@@ -30,6 +30,8 @@ export function SimulationScreen({ draft, setDraft }: { draft: SimulationDraft; 
   // Result of the last save attempt; any edit clears it (RG12, RG22).
   // Slice of the pie shared with the bars of the summary, which are its legend.
   const [activeSlice, setActiveSlice] = useState<SliceId | null>(null);
+  // « Réordonner les lignes »: display only, off again when the screen is left (spec 0055, RG1).
+  const [reorder, setReorder] = useState(false);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
   const totals = simulationTotals(draft.rows);
@@ -72,6 +74,12 @@ export function SimulationScreen({ draft, setDraft }: { draft: SimulationDraft; 
             placeholder="Nom de la simulation (ex. Passage à 80 % après le déménagement)"
             aria-label="Nom de la simulation"
           />
+          <button type="button" role="switch" aria-checked={reorder} className={`switch${reorder ? ' is-on' : ''}`} onClick={() => setReorder(v => !v)}>
+            <span className="switch-track">
+              <span className="switch-thumb" />
+            </span>
+            Réordonner les lignes
+          </button>
           {isSaved && (
             <button type="button" className="btn-outline" style={{ height: 40 }} onClick={() => edit(duplicateSimulation(draft, rowId))}>
               Dupliquer
@@ -125,6 +133,11 @@ export function SimulationScreen({ draft, setDraft }: { draft: SimulationDraft; 
             onName={(id, name) => editRows(rows => rows.map(r => (r.id === id ? { ...r, name } : r)))}
             onAmount={(id, amount) => editRows(rows => rows.map(r => (r.id === id ? { ...r, amount } : r)))}
             onRemove={id => editRows(rows => rows.filter(r => r.id !== id))}
+            reorder={reorder}
+            onMove={(id, toIndex) => {
+              const moved = moveSimulationRow(draft.rows, id, toIndex);
+              if (moved) edit({ ...draft, rows: moved });
+            }}
             onAdd={(b: SimBlockKey) => editRows(rows => [...rows, { id: rowId(), block: b, name: '', amount: '' }])}
           />
         ))}
