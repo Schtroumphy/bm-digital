@@ -37,7 +37,7 @@ export const categoryLabel = (c: Pick<Category, 'name' | 'emoji'>): string => [c
 /** Emojis offered when choosing one for a category. */
 export const EMOJI_CHOICES: readonly string[] = [
   '🛒', '🍽️', '☕', '🏠', '💡', '🚗', '🚌', '⛽', '🎮', '🎉', '🎬', '📚', '🩺', '💊', '🔁', '📱', '👕', '🎁', '✈️', '🏖️', '🎓', '🐾', '🧾', '🛡️',
-  '🧸', '🏃', '💇', '🔧', '🛋️', '💰', '🏦', '📦',
+  '🧸', '🏃', '💇', '🔧', '🛋️', '💰', '🏦', '📦', '🧡', '💙', '💛', '👩🏿',
 ];
 
 /** Name compared without case, accents and outer spaces (RG1). */

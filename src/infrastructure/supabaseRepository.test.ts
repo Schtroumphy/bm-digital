@@ -222,6 +222,25 @@ describe('SupabaseRepository : écriture par diff', () => {
   });
 });
 
+describe('emoji d’une enveloppe (spec 0056)', () => {
+  it('CA6 : l’emoji se convertit dans les deux sens, et son absence reste absente', () => {
+    const data = completeData();
+    data.envelopes[0] = { ...data.envelopes[0], emoji: '🛒' };
+    const rows = toRows(data);
+    expect(rows.envelopes[0].emoji).toBe('🛒');
+    expect(rows.envelopes[1].emoji).toBeNull();
+    const back = fromRows(withUser(rows))!;
+    expect(back.envelopes[0].emoji).toBe('🛒');
+    expect(back.envelopes[1]).not.toHaveProperty('emoji');
+  });
+
+  it('CA7 : des données sans emoji restent identiques après conversion', () => {
+    const data = completeData();
+    expect(data.envelopes.some(e => 'emoji' in e)).toBe(false);
+    expect(fromRows(withUser(toRows(data)))).toEqual(data);
+  });
+});
+
 describe('catégories de dépenses (spec 0046)', () => {
   it('la liste, la catégorie d’une dépense et celle d’une règle se convertissent dans les deux sens', () => {
     const data = completeData();

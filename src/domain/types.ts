@@ -111,6 +111,8 @@ export interface Envelope {
   openingCash: number;
   /** Bank account of the envelope, of kind `enveloppe`: its balance is the envelope's balance (spec 0011, RG1). */
   accountId: string;
+  /** Emoji chosen for the envelope (spec 0056); absent = none. Purely visual: it changes no name, balance or figure. */
+  emoji?: string;
 }
 
 /** Imported month for an envelope, before the app managed it. */

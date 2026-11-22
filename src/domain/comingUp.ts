@@ -11,6 +11,7 @@ import { transfersTargeting } from './movementTargets';
 import { realMovements } from './bankMovements';
 import { periodOf } from './periods';
 import type { BankAccount, BudgetData, ExecMode, Line, MonthKey } from './types';
+import { envelopeLabel } from './envelopeLabel';
 
 /*
  * « À venir ce mois-ci » (spec 0043): what is still to leave each bank account, and what the account would have left.
@@ -277,7 +278,7 @@ export function accountComingUp(d: BudgetData, m: MonthKey, accountId: string, t
     for (const e of allocationEnvelopes(d, m)) {
       const amount = leftOfAllocation(d, m, e.id);
       const budget = (d.months[m].alloc[e.id] ?? 0) - (d.months[m].cashPart?.[e.id] ?? 0);
-      const base = { id: e.id, kind: 'allocation' as const, name: `Alloc. ${e.name}`, budget, late: false };
+      const base = { id: e.id, kind: 'allocation' as const, name: `Alloc. ${envelopeLabel(e)}`, budget, late: false };
       if (amount > 0) items.push({ group: 'autres', item: { ...base, amount } });
       const sent = round2(budget - amount);
       if (sent > 0 && !hasEnvelopesDebit(d, m)) doneItems.push({ group: 'autres', item: { ...base, amount: sent } });
@@ -285,7 +286,7 @@ export function accountComingUp(d: BudgetData, m: MonthKey, accountId: string, t
     // The cash part of an envelope allocation leaves with the cash withdrawal (RG7).
     for (const e of cashEnvelopes(d, m)) {
       const part = envelopeCashPart(d, m, e.id);
-      items.push({ group: 'retrait', item: { id: `cash:${e.id}`, kind: 'allocation', name: `Alloc. espèces ${e.name}`, amount: part, budget: part, late: false, cash: true } });
+      items.push({ group: 'retrait', item: { id: `cash:${e.id}`, kind: 'allocation', name: `Alloc. espèces ${envelopeLabel(e)}`, amount: part, budget: part, late: false, cash: true } });
     }
   }
   // A transfer to the dedicated account of variable lines (e.g. Boursorama for Alimentation, Loisirs): it has left this account (spec 0045, RG14).

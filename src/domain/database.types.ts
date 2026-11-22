@@ -364,6 +364,7 @@ export type Database = {
         Row: {
           account_id: string | null
           cash: number
+          emoji: string | null
           hue: number
           id: string
           name: string
@@ -374,6 +375,7 @@ export type Database = {
         Insert: {
           account_id?: string | null
           cash?: number
+          emoji?: string | null
           hue: number
           id: string
           name: string
@@ -384,6 +386,7 @@ export type Database = {
         Update: {
           account_id?: string | null
           cash?: number
+          emoji?: string | null
           hue?: number
           id?: string
           name?: string

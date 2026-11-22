@@ -31,6 +31,8 @@ export interface YearRow {
 
 export interface YearLine extends YearRow {
   name: string;
+  /** Emoji of the envelope of an « Enveloppes » line (spec 0056); shown before the name, never part of it. */
+  emoji?: string;
 }
 
 export interface YearSection {
@@ -306,6 +308,7 @@ function envelopesBlock(d: BudgetData, ledger: Ledger, keys: MonthKey[], shown: 
   const last = shown.lastIndexOf(true);
   const lines: YearLine[] = d.envelopes.map(e => ({
     name: e.name,
+    ...(e.emoji ? { emoji: e.emoji } : {}),
     values: keys.map((k, i) => (!shown[i] ? null : mode === 'budget' ? (monthAlloc(d, k)[e.id] ?? 0) : (ledger.envMonth(e.id, k)?.spent ?? 0))),
     total: 'sum',
     dashZero: true,

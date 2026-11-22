@@ -127,6 +127,14 @@ describe('dépenses variables (CA4)', () => {
 });
 
 describe('enveloppes (CA5)', () => {
+  it('spec 0056 : une enveloppe avec emoji est nommée « emoji + nom » dans les lignes du tableau de bord', () => {
+    const d = started();
+    d.envelopes[0].emoji = '🏖️';
+    const rows = view(d).envelopes!.rows;
+    expect(rows.find(r => r.id === 'vac')!.name).toBe('🏖️ Vacances');
+    expect(rows.find(r => r.id === 'san')!.name).toBe('Santé');
+  });
+
   it('solde cumulé, alloué du mois et part consommée', () => {
     const d = started();
     d.months['2027-02'].alloc = { vac: 600, san: 0 };

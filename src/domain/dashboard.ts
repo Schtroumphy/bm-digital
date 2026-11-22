@@ -11,6 +11,7 @@ import { addMonths, compareMonths, parseMonth, round2 } from './format';
 import { accounts, isMonthLocked, monthAlloc, monthLines, type Ledger } from './ledger';
 import { releveFailures } from './releve';
 import type { BudgetData, MonthKey, MonthNote } from './types';
+import { envelopeLabel } from './envelopeLabel';
 
 /*
  * Tableau de bord (spec 0027). Pure assembly of existing calculations (`monthSummary`, `goalView`, `envelopeAlerts`, `leftOfLine`,
@@ -256,7 +257,7 @@ export function monthTransfers(d: BudgetData, month: MonthKey, today: string): D
   for (const e of d.envelopes) {
     if (!envelopeAccountAt(d, e, month) || (alloc[e.id] ?? 0) <= 0) continue;
     const left = leftOfAllocation(d, month, e.id);
-    out.push({ kind: 'envelope', id: e.id, name: `Alloc. ${e.name}`, amount: left || alloc[e.id], done: left === 0, late: false });
+    out.push({ kind: 'envelope', id: e.id, name: `Alloc. ${envelopeLabel(e)}`, amount: left || alloc[e.id], done: left === 0, late: false });
   }
   // Array.sort is stable: transfers with the same day keep their order.
   return out.sort((a, b) => (a.day ?? Infinity) - (b.day ?? Infinity));
@@ -351,7 +352,7 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
   const envelopes: DashboardEnvelopes = {
     total: round2(balances.reduce((a, x) => a + x.balance, 0)),
     allocated: round2(Object.values(monthAlloc(d, month)).reduce((a, v) => a + v, 0)),
-    rows: balances.map(({ e, balance, virtual, cash, start, spent, remaining, consumed }) => ({ id: e.id, name: e.name, hue: e.hue, balance, virtual, cash, start, spent, remaining, consumed })),
+    rows: balances.map(({ e, balance, virtual, cash, start, spent, remaining, consumed }) => ({ id: e.id, name: envelopeLabel(e), hue: e.hue, balance, virtual, cash, start, spent, remaining, consumed })),
   };
 
   const perMonth = Array.from({ length: 12 }, (_, i) => round2(d.planned.filter(p => p.year === year && p.month === i).reduce((a, p) => a + p.amount, 0)));
@@ -360,7 +361,7 @@ export function dashboardView(d: BudgetData, ledger: Ledger, month: MonthKey, to
 
   const alerts: DashboardAlert[] = envelopeAlerts(d, ledger, year, m0).flatMap(a => {
     const env = d.envelopes.find(e => e.id === a.envelopeId);
-    return env ? [{ envelopeId: env.id, envelopeName: env.name, label: a.labels.length === 1 ? a.labels[0] : env.name, planned: a.planned, missing: a.missing }] : [];
+    return env ? [{ envelopeId: env.id, envelopeName: envelopeLabel(env), label: a.labels.length === 1 ? a.labels[0] : envelopeLabel(env), planned: a.planned, missing: a.missing }] : [];
   });
   const all = monthTransfers(d, month, today);
   const transfers = all.filter(t => !t.done);

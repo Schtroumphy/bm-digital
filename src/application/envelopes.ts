@@ -38,6 +38,15 @@ export function renameEnvelope(d: BudgetData, id: string, name: string): boolean
   return true;
 }
 
+/** Sets the emoji of an envelope ('' = none), purely visual (spec 0056). Returns false (changing nothing) for an unknown envelope. */
+export function setEnvelopeEmoji(d: BudgetData, id: string, emoji: string): boolean {
+  const e = d.envelopes.find(x => x.id === id);
+  if (!e) return false;
+  if (emoji) e.emoji = emoji;
+  else delete e.emoji;
+  return true;
+}
+
 export type OpeningResult = 'ok' | 'unknown' | 'invalid' | 'locked';
 export type OpeningCashResult = OpeningResult | 'negative';
 

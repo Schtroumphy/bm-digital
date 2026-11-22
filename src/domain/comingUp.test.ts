@@ -111,6 +111,12 @@ describe('allocation d’enveloppe (RG5, CA9)', () => {
     return d;
   };
 
+  it('spec 0056 : l’allocation d’une enveloppe avec emoji porte « emoji + nom »', () => {
+    const d = withEnvelope();
+    d.envelopes[0].emoji = '🏖️';
+    expect(group(d, 'autres')!.items[0].name).toBe('Alloc. 🏖️ Vacances');
+  });
+
   it('CA9 : 60 € sans transfert = 60 € ; avec un transfert rattaché de 60 € = 0', () => {
     const d = withEnvelope();
     expect(leftOfAllocation(d, M, 'vac')).toBe(60);

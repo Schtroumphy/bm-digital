@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { addTransaction } from './actions';
 import { addTransfer } from './accountMovements';
 import { addBankAccount, archiveBankAccount, archiveBlocker, renameBankAccount, setBankAccountInBudget, setBankAccountKind, setLineAccount, setTransactionAccount, unarchiveBankAccount } from './bankAccounts';
-import { addEnvelope, deleteEnvelope, renameEnvelope } from './envelopes';
+import { addEnvelope, deleteEnvelope, renameEnvelope, setEnvelopeEmoji } from './envelopes';
+import { envelopeLabel } from '../domain/envelopeLabel';
 import { activeBankAccounts, defaultBankAccounts, fixedTransactionAccountId, MAIN_ACCOUNT_ID } from '../domain/bank';
 import { closingView } from '../domain/closing';
 import { emptyData } from '../domain/empty';
@@ -280,5 +281,64 @@ describe('« Payé avec » figé sur le compte attribué à la ligne', () => {
     const d = withAssigned();
     archiveBankAccount(d, 'bourso');
     expect(fixedTransactionAccountId(d, varDepense())).toBeUndefined();
+  });
+});
+
+describe('emoji d’une enveloppe (spec 0056)', () => {
+  it('CA4 : une enveloppe créée n’a pas d’emoji', () => {
+    const d = started();
+    addEnvelope(d, 'voiture', 'Voiture', M);
+    expect(d.envelopes.find(e => e.id === 'voiture')).not.toHaveProperty('emoji');
+  });
+
+  it('CA1 : définir un emoji laisse le nom inchangé', () => {
+    const d = started();
+    expect(setEnvelopeEmoji(d, 'sante', '🩺')).toBe(true);
+    expect(d.envelopes[0]).toMatchObject({ name: 'Santé', emoji: '🩺' });
+  });
+
+  it('CA2 : un nouvel emoji remplace l’ancien', () => {
+    const d = started();
+    setEnvelopeEmoji(d, 'sante', '🩺');
+    setEnvelopeEmoji(d, 'sante', '💊');
+    expect(d.envelopes[0].emoji).toBe('💊');
+  });
+
+  it('CA3 : une valeur vide retire le champ', () => {
+    const d = started();
+    setEnvelopeEmoji(d, 'sante', '🩺');
+    setEnvelopeEmoji(d, 'sante', '');
+    expect(d.envelopes[0]).not.toHaveProperty('emoji');
+  });
+
+  it('une enveloppe inconnue est refusée sans rien changer', () => {
+    const d = started();
+    expect(setEnvelopeEmoji(d, 'nope', '🩺')).toBe(false);
+  });
+
+  it('un emoji composé (femme, peau foncée) est stocké comme une seule valeur', () => {
+    const d = started();
+    setEnvelopeEmoji(d, 'sante', '👩🏿');
+    expect(d.envelopes[0].emoji).toBe('👩🏿');
+    expect([...d.envelopes[0].emoji!]).toHaveLength(2); // deux points de code, une seule valeur de texte
+  });
+
+  it('CA5 : renommer conserve l’emoji', () => {
+    const d = started();
+    setEnvelopeEmoji(d, 'sante', '🩺');
+    renameEnvelope(d, 'sante', 'Santé+');
+    expect(d.envelopes[0]).toMatchObject({ name: 'Santé+', emoji: '🩺' });
+  });
+
+  it('RG7 : le libellé place l’emoji devant le nom, sans emoji le nom seul', () => {
+    expect(envelopeLabel({ name: 'Courses', emoji: '🛒' })).toBe('🛒 Courses');
+    expect(envelopeLabel({ name: 'Courses' })).toBe('Courses');
+  });
+
+  it('RG9 : supprimer l’enveloppe supprime son emoji avec elle', () => {
+    const d = started();
+    setEnvelopeEmoji(d, 'sante', '🩺');
+    expect(deleteEnvelope(d, 'sante', M)).toBe('ok');
+    expect(d.envelopes.some(e => e.emoji)).toBe(false);
   });
 });
