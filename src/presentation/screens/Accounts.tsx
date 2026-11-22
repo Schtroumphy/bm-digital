@@ -249,8 +249,8 @@ export function AccountsScreen({ month }: { month: MonthKey }) {
                 <div className="cpt-group-total-label">Total</div>
                 <div className="cpt-group-total">{money(totalOf(list))}</div>
                 {g.id === 'env' && withCash.cash !== 0 && (
-                  <div className="muted is-small" title="Soldes réels des enveloppes + espèces. Chiffre d’affichage : il n’entre dans aucun total de cet écran.">
-                    avec espèces {money(withCash.withCash)}
+                  <div className="muted is-small" title="Somme des espèces des enveloppes. Chiffre d’affichage : il n’entre dans aucun total de cet écran.">
+                    espèces {money(withCash.cash)}
                   </div>
                 )}
               </div>
