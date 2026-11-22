@@ -13,6 +13,7 @@ import type { BlockKey, MonthKey } from '../../domain/types';
 import { BLOCKS } from './Budget';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 
 const ORDER: BlockKey[] = ['rev', 'cre', 'fix', 'var', 'epa', 'inv'];
 
@@ -163,7 +164,7 @@ export function TemplateScreen({ month }: { month: MonthKey }) {
             <div key={e.id} className="line-grid line-row is-tpl is-tpl-env">
               <div className="line-name">
                 <span className="dot is-10" style={{ background: tone(e.hue).base, marginRight: 6 }} />
-                {e.name}
+                {envelopeLabel(e)}
               </div>
               <EditableAmount id={`ta:${e.id}`} value={t.envAlloc[e.id] ?? 0} onCommit={v => update(d => void setTemplateAllocation(d, e.id, v ?? 0))} className="cell" inputClassName="cell-input" hint="right">
                 {money(t.envAlloc[e.id] ?? 0)}

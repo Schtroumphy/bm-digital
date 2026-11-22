@@ -19,6 +19,7 @@ import { isExpenseLineBlock } from '../../domain/lineExpenses';
 import { newId, useStore } from '../state/store';
 import { AccountLinks } from './AccountLinks';
 import { ImportRow, targetFrom } from './ImportRow';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 
 /*
  * Assistant « Importer des dépenses » (spec 0013): 1. file, 2. preview (accounts to match, filters, corrections), 3. summary.
@@ -845,7 +846,7 @@ function BulkPanel({ shown, preview, done, onApply }: { shown: PreviewLine[]; pr
             <optgroup label="Enveloppes">
               {data.envelopes.map(e => (
                 <option key={e.id} value={`env:${e.id}`}>
-                  {e.name}
+                  {envelopeLabel(e)}
                 </option>
               ))}
             </optgroup>

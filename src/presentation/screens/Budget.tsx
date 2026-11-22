@@ -41,6 +41,7 @@ import { AccountTransfersCard } from './AccountTransfersCard';
 import { ComingUpCard } from './ComingUpCard';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 
 export const BLOCKS: Record<BlockKey, { title: string; icon: IconName; hue: number }> = {
   rev: { title: 'Revenus', icon: 'arrowDown', hue: HUE.rev },
@@ -805,7 +806,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
   const alertText = alerts
     .map(a => {
       const env = data.envelopes.find(e => e.id === a.envelopeId)!;
-      const what = a.labels.length === 1 ? a.labels[0] : env.name;
+      const what = a.labels.length === 1 ? a.labels[0] : envelopeLabel(env);
       return `${what} ${money(a.planned)} prévu, il manque ~${money(a.missing)}`;
     })
     .join(' · ');
@@ -840,7 +841,7 @@ function EnvelopesCompact({ month, locked }: { month: MonthKey; locked: boolean 
             >
               <div className="env-tile-head">
                 <EditableText id={`en:${e.id}`} value={e.name} onCommit={name => update(d => void renameEnvelope(d, e.id, name))} className="env-tile-name" inputClassName="cell-input is-text">
-                  {e.name}
+                  {envelopeLabel(e)}
                 </EditableText>
                 {warn && <span className="warn-dot" />}
                 <AccountDot account={data.accounts.find(a => a.id === e.accountId)} />

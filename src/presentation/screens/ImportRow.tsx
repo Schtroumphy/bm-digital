@@ -10,6 +10,7 @@ import type { ImportTarget, MovementTarget } from '../../domain/types';
 import { expenseLineAccountId } from '../../domain/lineExpenses';
 import { transferItems } from '../../domain/transfers';
 import { useStore } from '../state/store';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 
 const isEnvelopesTarget = (l: PreviewLine) => l.target?.kind === 'account' && l.target.id === ENVELOPES_ID;
 
@@ -170,7 +171,7 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
                   <optgroup label="Enveloppes">
                     {entryEnvelopes.map(e => (
                       <option key={e.id} value={`env:${e.id}`}>
-                        {e.name}
+                        {envelopeLabel(e)}
                       </option>
                     ))}
                   </optgroup>
@@ -242,7 +243,7 @@ export function ImportRow({ line: l, months, onChange: onChangeRaw, imported = f
                     <optgroup label="Enveloppes">
                       {envelopes.map(e => (
                         <option key={e.id} value={`env:${e.id}`}>
-                          {e.name}
+                          {envelopeLabel(e)}
                         </option>
                       ))}
                     </optgroup>

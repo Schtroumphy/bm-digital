@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 import { categoryEmoji, categoryYear } from '../../domain/categories';
 import { DetailsBubble } from '../components/DetailsBubble';
 import { Icon } from '../components/Icon';
@@ -242,7 +243,7 @@ function YearBlocks({ year, onOpenOperations }: { year: number; onOpenOperations
                             openMenu(e, l.name, text ? [{ label: 'Détails', onSelect: () => setDetails({ title: l.name, text, rect }) }] : [{ label: 'Aucun détail saisi', onSelect: () => {} }]);
                           }}
                         >
-                          <div className="ya-label">{l.name}</div>
+                          <div className="ya-label">{envelopeLabel(l)}</div>
                           {cells(l, undefined, { block: b.id, section: s.title, name: l.name }, BLOCK_GOOD[b.id])}
                         </div>
                       ))}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { EditableAmount, EditableText } from '../components/Editable';
 import { EnvelopeBalances } from '../components/EnvelopeBalances';
+import { EnvelopeEmojiPicker } from '../components/EnvelopeEmojiPicker';
 import { CASH_ADJUSTMENT_MESSAGE, CASH_CARD_HINT, CASH_CARD_LABEL, OPENING_MESSAGE } from '../components/hints';
 import { Icon } from '../components/Icon';
 import { deleteEnvelope, envelopeBalance, openingBalanceRefusal, openingCashRefusal, renameEnvelope, setEnvelopeOpeningBalance, setEnvelopeOpeningCash } from '../../application/envelopes';
@@ -12,6 +13,7 @@ import { cashPartAbove, envelopeCashPart } from '../../domain/cash';
 import { envelopeCash, envelopeTotal } from '../../domain/envelopeCash';
 import { cashBalanceAt, cashHistory, virtualHistory } from '../../domain/envelopeHistory';
 import { adjustEnvelopeCash, cashAdjustmentRefusal, deleteCashAdjustment, deleteCashAdjustmentRefusal } from '../../application/cashAdjustments';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 import { isoDate } from '../../domain/checkoff';
 import { addMonths, compareMonths, dayLabel, money, monthLabel, MONTH_SHORT, parseMonth, round2 } from '../../domain/format';
 import { isMonthLocked, monthAlloc } from '../../domain/ledger';
@@ -74,7 +76,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
               style={toneVars(e.hue)}
               onClick={() => setOpen(e.id)}
               onContextMenu={ev =>
-                openMenu(ev, e.name, [
+                openMenu(ev, envelopeLabel(e), [
                   {
                     label: 'Supprimer l’enveloppe',
                     danger: true,
@@ -90,6 +92,7 @@ export function EnvelopesScreen({ month }: { month: MonthKey }) {
             >
               <div className="env-card-head">
                 <span className="dot is-12" style={{ background: 'var(--t-base)' }} />
+                <EnvelopeEmojiPicker envelope={e} />
                 <span className="env-card-name">{e.name}</span>
                 <div style={{ flex: 1 }} />
                 {alert && (
@@ -264,6 +267,7 @@ function EnvelopeDrawer({ env, month, onClose }: { env: Envelope; month: MonthKe
         <div className="drawer-head">
           <div className="drawer-title-row">
             <span className="dot is-12" style={{ background: 'var(--t-base)' }} />
+            <EnvelopeEmojiPicker envelope={env} />
             <EditableText id={`dn:${env.id}`} value={env.name} onCommit={name => update(d => void renameEnvelope(d, env.id, name))} className="drawer-name" inputClassName="cell-input is-title">
               {env.name}
             </EditableText>

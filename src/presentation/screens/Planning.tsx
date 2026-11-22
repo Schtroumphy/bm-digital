@@ -6,6 +6,7 @@ import { currentMonthKey, money, monthKey, monthName, MONTH_NAMES } from '../../
 import type { PlannedItem } from '../../domain/types';
 import { newId, useStore } from '../state/store';
 import { useUi } from '../state/ui';
+import { envelopeLabel } from '../../domain/envelopeLabel';
 
 export function PlanningScreen({ year }: { year: number }) {
   const { data, ledger, update } = useStore();
@@ -31,7 +32,7 @@ export function PlanningScreen({ year }: { year: number }) {
           {data.envelopes.map(e => (
             <span key={e.id}>
               <span className="dot is-10" style={{ background: tone(e.hue).base }} />
-              {e.name}
+              {envelopeLabel(e)}
             </span>
           ))}
         </div>
@@ -41,7 +42,8 @@ export function PlanningScreen({ year }: { year: number }) {
           const its = items.filter(p => p.month === m);
           const current = monthKey(year, m) === today;
           const alerts = envelopeAlerts(data, ledger, year, m);
-          const alertText = alerts.map(a => `${data.envelopes.find(e => e.id === a.envelopeId)?.name} : il manquera ~${money(a.missing)}`).join('\n');
+          const envelopeLabelById = (id: string) => { const env = data.envelopes.find(e => e.id === id); return env ? envelopeLabel(env) : 'Enveloppe supprimée'; };
+          const alertText = alerts.map(a => `${envelopeLabelById(a.envelopeId)} : il manquera ~${money(a.missing)}`).join('\n');
           return (
             <div key={m} className={`panel plan-month${current ? ' is-current' : ''}`}>
               <div className="plan-month-head">
@@ -69,13 +71,13 @@ export function PlanningScreen({ year }: { year: number }) {
                     >
                       <span
                         className="plan-dot"
-                        title={`${env?.name ?? 'Aucune enveloppe'} · cliquer pour changer`}
+                        title={`${env ? envelopeLabel(env) : 'Aucune enveloppe'} · cliquer pour changer`}
                         style={{ background: env ? t.base : 'rgba(32,30,29,.2)' }}
                         onClick={e =>
                           openMenu(
                             e,
                             'Enveloppe liée',
-                            data.envelopes.map(x => ({ label: x.name, onSelect: () => patch(p.id, q => void (q.envelopeId = x.id)) })),
+                            data.envelopes.map(x => ({ label: envelopeLabel(x), onSelect: () => patch(p.id, q => void (q.envelopeId = x.id)) })),
                           )
                         }
                       />
